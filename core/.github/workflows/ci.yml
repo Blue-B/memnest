@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Test
+        run: cargo test --quiet
+      - name: Release build
+        run: cargo build --release
+      - name: Product gates
+        shell: bash
+        run: scripts/verify-release.sh
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Test
+        run: cargo test --quiet
+      - name: Release build
+        run: cargo build --release
+      - name: Validate PowerShell installers
+        shell: pwsh
+        run: .\scripts\verify-release.ps1
+      - name: Validate Bash installers
+        shell: bash
+        run: |
+          bash -n scripts/install.sh
+          bash -n scripts/install-linux.sh
+          bash -n scripts/uninstall-linux.sh
+          bash -n scripts/preflight-linux.sh
+          bash -n scripts/verify-artifact.sh
+          bash -n scripts/verify-workflows.sh
+          bash -n scripts/product-audit.sh
+          bash -n scripts/validate-installed.sh
+          bash -n scripts/support-bundle.sh
+      - name: Product audit
+        shell: bash
+        run: scripts/product-audit.sh
+      - name: License metadata
+        shell: bash
+        run: python3 scripts/check-licenses.py

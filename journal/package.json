@@ -1,0 +1,50 @@
+{
+  "name": "palimpsest-journal",
+  "version": "0.1.0",
+  "description": "Your AI memory as a git-backed markdown repo you own and edit. Export, version, diff, revert, push, and review palimpsest memory chunks through familiar git workflows.",
+  "type": "module",
+  "bin": {
+    "palimpsest-journal": "./bin/cli.mjs",
+    "pjournal": "./bin/cli.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    ".github",
+    "docs"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "smoke": "node test/smoke.mjs",
+    "smoke:bun": "bun test/smoke.mjs"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.0.0"
+  },
+  "license": "MIT",
+  "keywords": [
+    "palimpsest",
+    "memory",
+    "ai",
+    "git",
+    "journal",
+    "audit",
+    "review",
+    "mcp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Blue-B/palimpsest-journal.git"
+  },
+  "author": "Blue-B",
+  "bugs": {
+    "url": "https://github.com/Blue-B/palimpsest-journal/issues"
+  },
+  "homepage": "https://github.com/Blue-B/palimpsest-journal#readme"
+}

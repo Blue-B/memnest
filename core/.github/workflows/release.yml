@@ -1,0 +1,119 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      
+      - name: Install cross-compilation tools
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+      
+      - name: Build release
+        run: cargo build --release --target ${{ matrix.target }}
+      
+      - name: Get version
+        id: get_version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Package (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/palimpsest dist/
+          cp -r scripts dist/
+          cp -r packaging dist/
+          cp -r docs dist/
+          cp -r static dist/
+          tar -czf "palimpsest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.tar.gz" -C dist .
+          sha256sum "palimpsest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.tar.gz" > "palimpsest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.tar.gz.sha256"
+
+      - name: Package (Windows)
+        if: matrix.os == 'windows-latest'
+        env:
+          WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+          WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
+        run: |
+          mkdir dist
+          cp target/${{ matrix.target }}/release/palimpsest.exe dist/
+          cp -r scripts dist/
+          cp -r packaging dist/
+          cp -r docs dist/
+          cp -r static dist/
+          $winSWVersion = "v3.0.0"
+          Invoke-WebRequest -Uri "https://github.com/winsw/winsw/releases/download/$winSWVersion/WinSW-x64.exe" -OutFile "dist/WinSW-x64.exe"
+          $winswHash = Get-FileHash "dist/WinSW-x64.exe" -Algorithm SHA256
+          "$($winswHash.Hash)  WinSW-x64.exe" | Set-Content "dist/WinSW-x64.exe.sha256"
+
+          if ($env:WINDOWS_CODESIGN_PFX_BASE64 -and $env:WINDOWS_CODESIGN_PASSWORD) {
+            [IO.File]::WriteAllBytes("codesign.pfx", [Convert]::FromBase64String($env:WINDOWS_CODESIGN_PFX_BASE64))
+            try {
+              $filesToSign = @("dist/palimpsest.exe", "dist/WinSW-x64.exe")
+              $filesToSign += Get-ChildItem "dist/scripts" -Filter "*.ps1" -File | Select-Object -ExpandProperty FullName
+              .\scripts\sign-windows.ps1 -FilePath $filesToSign -CertificatePath codesign.pfx -CertificatePassword $env:WINDOWS_CODESIGN_PASSWORD
+              .\scripts\verify-windows-signatures.ps1 -FilePath $filesToSign
+            }
+            finally {
+              Remove-Item codesign.pfx -Force -ErrorAction SilentlyContinue
+            }
+          }
+          else {
+            throw "WINDOWS_CODESIGN_PFX_BASE64 and WINDOWS_CODESIGN_PASSWORD are required for Windows release signing."
+          }
+
+          Compress-Archive -Path dist/* -DestinationPath "palimpsest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip"
+          $hash = Get-FileHash "palimpsest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip" -Algorithm SHA256
+          "$($hash.Hash)  palimpsest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip" | Set-Content "palimpsest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: palimpsest-${{ matrix.target }}
+          path: palimpsest-*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: palimpsest-*
+          merge-multiple: true
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/*
+          generate_release_notes: true

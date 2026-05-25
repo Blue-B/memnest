@@ -1,0 +1,76 @@
+{
+  "name": "pi-palimpsest",
+  "version": "0.4.0",
+  "description": "Palimpsest memory bridge for pi — exposes memory_*/note_*/secret_* tools backed by local palimpsest server",
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "extension",
+    "memory",
+    "palimpsest",
+    "mcp",
+    "ai-memory",
+    "rag",
+    "sqlite",
+    "bm25",
+    "vector-search"
+  ],
+  "files": [
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "INSTALL-CLIENTS.md",
+    "dist",
+    "src",
+    "test",
+    "contrib",
+    "CONTRIBUTING.md",
+    "docs"
+  ],
+  "license": "MIT",
+  "pi": {
+    "extensions": [
+      "./dist/index.mjs"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --format=esm --platform=node --target=node20 --external:@earendil-works/pi-coding-agent --external:@mariozechner/pi-coding-agent --outfile=dist/index.mjs",
+    "prepublishOnly": "npm run build",
+    "prepare": "npm run build",
+    "smoke": "node test/smoke.mjs",
+    "smoke:bun": "bun test/smoke.mjs",
+    "e2e": "node test/e2e-mcp.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "typebox": "*"
+  },
+  "author": "Blue-B",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Blue-B/pi-palimpsest.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Blue-B/pi-palimpsest/issues"
+  },
+  "homepage": "https://github.com/Blue-B/pi-palimpsest#readme"
+}

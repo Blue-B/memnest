@@ -1,0 +1,18 @@
+# Rust
+**/target/
+**/.fastembed_cache/
+
+# Node
+**/node_modules/
+*.tgz
+
+# Local palimpsest runtime data (never commit the DB or keys)
+.palimpsest/
+*.db
+*.db-shm
+*.db-wal
+master.key
+
+# OS / editor
+.DS_Store
+*.log

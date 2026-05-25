@@ -1,0 +1,22 @@
+[Unit]
+Description=palimpsest memory server (HTTP API + web dashboard)
+Documentation=https://github.com/badlogic/palimpsest
+After=default.target
+
+[Service]
+Type=simple
+# Adjust to the absolute path printed by `which palimpsest`:
+ExecStart=%h/.local/bin/palimpsest --host 127.0.0.1 --port 3111
+# Where memory.db + master.key live. %h expands to the user's $HOME.
+Environment=PALIMPSEST_DATA_DIR=%h/.palimpsest
+Restart=on-failure
+RestartSec=2s
+# Sandbox a little — palimpsest only needs its data dir + binary.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.palimpsest
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
