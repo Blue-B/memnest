@@ -40,11 +40,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Blue-B/palimpsest-journal.git"
+    "url": "git+https://github.com/Blue-B/palimpsest.git"
   },
   "author": "Blue-B",
   "bugs": {
-    "url": "https://github.com/Blue-B/palimpsest-journal/issues"
+    "url": "https://github.com/Blue-B/palimpsest/issues"
   },
-  "homepage": "https://github.com/Blue-B/palimpsest-journal#readme"
+  "homepage": "https://github.com/Blue-B/palimpsest#readme"
 }

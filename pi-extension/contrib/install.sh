@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-shot installer for the palimpsest memory stack on Linux/macOS/WSL.
-#   curl -fsSL https://raw.githubusercontent.com/Blue-B/pi-palimpsest/main/contrib/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Blue-B/palimpsest/main/contrib/install.sh | bash
 set -euo pipefail
 
 NEED=(curl tar git)
@@ -16,7 +16,11 @@ mkdir -p "$DATA" "$BIN"
 if ! command -v palimpsest >/dev/null 2>&1; then
   echo "[1/3] installing palimpsest core to $BIN ..."
   if command -v cargo >/dev/null 2>&1; then
-    cargo install --git https://github.com/badlogic/palimpsest --root "$HOME/.local"
+    tmp="$(mktemp -d)"
+    git clone --depth 1 https://github.com/Blue-B/palimpsest "$tmp/palimpsest"
+    ( cd "$tmp/palimpsest/core" && cargo build --release )
+    install -Dm755 "$tmp/palimpsest/core/target/release/palimpsest" "$BIN/palimpsest"
+    rm -rf "$tmp"
   else
     echo "    cargo not found; please install Rust then re-run, or download binary manually"
     exit 3

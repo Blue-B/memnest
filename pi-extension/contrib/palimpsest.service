@@ -1,6 +1,6 @@
 [Unit]
 Description=palimpsest memory server (HTTP API + web dashboard)
-Documentation=https://github.com/badlogic/palimpsest
+Documentation=https://github.com/Blue-B/palimpsest
 After=default.target
 
 [Service]

@@ -13,8 +13,8 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/pi-palimpsest"><img src="https://img.shields.io/npm/v/pi-palimpsest.svg?style=flat&color=blue" alt="npm version" /></a>
   <a href="https://www.npmjs.com/package/pi-palimpsest"><img src="https://img.shields.io/npm/dm/pi-palimpsest.svg?style=flat&color=blue" alt="downloads" /></a>
-  <a href="https://github.com/Blue-B/pi-palimpsest/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/pi-palimpsest.svg?style=flat&color=green" alt="license" /></a>
-  <a href="https://github.com/Blue-B/pi-palimpsest/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Blue-B/pi-palimpsest/ci.yml?branch=main&style=flat&label=CI" alt="CI" /></a>
+  <a href="https://github.com/Blue-B/palimpsest/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/pi-palimpsest.svg?style=flat&color=green" alt="license" /></a>
+  <a href="https://github.com/Blue-B/palimpsest/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Blue-B/palimpsest/ci.yml?branch=main&style=flat&label=CI" alt="CI" /></a>
   <a href="https://github.com/sponsors/Blue-B"><img src="https://img.shields.io/badge/sponsor-❤-ea4aaa.svg?style=flat" alt="sponsor" /></a>
 </p>
 
@@ -22,7 +22,7 @@
 
 **pi-palimpsest** bridges [pi](https://github.com/badlogic/pi-mono) (and any
 other MCP client) to a locally running
-[palimpsest](https://github.com/badlogic/palimpsest) memory server. Memories
+[palimpsest](https://github.com/Blue-B/palimpsest) memory server. Memories
 you write from Claude Desktop, Cursor, Cline, pi, or curl all land in the
 **same SQLite database** at `~/.palimpsest/memory.db` — and stay searchable
 across every session of every tool, forever, for $0.
@@ -80,7 +80,7 @@ accrues without you calling `memory_remember` by hand.
 | AES-GCM encrypted secret store                   | ✅ | ❌ | ❌ | ❌ | ❌ |
 | MCP stdio out of the box (no adapter)            | ✅ | partial | partial | partial | partial |
 | Cross-client shared memory (Claude + Cursor + pi over one DB) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Memory is auditable as plain files (git diff/revert/PR) via [palimpsest-journal](https://github.com/Blue-B/palimpsest-journal) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Memory is auditable as plain files (git diff/revert/PR) via [palimpsest-journal](https://github.com/Blue-B/palimpsest) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Knowledge graph + lifecycle decay                | ✅ | ✅ | ✅ | ✅ | ✅ |
 | SSH server credential vault built in             | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Per-call cost                                    | $0 | $$ (token + cloud) | $0 | $0 | $$ |
@@ -146,8 +146,8 @@ re-bundle or use the shipped bundle directly.
 
 ## Related projects
 
-- [**palimpsest**](https://github.com/badlogic/palimpsest) — the Rust memory server itself (HTTP + stdio MCP, 17 tools).
-- [**palimpsest-journal**](https://github.com/Blue-B/palimpsest-journal) — mirror your memory DB to a **git-backed markdown repo** so you can `git diff`, `git revert`, and PR-review what the AI learned.
+- [**palimpsest**](https://github.com/Blue-B/palimpsest) — the Rust memory server itself (HTTP + stdio MCP, 17 tools).
+- [**palimpsest-journal**](https://github.com/Blue-B/palimpsest) — mirror your memory DB to a **git-backed markdown repo** so you can `git diff`, `git revert`, and PR-review what the AI learned.
 - [**pi-mono**](https://github.com/badlogic/pi-mono) — the pi coding agent that hosts this extension.
 
 ## Documentation
@@ -158,7 +158,7 @@ re-bundle or use the shipped bundle directly.
 
 ## Contributing & support
 
-Issues and PRs welcome at [github.com/Blue-B/pi-palimpsest](https://github.com/Blue-B/pi-palimpsest/issues).
+Issues and PRs welcome at [github.com/Blue-B/palimpsest](https://github.com/Blue-B/palimpsest/issues).
 
 If this saves you cloud-memory bills, consider [sponsoring](https://github.com/sponsors/Blue-B) to fund maintenance.
 

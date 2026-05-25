@@ -5,7 +5,7 @@ edition = "2024"
 authors = ["Palimpsest Team"]
 description = "Layered persistent memory for AI agents — Rust core"
 license = "MIT"
-repository = "https://github.com/palimpsest-memory/palimpsest"
+repository = "https://github.com/Blue-B/palimpsest"
 
 [profile.release]
 opt-level = 3

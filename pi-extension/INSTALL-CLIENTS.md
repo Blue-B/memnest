@@ -27,11 +27,13 @@ Optional flags you may add to `args`:
 # Install palimpsest server itself (Rust binary).
 # Pick ONE of:
 
-# A) From source (any platform with cargo)
-cargo install --git https://github.com/badlogic/palimpsest
+# A) From source (any platform with cargo) — core lives in the monorepo's core/ subdir
+git clone https://github.com/Blue-B/palimpsest
+cd palimpsest/core && cargo build --release
+cp target/release/palimpsest ~/.local/bin/
 
 # B) From release (Linux/macOS x64 and aarch64)
-curl -fsSL https://github.com/badlogic/palimpsest/releases/latest/download/palimpsest-$(uname -s)-$(uname -m).tar.gz | tar xz -C ~/.local/bin
+curl -fsSL https://github.com/Blue-B/palimpsest/releases/latest/download/palimpsest-$(uname -s)-$(uname -m).tar.gz | tar xz -C ~/.local/bin
 
 # Verify
 palimpsest --version   # → 0.1.0 or later

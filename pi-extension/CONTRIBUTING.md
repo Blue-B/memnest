@@ -6,12 +6,12 @@ contributions are easy to land but easy to keep out of scope.
 ## Scope
 
 - **In scope**: bug fixes, new HTTP-backed tools (proxy of upstream palimpsest endpoints), docs, CI, security improvements.
-- **Out of scope**: re-implementing palimpsest core features in JS (file a PR upstream at [badlogic/palimpsest](https://github.com/badlogic/palimpsest) instead), heavyweight runtime deps, alternative storage backends.
+- **Out of scope**: re-implementing palimpsest core features in JS (file a PR upstream at [Blue-B/palimpsest](https://github.com/Blue-B/palimpsest) instead), heavyweight runtime deps, alternative storage backends.
 
 ## Dev loop
 
 ```bash
-git clone https://github.com/Blue-B/pi-palimpsest
+git clone https://github.com/Blue-B/palimpsest
 cd pi-palimpsest
 npm install       # runs prepare -> npm run build
 npm run smoke     # 30 assertions, requires palimpsest running on :3111

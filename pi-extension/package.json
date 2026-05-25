@@ -67,10 +67,10 @@
   "author": "Blue-B",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Blue-B/pi-palimpsest.git"
+    "url": "git+https://github.com/Blue-B/palimpsest.git"
   },
   "bugs": {
-    "url": "https://github.com/Blue-B/pi-palimpsest/issues"
+    "url": "https://github.com/Blue-B/palimpsest/issues"
   },
-  "homepage": "https://github.com/Blue-B/pi-palimpsest#readme"
+  "homepage": "https://github.com/Blue-B/palimpsest#readme"
 }

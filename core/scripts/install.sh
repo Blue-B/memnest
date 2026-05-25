@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${REPO:-https://github.com/palimpsest-memory/palimpsest}"
+REPO="${REPO:-https://github.com/Blue-B/palimpsest}"
 VERSION="${VERSION:-latest}"
 MODE="${MODE:-user}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
@@ -44,7 +44,7 @@ case "$OS" in
 esac
 
 if [ "$VERSION" = "latest" ]; then
-  API_URL="https://api.github.com/repos/palimpsest-memory/palimpsest/releases/latest"
+  API_URL="https://api.github.com/repos/Blue-B/palimpsest/releases/latest"
   VERSION="$(curl -fsSL "$API_URL" | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
   if [ -z "$VERSION" ]; then
     echo "failed to determine latest version" >&2

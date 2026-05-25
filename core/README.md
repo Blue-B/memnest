@@ -19,7 +19,7 @@ local SQLite database at `~/.palimpsest/memory.db`. It speaks two protocols
 over the same store, so any tool you use writes to the same memory:
 
 - **HTTP API** (default `http://127.0.0.1:3111`) — used by editors, scripts,
-  curl, and the [pi-palimpsest](https://github.com/Blue-B/pi-palimpsest) extension.
+  curl, and the [pi-palimpsest](https://github.com/Blue-B/palimpsest) extension.
 - **stdio MCP** (`palimpsest --mcp`) — register directly in Claude Desktop,
   Cursor, Cline, Continue, Zed (17 tools).
 
@@ -101,9 +101,9 @@ python3 scripts/check-licenses.py   # dependency license check
 
 ## Related projects
 
-- [**pi-palimpsest**](https://github.com/Blue-B/pi-palimpsest) — bridge that exposes
+- [**pi-palimpsest**](https://github.com/Blue-B/palimpsest) — bridge that exposes
   palimpsest memory as MCP tools inside [pi](https://github.com/badlogic/pi-mono) and other clients.
-- [**palimpsest-journal**](https://github.com/Blue-B/palimpsest-journal) — mirror the
+- [**palimpsest-journal**](https://github.com/Blue-B/palimpsest) — mirror the
   memory DB to a git-backed markdown repo so you can `git diff` / `revert` / PR-review what the AI learned.
 
 ## License

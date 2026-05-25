@@ -36,7 +36,7 @@ jobs:
           # Attempt to install the upstream binary; if unavailable, skip
           # live-call tests but keep static lint + dry-run.
           curl -fsSL -o /tmp/p.tar.gz \
-            https://github.com/badlogic/palimpsest/releases/latest/download/palimpsest-linux-x86_64.tar.gz \
+            https://github.com/Blue-B/palimpsest/releases/latest/download/palimpsest-linux-x86_64.tar.gz \
             || echo "(skipping palimpsest binary; live tests will be limited)"
           if [ -s /tmp/p.tar.gz ]; then
             mkdir -p $HOME/.local/bin

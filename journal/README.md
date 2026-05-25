@@ -13,15 +13,15 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/palimpsest-journal"><img src="https://img.shields.io/npm/v/palimpsest-journal.svg?style=flat&color=blue" alt="npm version" /></a>
   <a href="https://www.npmjs.com/package/palimpsest-journal"><img src="https://img.shields.io/npm/dm/palimpsest-journal.svg?style=flat&color=blue" alt="downloads" /></a>
-  <a href="https://github.com/Blue-B/palimpsest-journal/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/palimpsest-journal.svg?style=flat&color=green" alt="license" /></a>
-  <a href="https://github.com/Blue-B/palimpsest-journal/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Blue-B/palimpsest-journal/ci.yml?branch=main&style=flat&label=CI" alt="CI" /></a>
+  <a href="https://github.com/Blue-B/palimpsest/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/palimpsest-journal.svg?style=flat&color=green" alt="license" /></a>
+  <a href="https://github.com/Blue-B/palimpsest/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Blue-B/palimpsest/ci.yml?branch=main&style=flat&label=CI" alt="CI" /></a>
   <a href="https://github.com/sponsors/Blue-B"><img src="https://img.shields.io/badge/sponsor-❤-ea4aaa.svg?style=flat" alt="sponsor" /></a>
 </p>
 
 ---
 
 `palimpsest-journal` is the missing **human layer** on top of
-[palimpsest](https://github.com/badlogic/palimpsest). It exports every
+[palimpsest](https://github.com/Blue-B/palimpsest). It exports every
 memory chunk, fact, note, session summary, and (encrypted) secret to a
 plain markdown tree under git — then lets you `diff`, `revert`, `push`,
 review, and edit them by hand like any other source file.
@@ -216,7 +216,7 @@ The value is the workflow, not the algorithm.
 
 ## Contributing & support
 
-Issues and PRs welcome at [github.com/Blue-B/palimpsest-journal](https://github.com/Blue-B/palimpsest-journal/issues).
+Issues and PRs welcome at [github.com/Blue-B/palimpsest](https://github.com/Blue-B/palimpsest/issues).
 
 If you adopt this in a team and it removes a real audit gap, consider [sponsoring](https://github.com/sponsors/Blue-B) to fund maintenance and a hosted review UI (planned for 0.3.x).
 

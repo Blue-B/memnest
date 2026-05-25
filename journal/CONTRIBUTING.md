@@ -11,7 +11,7 @@ smoke harness — contributions are easy to land but should stay focused.
 ## Dev loop
 
 ```bash
-git clone https://github.com/Blue-B/palimpsest-journal
+git clone https://github.com/Blue-B/palimpsest
 cd palimpsest-journal
 npm run smoke         # 14 assertions, requires palimpsest running on :3111
 npm run smoke:bun     # same, under bun (faster)
