@@ -463,6 +463,97 @@ pub(crate) async fn run_hybrid_search(
     }
 }
 
+#[derive(Deserialize)]
+pub struct NeighborsRequest {
+    #[serde(default)]
+    text: String,
+    #[serde(default)]
+    id: String,
+    #[serde(default = "default_neighbors_k")]
+    k: usize,
+    /// Cosine-distance cap; 0 means no cap. Lower = stricter near-duplicate.
+    #[serde(default)]
+    max_distance: f32,
+    #[serde(default = "default_project")]
+    project: String,
+}
+fn default_neighbors_k() -> usize {
+    10
+}
+
+#[derive(Debug, Serialize)]
+pub struct NeighborItem {
+    pub id: String,
+    pub project: String,
+    pub document: String,
+    pub distance: f32,
+    pub category: String,
+    pub importance: String,
+    pub chunk_type: String,
+}
+
+/// Cosine nearest-neighbours of a chunk (by `id`) or of free `text`, straight
+/// from the HNSW index. This is the robust primitive for the learning layer's
+/// consolidation: client-side lexical similarity (trigrams) misses paraphrase
+/// duplicates that the engine's embeddings catch. Self is excluded.
+pub async fn neighbors(
+    State(system): State<Arc<RwLock<MemorySystem>>>,
+    Json(req): Json<NeighborsRequest>,
+) -> Json<Vec<NeighborItem>> {
+    let sys = system.read().await;
+    let query_embedding: Option<Vec<f32>> = if !req.id.trim().is_empty() {
+        let db = sys.db.read().await;
+        db.get_chunk(&req.id).ok().flatten().and_then(|c| c.embedding)
+    } else if !req.text.trim().is_empty() {
+        let embedder = sys.embedder.clone();
+        let text = req.text.clone();
+        tokio::task::spawn_blocking(move || embedder.encode_query(&text))
+            .await
+            .ok()
+            .and_then(|r| r.ok())
+    } else {
+        None
+    };
+    let Some(embedding) = query_embedding else {
+        return Json(Vec::new());
+    };
+    let k = req.k.clamp(1, 100);
+    let raw = sys
+        .vector_index
+        .read()
+        .await
+        .search(&embedding, k + 1)
+        .unwrap_or_default();
+    let db = sys.db.read().await;
+    let mut out = Vec::new();
+    for (id, distance) in raw {
+        if id == req.id {
+            continue; // exclude self when querying by id
+        }
+        if req.max_distance > 0.0 && distance > req.max_distance {
+            continue;
+        }
+        if let Ok(Some(c)) = db.get_chunk(&id) {
+            if req.project != "all" && c.project != req.project {
+                continue;
+            }
+            out.push(NeighborItem {
+                id: c.id,
+                project: c.project,
+                document: redact_text(&c.document).chars().take(400).collect(),
+                distance,
+                category: format!("{:?}", c.metadata.category),
+                importance: format!("{:?}", c.metadata.importance),
+                chunk_type: format!("{:?}", c.metadata.chunk_type),
+            });
+            if out.len() >= k {
+                break;
+            }
+        }
+    }
+    Json(out)
+}
+
 pub async fn add(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<AddRequest>,
