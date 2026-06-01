@@ -1,0 +1,274 @@
+// memnest-learn — the learning / working-memory / injection layer.
+//
+// pi extension entry point. It wires the unit-tested pure core (capture,
+// consolidate, kv-snapshot, working-memory, memnest-client) to the pi runtime.
+// The memnest engine stays LLM-free; every LLM call here borrows the host
+// agent's own model via @earendil-works/pi-ai `complete`, so there is no extra
+// API key, cost, or service to run.
+//
+// Hooks (surface verified against jayzeng/pi-memory + chandra447/pi-hermes):
+//   session_start          -> build the byte-stable injection snapshot
+//   before_agent_start     -> inject snapshot (memnest /context + working memory)
+//   input                  -> turn counter + correction fast-path
+//   session_before_compact -> write handoff, refresh snapshot
+//   session_shutdown       -> final capture flush
+// Tools: scratchpad (checklist), skill (procedural how-to, stored in memnest).
+
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { complete } from "@earendil-works/pi-ai";
+
+import { MemnestClient } from "./memnest-client.js";
+import { MemorySnapshot } from "./kv-snapshot.js";
+import { captureCorrection, captureMemories, looksLikeCorrection } from "./capture.js";
+import { consolidate } from "./consolidate.js";
+import {
+  appendDaily,
+  applyScratch,
+  buildHandoff,
+  formatDailyEntry,
+  formatScratchpad,
+  parseScratchpad,
+  type ScratchAction,
+} from "./working-memory.js";
+import type { LlmComplete, TranscriptTurn } from "./types.js";
+
+// ── config / paths ───────────────────────────────────────────────────────────
+const MEMNEST_URL = process.env.MEMNEST_URL ?? "http://127.0.0.1:3111";
+const LEARN_DIR =
+  process.env.MEMNEST_LEARN_DIR ?? path.join(os.homedir(), ".pi", "agent", "memnest-learn");
+const SCRATCHPAD_FILE = path.join(LEARN_DIR, "SCRATCHPAD.md");
+const DAILY_DIR = path.join(LEARN_DIR, "daily");
+const CAPTURE_EVERY_TURNS = Number(process.env.MEMNEST_CAPTURE_TURNS ?? 10);
+const SKILL_PROJECT = "_skills";
+
+const client = new MemnestClient(MEMNEST_URL, fetch as any);
+const snapshot = new MemorySnapshot();
+
+let turnCounter = 0;
+let recentTurns: TranscriptTurn[] = [];
+
+// ── small fs helpers ───────────────────────────────────────────────────────
+function ensureDirs() {
+  fs.mkdirSync(DAILY_DIR, { recursive: true });
+}
+function readSafe(p: string): string {
+  try {
+    return fs.readFileSync(p, "utf-8");
+  } catch {
+    return "";
+  }
+}
+const today = () => new Date().toISOString().slice(0, 10);
+const isoNow = () => new Date().toISOString();
+const dailyPath = (d: string) => path.join(DAILY_DIR, `${d}.md`);
+const shortSid = (ctx: ExtensionContext) => ctx.sessionManager.getSessionId().slice(0, 8);
+
+// ── host-LLM bridge ──────────────────────────────────────────────────────────
+function makeLlm(ctx: ExtensionContext): LlmComplete | null {
+  if (!ctx.model) return null;
+  return async ({ system, user }) => {
+    const res = await complete(
+      ctx.model!,
+      { systemPrompt: system, messages: [{ role: "user", content: [{ type: "text", text: user }], timestamp: Date.now() }] },
+      { reasoningEffort: "low" },
+    );
+    return res.content
+      .filter((c): c is { type: "text"; text: string } => c.type === "text" && typeof c.text === "string")
+      .map((c) => c.text)
+      .join("\n")
+      .trim();
+  };
+}
+
+// ── injection block (byte-stable) ────────────────────────────────────────────
+async function buildInjection(prompt: string): Promise<string> {
+  const parts: string[] = [];
+  // 1) open scratchpad items (working memory)
+  const open = parseScratchpad(readSafe(SCRATCHPAD_FILE)).filter((i) => !i.done);
+  if (open.length > 0) {
+    parts.push("open_tasks:");
+    for (const i of open) parts.push(`- [ ] ${i.text}`);
+  }
+  // 2) memnest budget-bounded context pack (notes + facts + retrieved memories)
+  try {
+    const { prompt: pack } = await client.context(prompt || "recent work", { maxChars: 4000 });
+    if (pack.trim()) parts.push(pack);
+  } catch {
+    /* memnest unreachable — degrade to working memory only */
+  }
+  return parts.join("\n");
+}
+
+export default function (pi: ExtensionAPI) {
+  // session_start: prime the snapshot
+  pi.on("session_start", async () => {
+    ensureDirs();
+    await snapshot.refresh("session_start", () => buildInjection(""));
+  });
+
+  // before_agent_start: inject the byte-stable memory block
+  pi.on("before_agent_start", async (event: { prompt?: string; systemPrompt: string }) => {
+    const { text, reason, takenAt } = await snapshot.get(() => buildInjection(event.prompt ?? ""));
+    if (!text.trim()) return;
+    const header = [
+      "\n\n## Memory (memnest-learn)",
+      `(snapshot:${reason} @ ${takenAt}; NOT new user input — call memory_search for the latest state)`,
+      "<memnest_memory>",
+      text,
+      "</memnest_memory>",
+    ].join("\n");
+    return { systemPrompt: event.systemPrompt + header };
+  });
+
+  // input: track turns, correction fast-path, periodic background capture
+  pi.on("input", async (event: { source?: string; text: string }, ctx: ExtensionContext) => {
+    if (event.source === "extension") return { action: "continue" };
+    const text = event.text ?? "";
+    recentTurns.push({ role: "user", text });
+    turnCounter++;
+
+    const llm = makeLlm(ctx);
+    const project = process.env.MEMNEST_PROJECT ?? "default";
+
+    if (looksLikeCorrection(text)) {
+      // store the correction immediately; mark snapshot dirty so it surfaces
+      captureCorrection(text, client, project)
+        .then(() => snapshot.markDirty())
+        .catch(() => {});
+    }
+
+    if (llm && turnCounter % CAPTURE_EVERY_TURNS === 0 && recentTurns.length > 0) {
+      const slice = recentTurns.slice(-40);
+      captureMemories(slice, llm, client, { project, max: 8 })
+        .then((r) => {
+          if (r.written.length > 0) snapshot.markDirty();
+        })
+        .catch(() => {});
+    }
+    return { action: "continue" };
+  });
+
+  // session_before_compact: persist a handoff so in-progress context survives
+  pi.on("session_before_compact", async (_event: unknown, ctx: ExtensionContext) => {
+    ensureDirs();
+    const sid = shortSid(ctx);
+    const handoff = buildHandoff(readSafe(SCRATCHPAD_FILE), readSafe(dailyPath(today())), isoNow(), sid);
+    if (handoff) {
+      const fp = dailyPath(today());
+      fs.writeFileSync(fp, appendDaily(readSafe(fp), handoff), "utf-8");
+      client.summary(process.env.MEMNEST_PROJECT ?? "default", ctx.sessionManager.getSessionId(), handoff).catch(() => {});
+    }
+    // compaction is the one intentional cache boundary — refresh the snapshot
+    await snapshot.refresh("before_compact", () => buildInjection(""));
+  });
+
+  // session_shutdown: final capture flush
+  pi.on("session_shutdown", async (_event: unknown, ctx: ExtensionContext) => {
+    const llm = makeLlm(ctx);
+    if (!llm || recentTurns.length === 0) return;
+    try {
+      await captureMemories(recentTurns.slice(-60), llm, client, {
+        project: process.env.MEMNEST_PROJECT ?? "default",
+        max: 12,
+      });
+    } catch {
+      /* best-effort */
+    }
+  });
+
+  // tool: scratchpad checklist (working memory)
+  pi.registerTool({
+    name: "scratchpad",
+    description:
+      "Manage a short-term checklist of things to do / remember this session. Actions: add, done, undo, remove, list, clear.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["add", "done", "undo", "remove", "list", "clear"] },
+        text: { type: "string", description: "Item text (substring match for done/undo/remove)" },
+      },
+      required: ["action"],
+    },
+    async execute(_id, params: { action: string; text?: string }) {
+      ensureDirs();
+      let items = parseScratchpad(readSafe(SCRATCHPAD_FILE));
+      const { action, text } = params;
+      if (action === "clear") {
+        items = [];
+      } else if (action === "list") {
+        // no mutation
+      } else {
+        if (!text) return toolText("text is required for this action");
+        items = applyScratch(items, action as ScratchAction, text);
+      }
+      if (action !== "list") fs.writeFileSync(SCRATCHPAD_FILE, formatScratchpad(items), "utf-8");
+      const rendered = items.length
+        ? items.map((i) => `- [${i.done ? "x" : " "}] ${i.text}`).join("\n")
+        : "(empty)";
+      return toolText(`Scratchpad:\n${rendered}`);
+    },
+  });
+
+  // tool: skill (procedural "how", stored in memnest's _skills project)
+  pi.registerTool({
+    name: "skill",
+    description:
+      "Save or recall a reusable procedure (how to do something). create: save a how-to; find: search saved skills.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["create", "find"] },
+        title: { type: "string" },
+        body: { type: "string", description: "Step-by-step procedure (for create)" },
+        query: { type: "string", description: "Search text (for find)" },
+      },
+      required: ["action"],
+    },
+    async execute(_id, params: { action: string; title?: string; body?: string; query?: string }) {
+      if (params.action === "create") {
+        if (!params.title || !params.body) return toolText("title and body are required");
+        const res = await client.add({
+          text: `# ${params.title}\n${params.body}`,
+          project: SKILL_PROJECT,
+          category: "convention",
+          importance: "knowledge",
+          chunkType: "manual",
+        });
+        return toolText(`Saved skill "${params.title}" (id=${res.id}).`);
+      }
+      const hits = await client.search(params.query ?? params.title ?? "", { project: SKILL_PROJECT, nResults: 5 });
+      if (hits.length === 0) return toolText("No matching skills.");
+      return toolText(hits.map((h, i) => `[${i + 1}] ${h.document.slice(0, 400)}`).join("\n\n"));
+    },
+  });
+
+  // manual consolidation: /memnest-consolidate-style trigger via tool
+  pi.registerTool({
+    name: "memory_consolidate",
+    description: "Merge near-duplicate memories for a topic into one canonical entry (non-destructive).",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Topic to consolidate around" },
+        apply: { type: "boolean", description: "Apply changes (default false = dry run)" },
+      },
+      required: ["query"],
+    },
+    async execute(_id, params: { query: string; apply?: boolean }, _signal, _onUpdate, ctx) {
+      const llm = makeLlm(ctx);
+      if (!llm) return toolText("No active model for consolidation.");
+      const items = await client.search(params.query, { nResults: 25 });
+      const res = await consolidate(client, items, llm, { apply: params.apply ?? false });
+      return toolText(
+        `Consolidation (${params.apply ? "applied" : "dry-run"}): ${res.clusters} clusters, ${res.merged} merged, ${res.superseded} superseded.`,
+      );
+    },
+  });
+}
+
+function toolText(text: string) {
+  return { content: [{ type: "text" as const, text }] };
+}
