@@ -22,6 +22,24 @@ export interface AddInput {
   sensitive?: boolean;
 }
 
+export interface NeighborItem {
+  id: string;
+  project: string;
+  document: string;
+  distance: number;
+  category: string;
+  importance: string;
+  chunk_type: string;
+}
+
+export interface NeighborsOpts {
+  id?: string;
+  text?: string;
+  k?: number;
+  maxDistance?: number;
+  project?: string;
+}
+
 export interface SearchOpts {
   project?: string;
   nResults?: number;
@@ -68,6 +86,22 @@ export class MemnestClient {
         sensitive: input.sensitive ?? false,
       },
     });
+  }
+
+  /**
+   * Cosine nearest-neighbours from the engine's HNSW index. The robust
+   * primitive for duplicate detection: catches paraphrase duplicates that
+   * client-side lexical (trigram) similarity misses.
+   */
+  async neighbors(opts: NeighborsOpts): Promise<NeighborItem[]> {
+    const out = await this.post("/neighbors", {
+      id: opts.id ?? "",
+      text: opts.text ?? "",
+      k: opts.k ?? 10,
+      max_distance: opts.maxDistance ?? 0,
+      project: opts.project ?? "all",
+    });
+    return (out ?? []) as NeighborItem[];
   }
 
   async search(query: string, opts: SearchOpts = {}): Promise<SearchItem[]> {
