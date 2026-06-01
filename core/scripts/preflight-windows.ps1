@@ -1,7 +1,7 @@
 param(
   [string]$BinPath = "",
-  [string]$InstallDir = "$env:ProgramData\Palimpsest\app",
-  [string]$DataDir = "$env:ProgramData\Palimpsest\data",
+  [string]$InstallDir = "$env:ProgramData\Memnest\app",
+  [string]$DataDir = "$env:ProgramData\Memnest\data",
   [string]$HostAddress = "127.0.0.1",
   [int]$Port = 3111
 )
@@ -44,7 +44,7 @@ function Test-WritableTarget {
     throw "no existing parent path for $Path"
   }
 
-  $probe = Join-Path $target ".palimpsest-preflight-$([guid]::NewGuid().ToString('N')).tmp"
+  $probe = Join-Path $target ".memnest-preflight-$([guid]::NewGuid().ToString('N')).tmp"
   New-Item -ItemType File -Path $probe -Force | Out-Null
   Remove-Item $probe -Force
 }
@@ -60,22 +60,22 @@ else {
 }
 
 if (-not $BinPath) {
-  if (Test-Path ".\palimpsest.exe") {
-    $BinPath = ".\palimpsest.exe"
+  if (Test-Path ".\memnest.exe") {
+    $BinPath = ".\memnest.exe"
   }
-  elseif (Test-Path "$Root\palimpsest.exe") {
-    $BinPath = "$Root\palimpsest.exe"
+  elseif (Test-Path "$Root\memnest.exe") {
+    $BinPath = "$Root\memnest.exe"
   }
-  elseif (Test-Path ".\target\release\palimpsest.exe") {
-    $BinPath = ".\target\release\palimpsest.exe"
+  elseif (Test-Path ".\target\release\memnest.exe") {
+    $BinPath = ".\target\release\memnest.exe"
   }
-  elseif (Test-Path "$Root\target\release\palimpsest.exe") {
-    $BinPath = "$Root\target\release\palimpsest.exe"
+  elseif (Test-Path "$Root\target\release\memnest.exe") {
+    $BinPath = "$Root\target\release\memnest.exe"
   }
 }
 
-Check-Ok "palimpsest.exe is available" { if (-not $BinPath -or -not (Test-Path $BinPath)) { throw "missing binary" } }
-Check-Ok "Windows service template is available" { if (-not (Test-Path "$Root\packaging\windows\palimpsest-service.xml")) { throw "missing service template" } }
+Check-Ok "memnest.exe is available" { if (-not $BinPath -or -not (Test-Path $BinPath)) { throw "missing binary" } }
+Check-Ok "Windows service template is available" { if (-not (Test-Path "$Root\packaging\windows\memnest-service.xml")) { throw "missing service template" } }
 Check-Ok "dashboard static assets are available" { if (-not (Test-Path "$Root\static\memory-atlas.png")) { throw "missing dashboard static assets" } }
 Check-Ok "install directory or nearest parent is writable" { Test-WritableTarget -Path $InstallDir }
 Check-Ok "data directory or nearest parent is writable" { Test-WritableTarget -Path $DataDir }

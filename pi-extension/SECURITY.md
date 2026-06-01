@@ -1,7 +1,7 @@
 # Security model & audit checklist
 
-This document covers `pi-palimpsest` (HTTP bridge), `palimpsest` (server),
-and `palimpsest-journal` (git mirror) as a single system.
+This document covers `pi-memnest` (HTTP bridge), `memnest` (server),
+and `memnest-journal` (git mirror) as a single system.
 
 ## Threat model
 
@@ -22,7 +22,7 @@ and `palimpsest-journal` (git mirror) as a single system.
         ▼
  ──── 127.0.0.1:3111 (loopback only by default) ──────
         ▼
-   palimpsest server
+   memnest server
         │ AES-256-GCM         (secrets only)
         ▼
    memory.db   |   master.key (chmod 600)
@@ -39,52 +39,52 @@ and `palimpsest-journal` (git mirror) as a single system.
 Run through this before pushing a release.
 
 ### 1. Process / permissions
-- [ ] `palimpsest` runs as a non-root user (use the systemd `[Service]`
-      template under `contrib/palimpsest.service` which targets `--user`).
-- [ ] `~/.palimpsest/master.key` is mode `600` (`ls -la` shows `-rw-------`).
-- [ ] `~/.palimpsest/memory.db` is mode `600` or `640`.
-- [ ] No process other than `palimpsest` has FD-level access to either file
-      (`lsof ~/.palimpsest/master.key`).
+- [ ] `memnest` runs as a non-root user (use the systemd `[Service]`
+      template under `contrib/memnest.service` which targets `--user`).
+- [ ] `~/.memnest/master.key` is mode `600` (`ls -la` shows `-rw-------`).
+- [ ] `~/.memnest/memory.db` is mode `600` or `640`.
+- [ ] No process other than `memnest` has FD-level access to either file
+      (`lsof ~/.memnest/master.key`).
 
 ### 2. Network surface
 - [ ] `ss -tln | grep 3111` reports `127.0.0.1:3111`, not `0.0.0.0`.
 - [ ] If you opened `--host 0.0.0.0` for LAN access, there is at least
       one of: SSH tunnel, mTLS, basic auth, or firewall rule.
-- [ ] CORS is not enabled for unknown origins (palimpsest 0.1.x has no
+- [ ] CORS is not enabled for unknown origins (memnest 0.1.x has no
       CORS by default — verify if a future version adds it).
 
 ### 3. Secrets
 - [ ] No `secret_get` results are ever logged to disk or to stderr.
-- [ ] Logging level for `palimpsest` is `info` or quieter in production
+- [ ] Logging level for `memnest` is `info` or quieter in production
       (verify the systemd unit doesn't pass `RUST_LOG=trace`).
 - [ ] `secret_list` is idempotent and never returns values — periodically
-      diff its output against expected (`palimpsest-secret list`).
+      diff its output against expected (`memnest-secret list`).
 - [ ] Rotate secrets at least every 90 days:
       ```bash
       # rotate a GitHub PAT
-      palimpsest-secret set github_pat_blue_b "$NEW_PAT"
-      # old value is overwritten, audit log lives in palimpsest-journal git history
+      memnest-secret set github_pat_blue_b "$NEW_PAT"
+      # old value is overwritten, audit log lives in memnest-journal git history
       ```
 
 ### 4. Backups
-- [ ] Daily snapshot of `~/.palimpsest/memory.db` is automated and stored
+- [ ] Daily snapshot of `~/.memnest/memory.db` is automated and stored
       off-machine.
 - [ ] **`master.key` is backed up ONCE to a separate, encrypted, offline
       medium** (1Password / Bitwarden secure note / paper in safe). Never
       commit it to git.
 - [ ] Restore drill performed at least quarterly:
       ```bash
-      systemctl --user stop palimpsest
-      mv ~/.palimpsest ~/.palimpsest.bak
-      mkdir ~/.palimpsest
-      cp /backup/memory-2026-05-17.db ~/.palimpsest/memory.db
-      cp /vault/master.key ~/.palimpsest/master.key
-      chmod 600 ~/.palimpsest/master.key
-      systemctl --user start palimpsest
-      palimpsest-secret list   # values are decryptable
+      systemctl --user stop memnest
+      mv ~/.memnest ~/.memnest.bak
+      mkdir ~/.memnest
+      cp /backup/memory-2026-05-17.db ~/.memnest/memory.db
+      cp /vault/master.key ~/.memnest/master.key
+      chmod 600 ~/.memnest/master.key
+      systemctl --user start memnest
+      memnest-secret list   # values are decryptable
       ```
 
-### 5. palimpsest-journal git repo
+### 5. memnest-journal git repo
 - [ ] `.gitignore` includes `master.key`, `memory.db*`, `text_index/`,
       `vectors/`, `models/`.
 - [ ] Repo is a **private** GitHub/GitLab repo (push only over SSH/HTTPS
@@ -96,17 +96,17 @@ Run through this before pushing a release.
       git grep -E '(ghp_|sk-|AKIA|BEGIN PRIVATE KEY)' && echo FAIL || echo OK
       ```
 - [ ] `--include-sensitive` is **off** by default. Re-running smoke test
-      (`npm run smoke` in palimpsest-journal) confirms.
+      (`npm run smoke` in memnest-journal) confirms.
 
 ### 6. Multi-client coexistence
 - [ ] Only ONE long-running server writes to `memory.db` at a time. If
-      multiple stdio MCP clients are spawning their own `palimpsest --mcp`
+      multiple stdio MCP clients are spawning their own `memnest --mcp`
       AND you have a systemd HTTP server, SQLite's WAL handles read
       contention but writes can race. Pick: HTTP-only (clients use
-      pi-palimpsest / curl) OR stdio-only (no systemd unit).
+      pi-memnest / curl) OR stdio-only (no systemd unit).
 
 ### 7. Audit trail
-- [ ] `palimpsest-journal sync --push` runs at least daily (cron or
+- [ ] `memnest-journal sync --push` runs at least daily (cron or
       systemd timer).
 - [ ] Commits are signed (`git config commit.gpgsign true`).
 - [ ] PR review is required on the `main` branch of the journal repo if
@@ -114,13 +114,13 @@ Run through this before pushing a release.
 
 ## Reporting vulnerabilities
 
-Open a private issue at the upstream palimpsest repo, or email the
+Open a private issue at the upstream memnest repo, or email the
 maintainer of this bridge. Do not file public GitHub issues for
 disclosure of secret-handling bugs.
 
 ## Known limitations
 
-- palimpsest 0.1.x has no key rotation API for `master.key` itself.
+- memnest 0.1.x has no key rotation API for `master.key` itself.
   Re-keying requires: dump all secrets via `secret_get` → delete DB →
   start with new `master.key` → re-`secret_set` each entry. Plan for
   this if your threat model demands periodic re-keying.

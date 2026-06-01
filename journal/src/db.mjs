@@ -1,4 +1,4 @@
-// Read-only access to palimpsest sqlite. Uses better-sqlite3 if available
+// Read-only access to memnest sqlite. Uses better-sqlite3 if available
 // (Node), else falls back to bun:sqlite when running under Bun. Keeps a
 // tiny abstraction so the CLI works under both runtimes without a binary
 // build step on install (better-sqlite3 needs node-gyp on some OSes).
@@ -7,7 +7,7 @@ import { existsSync } from "node:fs";
 
 export async function openDB(dbPath, { readonly = true } = {}) {
   if (!existsSync(dbPath)) {
-    throw new Error(`palimpsest db not found at ${dbPath}`);
+    throw new Error(`memnest db not found at ${dbPath}`);
   }
   // Prefer bun:sqlite (zero-build) when present
   if (typeof Bun !== "undefined") {
@@ -30,7 +30,7 @@ export async function openDB(dbPath, { readonly = true } = {}) {
       return wrapBetter(db);
     } catch (e2) {
       throw new Error(
-        "palimpsest-journal: no SQLite driver available. Install one of:\n" +
+        "memnest-journal: no SQLite driver available. Install one of:\n" +
         "  - Run under Bun (\u2265 1.0): bun:sqlite is built in.\n" +
         "  - Run under Node 24+ (or Node 22.5\u201323 with --experimental-sqlite).\n" +
         "  - Or: npm i better-sqlite3 (native build, needs python+toolchain).\n" +

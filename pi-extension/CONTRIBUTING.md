@@ -5,17 +5,17 @@ contributions are easy to land but easy to keep out of scope.
 
 ## Scope
 
-- **In scope**: bug fixes, new HTTP-backed tools (proxy of upstream palimpsest endpoints), docs, CI, security improvements.
-- **Out of scope**: re-implementing palimpsest core features in JS (file a PR upstream at [Blue-B/palimpsest](https://github.com/Blue-B/palimpsest) instead), heavyweight runtime deps, alternative storage backends.
+- **In scope**: bug fixes, new HTTP-backed tools (proxy of upstream memnest endpoints), docs, CI, security improvements.
+- **Out of scope**: re-implementing memnest core features in JS (file a PR upstream at [Blue-B/memnest](https://github.com/Blue-B/memnest) instead), heavyweight runtime deps, alternative storage backends.
 
 ## Dev loop
 
 ```bash
-git clone https://github.com/Blue-B/palimpsest
-cd pi-palimpsest
+git clone https://github.com/Blue-B/memnest
+cd pi-memnest
 npm install       # runs prepare -> npm run build
-npm run smoke     # 30 assertions, requires palimpsest running on :3111
-npm run e2e       # 11 assertions; stop systemd palimpsest first (see test file)
+npm run smoke     # 30 assertions, requires memnest running on :3111
+npm run e2e       # 11 assertions; stop systemd memnest first (see test file)
 ```
 
 ## PR checklist

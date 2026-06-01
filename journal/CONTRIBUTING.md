@@ -6,14 +6,14 @@ smoke harness — contributions are easy to land but should stay focused.
 ## Scope
 
 - **In scope**: bug fixes, new backends (mem0/agentmemory/Letta/Zep adapters in `src/journal.mjs`), import-side resilience, docs, CI.
-- **Out of scope**: heavyweight runtime deps (must stay zero-native-deps when possible), opinionated UI, replacing palimpsest core.
+- **Out of scope**: heavyweight runtime deps (must stay zero-native-deps when possible), opinionated UI, replacing memnest core.
 
 ## Dev loop
 
 ```bash
-git clone https://github.com/Blue-B/palimpsest
-cd palimpsest-journal
-npm run smoke         # 14 assertions, requires palimpsest running on :3111
+git clone https://github.com/Blue-B/memnest
+cd memnest-journal
+npm run smoke         # 14 assertions, requires memnest running on :3111
 npm run smoke:bun     # same, under bun (faster)
 ```
 

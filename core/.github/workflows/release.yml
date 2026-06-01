@@ -46,13 +46,13 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/palimpsest dist/
+          cp target/${{ matrix.target }}/release/memnest dist/
           cp -r scripts dist/
           cp -r packaging dist/
           cp -r docs dist/
           cp -r static dist/
-          tar -czf "palimpsest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.tar.gz" -C dist .
-          sha256sum "palimpsest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.tar.gz" > "palimpsest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.tar.gz.sha256"
+          tar -czf "memnest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.tar.gz" -C dist .
+          sha256sum "memnest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.tar.gz" > "memnest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.tar.gz.sha256"
 
       - name: Package (Windows)
         if: matrix.os == 'windows-latest'
@@ -61,7 +61,7 @@ jobs:
           WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
         run: |
           mkdir dist
-          cp target/${{ matrix.target }}/release/palimpsest.exe dist/
+          cp target/${{ matrix.target }}/release/memnest.exe dist/
           cp -r scripts dist/
           cp -r packaging dist/
           cp -r docs dist/
@@ -74,7 +74,7 @@ jobs:
           if ($env:WINDOWS_CODESIGN_PFX_BASE64 -and $env:WINDOWS_CODESIGN_PASSWORD) {
             [IO.File]::WriteAllBytes("codesign.pfx", [Convert]::FromBase64String($env:WINDOWS_CODESIGN_PFX_BASE64))
             try {
-              $filesToSign = @("dist/palimpsest.exe", "dist/WinSW-x64.exe")
+              $filesToSign = @("dist/memnest.exe", "dist/WinSW-x64.exe")
               $filesToSign += Get-ChildItem "dist/scripts" -Filter "*.ps1" -File | Select-Object -ExpandProperty FullName
               .\scripts\sign-windows.ps1 -FilePath $filesToSign -CertificatePath codesign.pfx -CertificatePassword $env:WINDOWS_CODESIGN_PASSWORD
               .\scripts\verify-windows-signatures.ps1 -FilePath $filesToSign
@@ -87,15 +87,15 @@ jobs:
             throw "WINDOWS_CODESIGN_PFX_BASE64 and WINDOWS_CODESIGN_PASSWORD are required for Windows release signing."
           }
 
-          Compress-Archive -Path dist/* -DestinationPath "palimpsest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip"
-          $hash = Get-FileHash "palimpsest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip" -Algorithm SHA256
-          "$($hash.Hash)  palimpsest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip" | Set-Content "palimpsest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip.sha256"
+          Compress-Archive -Path dist/* -DestinationPath "memnest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip"
+          $hash = Get-FileHash "memnest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip" -Algorithm SHA256
+          "$($hash.Hash)  memnest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip" | Set-Content "memnest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: palimpsest-${{ matrix.target }}
-          path: palimpsest-*
+          name: memnest-${{ matrix.target }}
+          path: memnest-*
 
   release:
     needs: build
@@ -109,7 +109,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: palimpsest-*
+          pattern: memnest-*
           merge-multiple: true
       
       - name: Create Release

@@ -1,0 +1,16 @@
+[Unit]
+Description=Memnest memory server
+After=default.target
+
+[Service]
+Type=simple
+Environment=RUST_LOG=info
+Environment=MEMNEST_HOST=127.0.0.1
+Environment=MEMNEST_PORT=3111
+ExecStart=%h/.local/bin/memnest --host ${MEMNEST_HOST} --port ${MEMNEST_PORT} --data-dir %h/.memnest
+Restart=on-failure
+RestartSec=5
+WorkingDirectory=%h/.local/share/memnest
+
+[Install]
+WantedBy=default.target

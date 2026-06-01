@@ -86,7 +86,9 @@ mod tests {
 
     #[test]
     fn identifies_pat_shapes() {
-        assert!(looks_like_secret("ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1234"));
+        assert!(looks_like_secret(
+            "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1234"
+        ));
         assert!(looks_like_secret("sk-abcdefghijklmnopqrstuvwx"));
         assert!(!looks_like_secret("just a normal sentence"));
     }

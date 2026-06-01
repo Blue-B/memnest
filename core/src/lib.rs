@@ -41,7 +41,7 @@ impl MemorySystem {
             config.embed_dim,
             &model_cache,
         )?);
-        let rebuild_indexes = std::env::var("PALIMPSEST_REBUILD_INDEXES")
+        let rebuild_indexes = std::env::var("MEMNEST_REBUILD_INDEXES")
             .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
             .unwrap_or(false);
         let vector_persisted = index::VectorIndex::persisted(&config.data_dir);
@@ -121,16 +121,19 @@ impl MemorySystem {
     /// Re-add already-migrated chunks to the text index so the `project` field
     /// reflects the new bucket after a session fork. Removing first is implied
     /// by `add_many_with_project` because it `delete_term`s by id before write.
-    pub async fn reindex_after_fork(
-        &self,
-        chunks: &[crate::models::MemoryChunk],
-    ) -> Result<()> {
+    pub async fn reindex_after_fork(&self, chunks: &[crate::models::MemoryChunk]) -> Result<()> {
         if chunks.is_empty() {
             return Ok(());
         }
         let docs: Vec<(String, String, String)> = chunks
             .iter()
-            .map(|chunk| (chunk.id.clone(), chunk.project.clone(), chunk.document.clone()))
+            .map(|chunk| {
+                (
+                    chunk.id.clone(),
+                    chunk.project.clone(),
+                    chunk.document.clone(),
+                )
+            })
             .collect();
         self.add_text_docs(&docs).await
     }

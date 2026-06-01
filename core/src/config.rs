@@ -26,7 +26,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        let data_dir = std::env::var("PALIMPSEST_DATA_DIR")
+        let data_dir = std::env::var("MEMNEST_DATA_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| home.join(".factory").join("memories"));
         Self {
@@ -35,9 +35,9 @@ impl Default for Config {
             viewer_host: "127.0.0.1".to_string(),
             api_port: 3111,
             api_host: "127.0.0.1".to_string(),
-            embed_model: std::env::var("PALIMPSEST_EMBED_MODEL")
+            embed_model: std::env::var("MEMNEST_EMBED_MODEL")
                 .unwrap_or_else(|_| "intfloat/multilingual-e5-base".to_string()),
-            embed_dim: std::env::var("PALIMPSEST_EMBED_DIM")
+            embed_dim: std::env::var("MEMNEST_EMBED_DIM")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(768),

@@ -12,15 +12,15 @@ static CIPHER: RwLock<Option<Aes256Gcm>> = RwLock::new(None);
 /// Locate or generate a master key for at-rest encryption.
 ///
 /// Resolution order (later sources override earlier ones):
-/// 1. `PALIMPSEST_MASTER_KEY` env var (explicit user input — highest priority)
+/// 1. `MEMNEST_MASTER_KEY` env var (explicit user input — highest priority)
 /// 2. `<data_dir>/master.key` file (auto-managed)
 ///
 /// If neither exists, a fresh 32-byte random key is written to
 /// `<data_dir>/master.key` with mode 0600. This gives users zero-config
-/// encryption out of the box while still permitting `PALIMPSEST_MASTER_KEY`
+/// encryption out of the box while still permitting `MEMNEST_MASTER_KEY`
 /// for cases where they want to control the key themselves (e.g. KMS, vault).
 pub fn resolve_master_key(data_dir: &Path) -> Result<String> {
-    if let Ok(env_key) = std::env::var("PALIMPSEST_MASTER_KEY") {
+    if let Ok(env_key) = std::env::var("MEMNEST_MASTER_KEY") {
         if !env_key.is_empty() {
             return Ok(env_key);
         }
@@ -47,7 +47,7 @@ pub fn resolve_master_key(data_dir: &Path) -> Result<String> {
         let _ = std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600));
     }
     tracing::info!(
-        "generated new palimpsest master key at {} (mode 0600)",
+        "generated new memnest master key at {} (mode 0600)",
         key_path.display()
     );
     Ok(encoded)
@@ -56,7 +56,7 @@ pub fn resolve_master_key(data_dir: &Path) -> Result<String> {
 pub fn init_crypto(master_key: Option<&str>) -> Result<()> {
     let cipher = match master_key {
         Some(key) if !key.is_empty() => {
-            let salt = b"palimpsest-fixed-salt-v1"; // deterministic for same key
+            let salt = b"memnest-fixed-salt-v1"; // deterministic for same key
             let argon2 = Argon2::new(
                 argon2::Algorithm::Argon2id,
                 argon2::Version::V0x13,

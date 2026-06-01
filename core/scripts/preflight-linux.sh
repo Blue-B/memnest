@@ -3,15 +3,15 @@ set -euo pipefail
 
 MODE="${MODE:-user}"
 BIN="${BIN:-}"
-HOST="${PALIMPSEST_HOST:-127.0.0.1}"
-PORT="${PALIMPSEST_PORT:-3111}"
-DATA_DIR="${PALIMPSEST_DATA_DIR:-$HOME/.palimpsest}"
+HOST="${MEMNEST_HOST:-127.0.0.1}"
+PORT="${MEMNEST_PORT:-3111}"
+DATA_DIR="${MEMNEST_DATA_DIR:-$HOME/.memnest}"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/preflight-linux.sh [--user|--system] [--bin /path/to/palimpsest]
+Usage: scripts/preflight-linux.sh [--user|--system] [--bin /path/to/memnest]
 
-Checks whether this Linux machine is ready to install Palimpsest. It does not
+Checks whether this Linux machine is ready to install Memnest. It does not
 change system state.
 EOF
 }
@@ -51,13 +51,13 @@ else
 fi
 
 if [ -n "$BIN" ]; then
-  check "palimpsest binary is executable" test -x "$BIN"
-elif [ -x "./palimpsest" ]; then
-  check "release binary is executable" test -x "./palimpsest"
-elif [ -x "./target/release/palimpsest" ]; then
-  check "source build binary is executable" test -x "./target/release/palimpsest"
+  check "memnest binary is executable" test -x "$BIN"
+elif [ -x "./memnest" ]; then
+  check "release binary is executable" test -x "./memnest"
+elif [ -x "./target/release/memnest" ]; then
+  check "source build binary is executable" test -x "./target/release/memnest"
 else
-  printf 'fail: palimpsest binary not found; pass --bin or extract/build first\n' >&2
+  printf 'fail: memnest binary not found; pass --bin or extract/build first\n' >&2
   failures=$((failures + 1))
 fi
 

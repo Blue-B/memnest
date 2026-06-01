@@ -1,7 +1,7 @@
 param(
-  [string]$InstallDir = "$env:ProgramData\Palimpsest\app",
-  [string]$DataDir = "$env:ProgramData\Palimpsest\data",
-  [string]$ServiceName = "palimpsest",
+  [string]$InstallDir = "$env:ProgramData\Memnest\app",
+  [string]$DataDir = "$env:ProgramData\Memnest\data",
+  [string]$ServiceName = "memnest",
   [string]$HostAddress = "127.0.0.1",
   [int]$Port = 3111,
   [string]$WinSWVersion = "v3.0.0",
@@ -20,32 +20,32 @@ if (-not $isAdmin) {
   throw "install-windows.ps1 must run from an elevated PowerShell prompt."
 }
 if ($LocalHosts -notcontains $HostAddress) {
-  throw "install-windows.ps1 only supports local service binds. Use 127.0.0.1 for packaged installs; configure remote access manually with PALIMPSEST_TOKEN and a reviewed network policy."
+  throw "install-windows.ps1 only supports local service binds. Use 127.0.0.1 for packaged installs; configure remote access manually with MEMNEST_TOKEN and a reviewed network policy."
 }
 
 if (-not $BinPath) {
-  if (Test-Path ".\palimpsest.exe") {
-    $BinPath = ".\palimpsest.exe"
+  if (Test-Path ".\memnest.exe") {
+    $BinPath = ".\memnest.exe"
   }
-  elseif (Test-Path "$Root\palimpsest.exe") {
-    $BinPath = "$Root\palimpsest.exe"
+  elseif (Test-Path "$Root\memnest.exe") {
+    $BinPath = "$Root\memnest.exe"
   }
-  elseif (Test-Path ".\target\release\palimpsest.exe") {
-    $BinPath = ".\target\release\palimpsest.exe"
+  elseif (Test-Path ".\target\release\memnest.exe") {
+    $BinPath = ".\target\release\memnest.exe"
   }
-  elseif (Test-Path "$Root\target\release\palimpsest.exe") {
-    $BinPath = "$Root\target\release\palimpsest.exe"
+  elseif (Test-Path "$Root\target\release\memnest.exe") {
+    $BinPath = "$Root\target\release\memnest.exe"
   }
   elseif (Test-Path "$Root\Cargo.toml") {
     Push-Location $Root
     cargo build --release
     Pop-Location
-    $BinPath = "$Root\target\release\palimpsest.exe"
+    $BinPath = "$Root\target\release\memnest.exe"
   }
 }
 
 if (-not $BinPath -or -not (Test-Path $BinPath)) {
-  throw "palimpsest.exe not found. Extract a Windows release archive, build from source, or pass -BinPath C:\path\palimpsest.exe"
+  throw "memnest.exe not found. Extract a Windows release archive, build from source, or pass -BinPath C:\path\memnest.exe"
 }
 
 if (-not $WinSWPath -and (Test-Path ".\WinSW-x64.exe")) {
@@ -62,9 +62,9 @@ elseif (-not $WinSWSha256 -and (Test-Path "$Root\WinSW-x64.exe.sha256")) {
   $WinSWSha256 = (Get-Content "$Root\WinSW-x64.exe.sha256" -Raw).Trim().Split(" ")[0]
 }
 
-$LogDir = "$env:ProgramData\Palimpsest\logs"
+$LogDir = "$env:ProgramData\Memnest\logs"
 New-Item -ItemType Directory -Force -Path $InstallDir, $DataDir, $LogDir | Out-Null
-Copy-Item $BinPath "$InstallDir\palimpsest.exe" -Force
+Copy-Item $BinPath "$InstallDir\memnest.exe" -Force
 if (Test-Path "$Root\static") {
   New-Item -ItemType Directory -Force -Path "$InstallDir\static" | Out-Null
   Copy-Item "$Root\static\*" -Destination "$InstallDir\static" -Recurse -Force
@@ -73,23 +73,23 @@ else {
   throw "dashboard static assets not found: $Root\static"
 }
 
-$winsw = "$InstallDir\palimpsest-service.exe"
+$winsw = "$InstallDir\memnest-service.exe"
 $escapedDataDir = [System.Security.SecurityElement]::Escape($DataDir)
 $escapedLogDir = [System.Security.SecurityElement]::Escape($LogDir)
 $escapedServiceName = [System.Security.SecurityElement]::Escape($ServiceName)
 $escapedHost = [System.Security.SecurityElement]::Escape($HostAddress)
 $escapedPort = [System.Security.SecurityElement]::Escape($Port.ToString())
-$xmlTemplate = "$Root\packaging\windows\palimpsest-service.xml"
+$xmlTemplate = "$Root\packaging\windows\memnest-service.xml"
 if (-not (Test-Path $xmlTemplate)) {
   throw "service template not found: $xmlTemplate"
 }
 $xml = Get-Content $xmlTemplate -Raw
-$xml = $xml.Replace("<id>palimpsest</id>", "<id>$escapedServiceName</id>")
+$xml = $xml.Replace("<id>memnest</id>", "<id>$escapedServiceName</id>")
 $xml = $xml.Replace("%BASE%\..\data", $escapedDataDir)
 $xml = $xml.Replace("%BASE%\..\logs", $escapedLogDir)
 $xml = $xml.Replace("--host 127.0.0.1", "--host $escapedHost")
 $xml = $xml.Replace("--port 3111", "--port $escapedPort")
-Set-Content -Path "$InstallDir\palimpsest-service.xml" -Value $xml -Encoding UTF8
+Set-Content -Path "$InstallDir\memnest-service.xml" -Value $xml -Encoding UTF8
 if (-not (Test-Path $winsw)) {
   if ($WinSWPath) {
     if (-not (Test-Path $WinSWPath)) {
@@ -129,7 +129,7 @@ for ($i = 0; $i -lt 30; $i++) {
     break
   }
   catch {
-    if ($i -eq 29) { throw "Palimpsest did not answer health check at $health" }
+    if ($i -eq 29) { throw "Memnest did not answer health check at $health" }
     Start-Sleep -Seconds 1
   }
 }

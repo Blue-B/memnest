@@ -19,7 +19,7 @@ use tower_http::services::ServeDir;
 use crate::MemorySystem;
 
 async fn auth_middleware(request: Request, next: Next) -> Result<Response, StatusCode> {
-    if let Ok(token) = std::env::var("PALIMPSEST_TOKEN") {
+    if let Ok(token) = std::env::var("MEMNEST_TOKEN") {
         let auth_header = request
             .headers()
             .get("authorization")
@@ -68,7 +68,9 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
     Router::new()
         .route("/health", get(api::health))
         .route("/search", post(api::search))
+        .route("/context", post(api::context_pack))
         .route("/add", post(api::add))
+        .route("/update", post(api::update))
         .route("/delete", post(api::delete))
         .route("/prune", post(api::prune))
         .route("/reproject", post(api::reproject))
@@ -80,12 +82,10 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
         .route("/collection/{name}/meta", put(api::set_collection_meta))
         .route("/sessions", get(api::list_sessions))
         .route("/facts", get(api::list_facts).post(api::add_fact))
-        .route("/notes", get(api::list_notes))
+        .route("/notes", get(api::list_notes).post(api::set_note))
+        .route("/notes/{key}", get(api::get_note).delete(api::delete_note))
         .route("/servers", get(api::list_servers))
-        .route(
-            "/secrets",
-            get(api::list_secrets).post(api::set_secret),
-        )
+        .route("/secrets", get(api::list_secrets).post(api::set_secret))
         .route(
             "/secrets/{key}",
             get(api::get_secret).delete(api::delete_secret),

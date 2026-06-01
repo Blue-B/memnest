@@ -219,7 +219,7 @@ async fn check_embedding(config: &Config) -> Check {
         format!("model cache present at {}", model_dir.display())
     } else {
         format!(
-            "model cache is not warmed at {}; run `palimpsest --data-dir {} --warmup-embedding` on an online machine before offline use",
+            "model cache is not warmed at {}; run `memnest --data-dir {} --warmup-embedding` on an online machine before offline use",
             model_dir.display(),
             config.data_dir.display()
         )

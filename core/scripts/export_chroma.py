@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export ChromaDB memories to JSONL for palimpsest Rust import.
+"""Export ChromaDB memories to JSONL for memnest Rust import.
 
 Usage:
   python scripts/export_chroma.py \

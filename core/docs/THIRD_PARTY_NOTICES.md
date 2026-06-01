@@ -1,6 +1,6 @@
 # Third-party notices
 
-Palimpsest is distributed as a Rust binary and includes third-party Rust dependencies.
+Memnest is distributed as a Rust binary and includes third-party Rust dependencies.
 
 ## Release gate
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${REPO:-https://github.com/Blue-B/palimpsest}"
+REPO="${REPO:-https://github.com/Blue-B/memnest}"
 VERSION="${VERSION:-latest}"
 MODE="${MODE:-user}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
@@ -11,7 +11,7 @@ usage() {
 Usage:
   scripts/install.sh [--user|--system]
 
-Downloads a release archive, installs the palimpsest binary, and registers
+Downloads a release archive, installs the memnest binary, and registers
 the Linux systemd service. For WSL and Windows native installs, use:
 
   scripts/install-wsl.ps1
@@ -44,7 +44,7 @@ case "$OS" in
 esac
 
 if [ "$VERSION" = "latest" ]; then
-  API_URL="https://api.github.com/repos/Blue-B/palimpsest/releases/latest"
+  API_URL="https://api.github.com/repos/Blue-B/memnest/releases/latest"
   VERSION="$(curl -fsSL "$API_URL" | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
   if [ -z "$VERSION" ]; then
     echo "failed to determine latest version" >&2
@@ -52,13 +52,13 @@ if [ "$VERSION" = "latest" ]; then
   fi
 fi
 
-ARCHIVE="palimpsest-${VERSION}-${TARGET}.tar.gz"
+ARCHIVE="memnest-${VERSION}-${TARGET}.tar.gz"
 URL="${REPO}/releases/download/${VERSION}/${ARCHIVE}"
 CHECKSUM_URL="${URL}.sha256"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-echo "Installing Palimpsest ${VERSION} for ${TARGET}"
+echo "Installing Memnest ${VERSION} for ${TARGET}"
 curl -fsSL "$URL" -o "$TMP_DIR/$ARCHIVE"
 curl -fsSL "$CHECKSUM_URL" -o "$TMP_DIR/$ARCHIVE.sha256"
 
@@ -74,16 +74,16 @@ fi
 tar -xzf "$TMP_DIR/$ARCHIVE" -C "$TMP_DIR"
 
 mkdir -p "$INSTALL_DIR"
-install -m 0755 "$TMP_DIR/palimpsest" "$INSTALL_DIR/palimpsest"
+install -m 0755 "$TMP_DIR/memnest" "$INSTALL_DIR/memnest"
 
 if [ "$OS" = "linux" ]; then
   (
     cd "$TMP_DIR"
-    BIN_SRC="$INSTALL_DIR/palimpsest" scripts/install-linux.sh "--${MODE}" --bin "$INSTALL_DIR/palimpsest"
+    BIN_SRC="$INSTALL_DIR/memnest" scripts/install-linux.sh "--${MODE}" --bin "$INSTALL_DIR/memnest"
   )
 else
-  echo "Binary installed to $INSTALL_DIR/palimpsest"
-  echo "Start it with: $INSTALL_DIR/palimpsest --host 127.0.0.1 --port 3111"
+  echo "Binary installed to $INSTALL_DIR/memnest"
+  echo "Start it with: $INSTALL_DIR/memnest --host 127.0.0.1 --port 3111"
 fi
 
 echo "Dashboard: http://127.0.0.1:3111/"

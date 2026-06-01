@@ -1,0 +1,22 @@
+[Unit]
+Description=memnest memory server (HTTP API + web dashboard)
+Documentation=https://github.com/Blue-B/memnest
+After=default.target
+
+[Service]
+Type=simple
+# Adjust to the absolute path printed by `which memnest`:
+ExecStart=%h/.local/bin/memnest --host 127.0.0.1 --port 3111
+# Where memory.db + master.key live. %h expands to the user's $HOME.
+Environment=MEMNEST_DATA_DIR=%h/.memnest
+Restart=on-failure
+RestartSec=2s
+# Sandbox a little — memnest only needs its data dir + binary.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.memnest
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

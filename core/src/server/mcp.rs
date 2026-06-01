@@ -1,5 +1,5 @@
 use crate::MemorySystem;
-use crate::models::{ChunkType, MemoryChunk, Metadata};
+use crate::models::{ChunkType, Importance, MemoryChunk, Metadata};
 use crate::redaction::redact_text;
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -38,7 +38,7 @@ pub async fn run_stdio(system: Arc<RwLock<MemorySystem>>) -> Result<()> {
             "initialize" => json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "palimpsest", "version": env!("CARGO_PKG_VERSION")}
+                "serverInfo": {"name": "memnest", "version": env!("CARGO_PKG_VERSION")}
             }),
             "tools/list" => json!({"tools": tools()}),
             "tools/call" => {
@@ -69,12 +69,15 @@ fn write_response(stdout: &mut io::Stdout, value: Value) -> Result<()> {
 fn tools() -> Vec<Value> {
     vec![
         json!({"name": "memory_add", "description": "Save a memory chunk", "inputSchema": {"type":"object","properties":{"text":{"type":"string"},"project":{"type":"string"}},"required":["text"]}}),
+        json!({"name": "memory_update", "description": "Update an existing memory chunk by id and refresh indexes", "inputSchema": {"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"project":{"type":"string"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"]},"chunk_type":{"type":"string","enum":["auto_log","manual","filtered","consolidated"]}},"required":["id"]}}),
         json!({"name": "memory_search", "description": "Search memory with hybrid BM25/vector retrieval", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":10},"recent_first":{"type":"boolean","default":false}},"required":["query"]}}),
+        json!({"name": "memory_context", "description": "Return a compact context pack: core notes + matching facts + retrieved memories", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":6},"max_notes":{"type":"integer","default":12},"max_facts":{"type":"integer","default":8}},"required":["query"]}}),
         json!({"name": "memory_stats", "description": "Return memory system statistics", "inputSchema": {"type":"object","properties":{}}}),
         json!({"name": "memory_facts", "description": "Search structured facts (subject-predicate-object)", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"max_results":{"type":"integer","default":20}},"required":["query"]}}),
         json!({"name": "memory_sessions", "description": "List recent session summaries", "inputSchema": {"type":"object","properties":{"project":{"type":"string"},"n":{"type":"integer","default":5}},"required":[]}}),
         json!({"name": "note_get", "description": "Get a note by key", "inputSchema": {"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}}),
         json!({"name": "note_set", "description": "Set a note key-value", "inputSchema": {"type":"object","properties":{"key":{"type":"string"},"value":{"type":"string"}},"required":["key","value"]}}),
+        json!({"name": "note_delete", "description": "Delete a note by key", "inputSchema": {"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}}),
         json!({"name": "note_list", "description": "List all notes", "inputSchema": {"type":"object","properties":{}}}),
         json!({"name": "server_info", "description": "Get server connection info", "inputSchema": {"type":"object","properties":{"name":{"type":"string"}},"required":[]}}),
         json!({"name": "server_add", "description": "Add a server", "inputSchema": {"type":"object","properties":{"name":{"type":"string"},"host":{"type":"string"},"user":{"type":"string"},"password":{"type":"string"},"port":{"type":"integer","default":22},"note":{"type":"string"}},"required":["name","host","user","password"]}}),
@@ -94,12 +97,15 @@ async fn call_tool(system: Arc<RwLock<MemorySystem>>, params: &Value) -> Result<
     let args = params.get("arguments").cloned().unwrap_or_default();
     match name {
         "memory_add" => memory_add(system, &args).await,
+        "memory_update" => memory_update(system, &args).await,
         "memory_search" => memory_search(system, &args).await,
+        "memory_context" => memory_context(system, &args).await,
         "memory_stats" => memory_stats(system).await,
         "memory_facts" => memory_facts(system, &args).await,
         "memory_sessions" => memory_sessions(system, &args).await,
         "note_get" => note_get(system, &args).await,
         "note_set" => note_set(system, &args).await,
+        "note_delete" => note_delete(system, &args).await,
         "note_list" => note_list(system).await,
         "server_info" => server_info(system, &args).await,
         "server_add" => server_add(system, &args).await,
@@ -311,6 +317,136 @@ async fn persist_chunk(
     Ok(())
 }
 
+async fn memory_update(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
+    let id = args.get("id").and_then(Value::as_str).unwrap_or("").trim();
+    anyhow::ensure!(!id.is_empty(), "id is required");
+
+    let sys = system.read().await;
+    let mut chunk = {
+        let db = sys.db.read().await;
+        match db.get_chunk(id)? {
+            Some(chunk) => chunk,
+            None => return Ok(format!("memory '{}' not found", id)),
+        }
+    };
+
+    let mut text_changed = false;
+    if let Some(raw) = args.get("text").and_then(Value::as_str) {
+        anyhow::ensure!(!raw.trim().is_empty(), "text must not be empty");
+        let text = redact_text(raw);
+        text_changed = text != chunk.document;
+        chunk.document = text;
+    }
+    if let Some(project) = args.get("project").and_then(Value::as_str) {
+        if !project.trim().is_empty() {
+            chunk.project = project.trim().to_string();
+        }
+    }
+    if let Some(importance) = args.get("importance").and_then(Value::as_str) {
+        chunk.metadata.importance = parse_importance(importance)?;
+    }
+    if let Some(chunk_type) = args.get("chunk_type").and_then(Value::as_str) {
+        chunk.metadata.chunk_type = parse_chunk_type(chunk_type)?;
+    }
+
+    let mut embedding_changed = false;
+    if text_changed || chunk.embedding.is_none() {
+        let embedder = sys.embedder.clone();
+        let embed_text = chunk.document.clone();
+        chunk.embedding = Some(
+            tokio::task::spawn_blocking(move || embedder.encode_document(&embed_text))
+                .await
+                .map_err(|e| anyhow::anyhow!("embed task join: {e}"))??,
+        );
+        embedding_changed = true;
+    }
+    chunk.updated_at = chrono::Utc::now();
+    sys.db.write().await.insert_chunk(&chunk)?;
+    sys.add_text_doc(&chunk.id, &chunk.project, &chunk.document)
+        .await?;
+    if embedding_changed {
+        if let Some(embedding) = &chunk.embedding {
+            let mut vector_index = sys.vector_index.write().await;
+            vector_index.add(&chunk.id, embedding)?;
+            vector_index.save()?;
+        }
+    }
+    Ok(format!("memory updated: {} ({})", chunk.id, chunk.project))
+}
+
+fn parse_importance(value: &str) -> Result<Importance> {
+    match value {
+        "log" => Ok(Importance::Log),
+        "knowledge" => Ok(Importance::Knowledge),
+        "decision" => Ok(Importance::Decision),
+        "preference" => Ok(Importance::Preference),
+        other => anyhow::bail!("invalid importance: {other}"),
+    }
+}
+
+fn parse_chunk_type(value: &str) -> Result<ChunkType> {
+    match value {
+        "auto_log" => Ok(ChunkType::AutoLog),
+        "manual" => Ok(ChunkType::Manual),
+        "filtered" => Ok(ChunkType::Filtered),
+        "consolidated" => Ok(ChunkType::Consolidated),
+        other => anyhow::bail!("invalid chunk_type: {other}"),
+    }
+}
+
+async fn memory_context(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
+    let query = args.get("query").and_then(Value::as_str).unwrap_or("");
+    anyhow::ensure!(!query.trim().is_empty(), "query is required");
+    let project = args.get("project").and_then(Value::as_str).unwrap_or("all");
+    let n = args.get("n_results").and_then(Value::as_u64).unwrap_or(6) as usize;
+    let max_notes = args.get("max_notes").and_then(Value::as_u64).unwrap_or(12) as usize;
+    let max_facts = args.get("max_facts").and_then(Value::as_u64).unwrap_or(8) as usize;
+
+    let search_text = memory_search(
+        system.clone(),
+        &json!({"query": query, "project": project, "n_results": n.clamp(1, 20)}),
+    )
+    .await?;
+
+    let sys = system.read().await;
+    let db = sys.db.read().await;
+    let mut notes = db.get_notes()?;
+    notes.sort_by(|a, b| b.updated.cmp(&a.updated));
+    notes.truncate(max_notes.clamp(0, 50));
+    let query_lower = query.to_lowercase();
+    let mut facts = db
+        .get_facts(1000)?
+        .into_iter()
+        .filter(|fact| {
+            format!("{} {} {}", fact.subject, fact.predicate, fact.object)
+                .to_lowercase()
+                .contains(&query_lower)
+        })
+        .collect::<Vec<_>>();
+    facts.truncate(max_facts.clamp(0, 50));
+
+    let mut lines = vec!["<memnest_context>".to_string()];
+    if !notes.is_empty() {
+        lines.push("core_notes:".to_string());
+        for note in notes {
+            lines.push(format!("- {}: {}", note.key, redact_text(&note.value)));
+        }
+    }
+    if !facts.is_empty() {
+        lines.push("facts:".to_string());
+        for fact in facts {
+            lines.push(format!(
+                "- {} {} {}",
+                fact.subject, fact.predicate, fact.object
+            ));
+        }
+    }
+    lines.push("retrieved_memories:".to_string());
+    lines.push(search_text);
+    lines.push("</memnest_context>".to_string());
+    Ok(lines.join("\n"))
+}
+
 async fn memory_search(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
     let query = args.get("query").and_then(Value::as_str).unwrap_or("");
     anyhow::ensure!(!query.trim().is_empty(), "query is required");
@@ -322,10 +458,9 @@ async fn memory_search(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Resul
         text_results.iter().cloned().collect();
     let embedder = sys.embedder.clone();
     let query_owned = query.to_string();
-    let query_embedding =
-        tokio::task::spawn_blocking(move || embedder.encode_query(&query_owned))
-            .await
-            .map_err(|e| anyhow::anyhow!("embed task join: {e}"))??;
+    let query_embedding = tokio::task::spawn_blocking(move || embedder.encode_query(&query_owned))
+        .await
+        .map_err(|e| anyhow::anyhow!("embed task join: {e}"))??;
     let vector_results = sys
         .vector_index
         .read()
@@ -514,6 +649,17 @@ async fn note_list(system: Arc<RwLock<MemorySystem>>) -> Result<String> {
     Ok(lines.join("\n"))
 }
 
+async fn note_delete(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
+    let key = args.get("key").and_then(Value::as_str).unwrap_or("").trim();
+    anyhow::ensure!(!key.is_empty(), "key is required");
+    let sys = system.read().await;
+    if sys.db.write().await.delete_note(key)? {
+        Ok(format!("note deleted: {}", key))
+    } else {
+        Ok(format!("note '{}' not found", key))
+    }
+}
+
 async fn server_info(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
     let name = args.get("name").and_then(Value::as_str).unwrap_or("");
     let sys = system.read().await;
@@ -615,10 +761,7 @@ async fn memory_lifecycle_run(system: Arc<RwLock<MemorySystem>>) -> Result<Strin
     Ok(serde_json::to_string_pretty(&result)?)
 }
 
-async fn memory_session_fork(
-    system: Arc<RwLock<MemorySystem>>,
-    args: &Value,
-) -> Result<String> {
+async fn memory_session_fork(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
     let from = args
         .get("from_session_id")
         .and_then(Value::as_str)
@@ -650,10 +793,7 @@ async fn memory_session_fork(
     anyhow::ensure!(!from.is_empty(), "from_session_id is required");
     anyhow::ensure!(!to.is_empty(), "to_session_id is required");
     anyhow::ensure!(!to_cwd.is_empty(), "to_cwd is required");
-    anyhow::ensure!(
-        from != to,
-        "from_session_id must differ from to_session_id"
-    );
+    anyhow::ensure!(from != to, "from_session_id must differ from to_session_id");
 
     let project = to_project.unwrap_or_else(|| project_from_cwd(&to_cwd));
 

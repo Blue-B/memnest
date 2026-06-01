@@ -1,26 +1,26 @@
 #!/usr/bin/env node
 // E2E test: simulate a Claude Desktop-style stdio MCP client launching
-// `palimpsest --mcp`, perform initialize -> tools/list -> a real call.
+// `memnest --mcp`, perform initialize -> tools/list -> a real call.
 //
 // This is the same protocol Claude Desktop, Cursor, Cline, Continue, and
-// Zed use. If this passes, registering palimpsest in any of them will work.
+// Zed use. If this passes, registering memnest in any of them will work.
 //
 // Run: node test/e2e-mcp.mjs
 //
-// IMPORTANT: stop any long-running palimpsest HTTP server first —
+// IMPORTANT: stop any long-running memnest HTTP server first —
 // SQLite write lock contention will hang memory_search responses.
-//   systemctl --user stop palimpsest    (run the test)    systemctl --user start palimpsest
+//   systemctl --user stop memnest    (run the test)    systemctl --user start memnest
 
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 
-const BIN = process.env.PALIMPSEST_BIN ?? "palimpsest";
-// Use shared ~/.palimpsest so the embedding model is already warm. Fall
+const BIN = process.env.MEMNEST_BIN ?? "memnest";
+// Use shared ~/.memnest so the embedding model is already warm. Fall
 // back to a fresh temp dir when the test wants full isolation (slow).
-const DATA = process.env.PALIMPSEST_DATA_DIR ?? join(homedir(), ".palimpsest");
-const FRESH = process.env.PALIMPSEST_FRESH === "1";
+const DATA = process.env.MEMNEST_DATA_DIR ?? join(homedir(), ".memnest");
+const FRESH = process.env.MEMNEST_FRESH === "1";
 const dataDir = FRESH ? mkdtempSync(join(tmpdir(), "pp-e2e-")) : DATA;
 
 let ok = 0, fail = 0;
@@ -78,11 +78,11 @@ try {
     params: {
       protocolVersion: "2024-11-05",
       capabilities: {},
-      clientInfo: { name: "pi-palimpsest-e2e", version: "0.0.0" },
+      clientInfo: { name: "pi-memnest-e2e", version: "0.0.0" },
     },
   });
   const init = await recv(8000);
-  assert("initialize returns serverInfo", init?.result?.serverInfo?.name === "palimpsest",
+  assert("initialize returns serverInfo", init?.result?.serverInfo?.name === "memnest",
          JSON.stringify(init).slice(0, 200));
 
   send({ jsonrpc: "2.0", method: "notifications/initialized" });
@@ -111,7 +111,7 @@ try {
       name: "memory_add",
       arguments: {
         project: "e2eproject",
-        text: "e2eprobeword smoke check from pi-palimpsest e2e harness",
+        text: "e2eprobeword smoke check from pi-memnest e2e harness",
       },
     },
   });
@@ -149,7 +149,7 @@ try {
 
 if (stderr.length) {
   const s = stderr.join("");
-  if (s.trim()) console.log("\n(stderr from palimpsest):\n" + s.split("\n").slice(0, 8).join("\n"));
+  if (s.trim()) console.log("\n(stderr from memnest):\n" + s.split("\n").slice(0, 8).join("\n"));
 }
 
 console.log(`\ne2e: ${ok} passed, ${fail} failed`);

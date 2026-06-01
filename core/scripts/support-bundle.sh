@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OUT="${OUT:-palimpsest-support-$(date +%Y%m%d-%H%M%S).txt}"
+OUT="${OUT:-memnest-support-$(date +%Y%m%d-%H%M%S).txt}"
 MODE="${MODE:-user}"
-SERVICE="${SERVICE:-palimpsest.service}"
+SERVICE="${SERVICE:-memnest.service}"
 URL="${URL:-http://127.0.0.1:3111/health}"
 
 usage() {
@@ -37,7 +37,7 @@ run_capture() {
 }
 
 : > "$OUT"
-section "Palimpsest Support Bundle"
+section "Memnest Support Bundle"
 printf 'created_at=%s\n' "$(date -Iseconds)" >> "$OUT"
 printf 'mode=%s\n' "$MODE" >> "$OUT"
 printf 'health_url=%s\n' "$URL" >> "$OUT"
@@ -49,10 +49,10 @@ run_capture df -h .
 run_capture free -h
 
 section "Binary"
-if command -v palimpsest >/dev/null 2>&1; then
-  run_capture palimpsest --version
+if command -v memnest >/dev/null 2>&1; then
+  run_capture memnest --version
 else
-  printf 'palimpsest binary not found in PATH\n' >> "$OUT"
+  printf 'memnest binary not found in PATH\n' >> "$OUT"
 fi
 
 section "Health"

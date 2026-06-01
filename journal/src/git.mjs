@@ -18,8 +18,8 @@ export function isRepo(cwd) {
 export function init(cwd) {
   run(["init", "-q", "-b", "main"], { cwd });
   // sane defaults for memory repos
-  run(["config", "user.email", run(["config","--global","--get","user.email"], { cwd, allowFail: true }).stdout.trim() || "palimpsest-journal@local"], { cwd });
-  run(["config", "user.name",  run(["config","--global","--get","user.name"],  { cwd, allowFail: true }).stdout.trim() || "palimpsest-journal"], { cwd });
+  run(["config", "user.email", run(["config","--global","--get","user.email"], { cwd, allowFail: true }).stdout.trim() || "memnest-journal@local"], { cwd });
+  run(["config", "user.name",  run(["config","--global","--get","user.name"],  { cwd, allowFail: true }).stdout.trim() || "memnest-journal"], { cwd });
 }
 
 export function statusPorcelain(cwd) {

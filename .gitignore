@@ -6,8 +6,8 @@
 **/node_modules/
 *.tgz
 
-# Local palimpsest runtime data (never commit the DB or keys)
-.palimpsest/
+# Local memnest runtime data (never commit the DB or keys)
+.memnest/
 *.db
 *.db-shm
 *.db-wal

@@ -30,27 +30,27 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with: { bun-version: '1.3' }
 
-      - name: Install palimpsest server (Linux only)
+      - name: Install memnest server (Linux only)
         if: matrix.os == 'ubuntu-latest'
         run: |
           # Attempt to install the upstream binary; if unavailable, skip
           # live-call tests but keep static lint + dry-run.
           curl -fsSL -o /tmp/p.tar.gz \
-            https://github.com/Blue-B/palimpsest/releases/latest/download/palimpsest-linux-x86_64.tar.gz \
-            || echo "(skipping palimpsest binary; live tests will be limited)"
+            https://github.com/Blue-B/memnest/releases/latest/download/memnest-linux-x86_64.tar.gz \
+            || echo "(skipping memnest binary; live tests will be limited)"
           if [ -s /tmp/p.tar.gz ]; then
             mkdir -p $HOME/.local/bin
             tar xzf /tmp/p.tar.gz -C $HOME/.local/bin
-            chmod +x $HOME/.local/bin/palimpsest
+            chmod +x $HOME/.local/bin/memnest
             echo "$HOME/.local/bin" >> $GITHUB_PATH
           fi
 
-      - name: Start palimpsest server (if present)
+      - name: Start memnest server (if present)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          if command -v palimpsest >/dev/null 2>&1; then
-            mkdir -p $HOME/.palimpsest
-            nohup palimpsest > /tmp/palimpsest.log 2>&1 &
+          if command -v memnest >/dev/null 2>&1; then
+            mkdir -p $HOME/.memnest
+            nohup memnest > /tmp/memnest.log 2>&1 &
             for i in 1 2 3 4 5 6 7 8 9 10; do
               sleep 1
               curl -fsS http://127.0.0.1:3111/health >/dev/null && break

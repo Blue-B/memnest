@@ -1870,6 +1870,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "memnest"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "argon2",
+ "askama",
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "clap",
+ "criterion",
+ "dashmap",
+ "dirs",
+ "fast-hnsw",
+ "fastembed",
+ "half",
+ "ndarray 0.16.1",
+ "once_cell",
+ "parking_lot",
+ "petgraph",
+ "r2d2",
+ "r2d2_sqlite",
+ "rand 0.9.4",
+ "rayon",
+ "regex",
+ "rmcp",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tantivy",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "toml",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "walkdir",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2120,52 +2166,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2fbd56f7631767e61784dc43f8580f403f4475bd4aaa4da003e6295e1bab4a7e"
 dependencies = [
  "stable_deref_trait",
-]
-
-[[package]]
-name = "palimpsest"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "anyhow",
- "argon2",
- "askama",
- "axum",
- "base64 0.22.1",
- "chrono",
- "clap",
- "criterion",
- "dashmap",
- "dirs",
- "fast-hnsw",
- "fastembed",
- "half",
- "ndarray 0.16.1",
- "once_cell",
- "parking_lot",
- "petgraph",
- "r2d2",
- "r2d2_sqlite",
- "rand 0.9.4",
- "rayon",
- "regex",
- "rmcp",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tantivy",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-util",
- "toml",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "walkdir",
 ]
 
 [[package]]

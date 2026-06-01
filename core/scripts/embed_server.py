@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local embedding sidecar for palimpsest.
+"""Local embedding sidecar for memnest.
 
 Default model is multilingual. If sentence-transformers is unavailable, the
 server falls back to deterministic lexical vectors so development still works.
@@ -7,7 +7,7 @@ server falls back to deterministic lexical vectors so development still works.
 Usage:
   pip install sentence-transformers
   python scripts/embed_server.py --model paraphrase-multilingual-mpnet-base-v2 --port 9500
-  PALIMPSEST_EMBED_URL=http://127.0.0.1:9500/embed palimpsest ...
+  MEMNEST_EMBED_URL=http://127.0.0.1:9500/embed memnest ...
 """
 
 import argparse

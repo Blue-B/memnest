@@ -1,8 +1,8 @@
 param(
-  [string]$ServiceName = "palimpsest",
+  [string]$ServiceName = "memnest",
   [int]$Port = 3111,
-  [string]$InstallDir = "$env:ProgramData\Palimpsest\app",
-  [string]$DataDir = "$env:ProgramData\Palimpsest\data"
+  [string]$InstallDir = "$env:ProgramData\Memnest\app",
+  [string]$DataDir = "$env:ProgramData\Memnest\data"
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,7 +12,7 @@ if (-not $isAdmin) {
   throw "validate-installed-windows.ps1 must run from an elevated PowerShell prompt."
 }
 
-function Wait-PalimpsestHealth {
+function Wait-MemnestHealth {
   param([string]$Url)
 
   for ($i = 0; $i -lt 30; $i++) {
@@ -35,10 +35,10 @@ if ($service.Status -ne "Running") {
   throw "service '$ServiceName' is not running: $($service.Status)"
 }
 
-Wait-PalimpsestHealth -Url $health
+Wait-MemnestHealth -Url $health
 Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:$Port/assets/memory-atlas.png" | Out-Null
-& "$InstallDir\palimpsest.exe" --data-dir $DataDir --doctor
+& "$InstallDir\memnest.exe" --data-dir $DataDir --doctor
 Restart-Service -Name $ServiceName -Force
-Wait-PalimpsestHealth -Url $health
+Wait-MemnestHealth -Url $health
 Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:$Port/assets/memory-atlas.png" | Out-Null
 Write-Host "validate_installed_windows_ok"

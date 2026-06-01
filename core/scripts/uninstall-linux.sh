@@ -8,7 +8,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/uninstall-linux.sh [--user|--system] [--remove-data]
 
-Stops and removes the Palimpsest systemd service. Data is kept unless
+Stops and removes the Memnest systemd service. Data is kept unless
 --remove-data is passed.
 EOF
 }
@@ -25,23 +25,23 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ "$MODE" = "system" ]; then
-  sudo systemctl disable --now palimpsest.service 2>/dev/null || true
-  sudo rm -f /etc/systemd/system/palimpsest.service
+  sudo systemctl disable --now memnest.service 2>/dev/null || true
+  sudo rm -f /etc/systemd/system/memnest.service
   sudo systemctl daemon-reload
-  sudo rm -f /usr/local/bin/palimpsest
-  sudo rm -rf /usr/local/share/palimpsest
+  sudo rm -f /usr/local/bin/memnest
+  sudo rm -rf /usr/local/share/memnest
   if [ "$REMOVE_DATA" = "1" ]; then
-    sudo rm -rf /var/lib/palimpsest
+    sudo rm -rf /var/lib/memnest
   fi
 else
-  systemctl --user disable --now palimpsest.service 2>/dev/null || true
-  rm -f "$HOME/.config/systemd/user/palimpsest.service"
+  systemctl --user disable --now memnest.service 2>/dev/null || true
+  rm -f "$HOME/.config/systemd/user/memnest.service"
   systemctl --user daemon-reload
-  rm -f "$HOME/.local/bin/palimpsest"
-  rm -rf "$HOME/.local/share/palimpsest"
+  rm -f "$HOME/.local/bin/memnest"
+  rm -rf "$HOME/.local/share/memnest"
   if [ "$REMOVE_DATA" = "1" ]; then
-    rm -rf "$HOME/.palimpsest"
+    rm -rf "$HOME/.memnest"
   fi
 fi
 
-echo "Palimpsest uninstalled."
+echo "Memnest uninstalled."

@@ -1,25 +1,28 @@
 # Changelog
 
-All notable changes to `pi-palimpsest`.
+All notable changes to `pi-memnest`.
 
 ## [Unreleased]
 
 ### Added
+- `memory_update` — correct existing memories by id and refresh indexes.
+- `memory_context` — prompt-ready context pack combining notes, facts, and retrieved memories.
+- `note_set`, `note_get`, and `note_delete` — pi-side access to core key-value memory blocks.
 - **AutoLog** — automatic conversation capture. Hooks pi session events and
-  fire-and-forgets user inputs and assistant final messages to palimpsest, so
+  fire-and-forgets user inputs and assistant final messages to memnest, so
   memory is built passively without explicit `memory_remember` calls.
   - Maps `cwd` → project at `session_start` for correct collection routing.
   - Skips `thinking` content and very short/noise messages; truncates large
     tool-result bodies before sending.
   - Never blocks or throws into the agent loop; drains in-flight writes on
     `agent_end` / `session_shutdown` (important for `pi -p` print mode).
-  - Does not log palimpsest's own tool calls (avoids feedback chatter).
+  - Does not log memnest's own tool calls (avoids feedback chatter).
   - Can be disabled via environment variable for tool-only mode.
 
 ## [0.4.0] — 2026-05-17
 
 ### Added
-- `memory_health` tool — checks palimpsest server liveness (GET /health).
+- `memory_health` tool — checks memnest server liveness (GET /health).
 - `collections_list` tool — enumerates all project buckets with counts and
   metadata (GET /collections).
 - `secret_delete` tool — removes a stored credential by key (DELETE /secrets/:key).
@@ -27,19 +30,6 @@ All notable changes to `pi-palimpsest`.
 
 ### Changed
 - Total exposed tools: 9 → 12.
-
-### Known limitations vs core MCP (17 tools)
-`pi-palimpsest` bridges over the palimpsest HTTP API. The following tools are
-exposed by `palimpsest --mcp` (stdio MCP mode) but **not** over HTTP, so they
-are unavailable from pi today:
-- `memory_graph_query`, `memory_lifecycle_run`
-- `note_get`, `note_set` (HTTP only has `GET /notes`)
-- `server_info`, `server_add`, `server_update`
-- `memory_facts` (search variant; HTTP only has `GET /facts` listing)
-
-For full 17-tool access, register `palimpsest --mcp` in any MCP-stdio client
-(Claude Desktop, Cursor, Cline, Continue, Zed). Same `~/.palimpsest/` data
-store is shared, so the two access paths are interchangeable.
 
 ## [0.3.0] — 2026-05-16
 
@@ -62,4 +52,4 @@ store is shared, so the two access paths are interchangeable.
 
 ## [0.2.0] — earlier
 
-Initial public version (pi tool wrapper around palimpsest HTTP API).
+Initial public version (pi tool wrapper around memnest HTTP API).

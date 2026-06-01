@@ -3,19 +3,19 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODE="${MODE:-user}"
-HOST="${PALIMPSEST_HOST:-127.0.0.1}"
-PORT="${PALIMPSEST_PORT:-3111}"
+HOST="${MEMNEST_HOST:-127.0.0.1}"
+PORT="${MEMNEST_PORT:-3111}"
 BIN_SRC="${BIN_SRC:-}"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/install-linux.sh [--user|--system] [--bin /path/to/palimpsest]
+Usage: scripts/install-linux.sh [--user|--system] [--bin /path/to/memnest]
 
-Installs Palimpsest as a systemd service on Linux.
+Installs Memnest as a systemd service on Linux.
 
 Environment:
-  PALIMPSEST_HOST  default 127.0.0.1
-  PALIMPSEST_PORT  default 3111
+  MEMNEST_HOST  default 127.0.0.1
+  MEMNEST_PORT  default 3111
 EOF
 }
 
@@ -43,23 +43,23 @@ is_local_host() {
 }
 
 if ! is_local_host "$HOST"; then
-  echo "install-linux.sh only supports local service binds. Use 127.0.0.1 for packaged installs; configure remote access manually with PALIMPSEST_TOKEN and a reviewed network policy." >&2
+  echo "install-linux.sh only supports local service binds. Use 127.0.0.1 for packaged installs; configure remote access manually with MEMNEST_TOKEN and a reviewed network policy." >&2
   exit 1
 fi
 
 if [ -z "$BIN_SRC" ]; then
-  if [ -x "./palimpsest" ]; then
-    BIN_SRC="./palimpsest"
-  elif [ -x "./target/release/palimpsest" ]; then
-    BIN_SRC="./target/release/palimpsest"
-  elif [ -x "$ROOT/palimpsest" ]; then
-    BIN_SRC="$ROOT/palimpsest"
-  elif [ -x "$ROOT/target/release/palimpsest" ]; then
-    BIN_SRC="$ROOT/target/release/palimpsest"
-  elif command -v palimpsest >/dev/null 2>&1; then
-    BIN_SRC="$(command -v palimpsest)"
+  if [ -x "./memnest" ]; then
+    BIN_SRC="./memnest"
+  elif [ -x "./target/release/memnest" ]; then
+    BIN_SRC="./target/release/memnest"
+  elif [ -x "$ROOT/memnest" ]; then
+    BIN_SRC="$ROOT/memnest"
+  elif [ -x "$ROOT/target/release/memnest" ]; then
+    BIN_SRC="$ROOT/target/release/memnest"
+  elif command -v memnest >/dev/null 2>&1; then
+    BIN_SRC="$(command -v memnest)"
   else
-    echo "palimpsest binary not found. Extract a release archive, build first, or pass --bin /path/to/palimpsest" >&2
+    echo "memnest binary not found. Extract a release archive, build first, or pass --bin /path/to/memnest" >&2
     exit 1
   fi
 fi
@@ -69,13 +69,13 @@ patch_service_env() {
   local runner="${2:-}"
   if [ -n "$runner" ]; then
     $runner sed -i \
-      -e "s/^Environment=PALIMPSEST_HOST=.*/Environment=PALIMPSEST_HOST=${HOST}/" \
-      -e "s/^Environment=PALIMPSEST_PORT=.*/Environment=PALIMPSEST_PORT=${PORT}/" \
+      -e "s/^Environment=MEMNEST_HOST=.*/Environment=MEMNEST_HOST=${HOST}/" \
+      -e "s/^Environment=MEMNEST_PORT=.*/Environment=MEMNEST_PORT=${PORT}/" \
       "$service_file"
   else
     sed -i \
-      -e "s/^Environment=PALIMPSEST_HOST=.*/Environment=PALIMPSEST_HOST=${HOST}/" \
-      -e "s/^Environment=PALIMPSEST_PORT=.*/Environment=PALIMPSEST_PORT=${PORT}/" \
+      -e "s/^Environment=MEMNEST_HOST=.*/Environment=MEMNEST_HOST=${HOST}/" \
+      -e "s/^Environment=MEMNEST_PORT=.*/Environment=MEMNEST_PORT=${PORT}/" \
       "$service_file"
   fi
 }
@@ -99,26 +99,26 @@ wait_for_health() {
 }
 
 if [ "$MODE" = "system" ]; then
-  sudo install -m 0755 "$BIN_SRC" /usr/local/bin/palimpsest
-  sudo mkdir -p /var/lib/palimpsest /usr/local/share/palimpsest/static
-  sudo cp -R "$ROOT/static/." /usr/local/share/palimpsest/static/
-  sudo find /usr/local/share/palimpsest/static -type f -exec chmod 0644 {} +
-  sudo install -m 0644 "$ROOT/packaging/systemd/palimpsest.service" /etc/systemd/system/palimpsest.service
-  patch_service_env /etc/systemd/system/palimpsest.service sudo
+  sudo install -m 0755 "$BIN_SRC" /usr/local/bin/memnest
+  sudo mkdir -p /var/lib/memnest /usr/local/share/memnest/static
+  sudo cp -R "$ROOT/static/." /usr/local/share/memnest/static/
+  sudo find /usr/local/share/memnest/static -type f -exec chmod 0644 {} +
+  sudo install -m 0644 "$ROOT/packaging/systemd/memnest.service" /etc/systemd/system/memnest.service
+  patch_service_env /etc/systemd/system/memnest.service sudo
   sudo systemctl daemon-reload
-  sudo systemctl enable --now palimpsest.service
-  sudo systemctl status palimpsest.service --no-pager -l
+  sudo systemctl enable --now memnest.service
+  sudo systemctl status memnest.service --no-pager -l
 else
-  install -d "$HOME/.local/bin" "$HOME/.config/systemd/user" "$HOME/.palimpsest" "$HOME/.local/share/palimpsest/static"
-  install -m 0755 "$BIN_SRC" "$HOME/.local/bin/palimpsest"
-  cp -R "$ROOT/static/." "$HOME/.local/share/palimpsest/static/"
-  find "$HOME/.local/share/palimpsest/static" -type f -exec chmod 0644 {} +
-  install -m 0644 "$ROOT/packaging/systemd/palimpsest-user.service" "$HOME/.config/systemd/user/palimpsest.service"
-  patch_service_env "$HOME/.config/systemd/user/palimpsest.service"
+  install -d "$HOME/.local/bin" "$HOME/.config/systemd/user" "$HOME/.memnest" "$HOME/.local/share/memnest/static"
+  install -m 0755 "$BIN_SRC" "$HOME/.local/bin/memnest"
+  cp -R "$ROOT/static/." "$HOME/.local/share/memnest/static/"
+  find "$HOME/.local/share/memnest/static" -type f -exec chmod 0644 {} +
+  install -m 0644 "$ROOT/packaging/systemd/memnest-user.service" "$HOME/.config/systemd/user/memnest.service"
+  patch_service_env "$HOME/.config/systemd/user/memnest.service"
   systemctl --user daemon-reload
-  systemctl --user enable --now palimpsest.service
-  systemctl --user status palimpsest.service --no-pager -l
+  systemctl --user enable --now memnest.service
+  systemctl --user status memnest.service --no-pager -l
 fi
 
 wait_for_health
-echo "Palimpsest is available at http://${HOST}:${PORT}/"
+echo "Memnest is available at http://${HOST}:${PORT}/"

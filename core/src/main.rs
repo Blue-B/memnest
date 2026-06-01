@@ -1,8 +1,8 @@
 use anyhow::{Context, bail};
 use clap::Parser;
-use palimpsest::models::{ChunkType, Fact, FactHistory, Importance, MemoryChunk, Metadata};
-use palimpsest::redaction::redact_text;
-use palimpsest::{MemorySystem, config::Config};
+use memnest::models::{ChunkType, Fact, FactHistory, Importance, MemoryChunk, Metadata};
+use memnest::redaction::redact_text;
+use memnest::{MemorySystem, config::Config};
 use serde::Deserialize;
 use serde_json::Value;
 use std::io::{BufRead, BufReader};
@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tracing::info;
 
 #[derive(Parser, Debug)]
-#[command(name = "palimpsest")]
+#[command(name = "memnest")]
 #[command(version)]
 #[command(about = "Persistent memory for AI coding agents")]
 struct Cli {
@@ -122,7 +122,7 @@ async fn main() -> anyhow::Result<()> {
         let system = MemorySystem::new(config.clone()).await?;
         let _ = system
             .embedder
-            .encode_document("palimpsest embedding warmup")?;
+            .encode_document("memnest embedding warmup")?;
         println!(
             "embedding warmup complete: model={}, data_dir={}",
             config.embed_model,
@@ -132,11 +132,11 @@ async fn main() -> anyhow::Result<()> {
     }
 
     if cli.doctor {
-        println!("palimpsest doctor v{}", env!("CARGO_PKG_VERSION"));
+        println!("memnest doctor v{}", env!("CARGO_PKG_VERSION"));
         println!("  data dir: {:?}", config.data_dir);
         println!();
-        let checks = palimpsest::doctor::run(&config).await?;
-        let exit_code = palimpsest::doctor::print_report(&checks);
+        let checks = memnest::doctor::run(&config).await?;
+        let exit_code = memnest::doctor::print_report(&checks);
         std::process::exit(exit_code);
     }
 
@@ -144,7 +144,7 @@ async fn main() -> anyhow::Result<()> {
         enforce_bind_safety(&config.api_host)?;
     }
 
-    info!("Starting palimpsest v{}", env!("CARGO_PKG_VERSION"));
+    info!("Starting memnest v{}", env!("CARGO_PKG_VERSION"));
     info!("Data dir: {:?}", config.data_dir);
 
     let system = Arc::new(tokio::sync::RwLock::new(
@@ -168,23 +168,23 @@ async fn main() -> anyhow::Result<()> {
 
     if cli.mcp {
         info!("MCP stdio server enabled");
-        palimpsest::server::mcp::run_stdio(system.clone()).await?;
+        memnest::server::mcp::run_stdio(system.clone()).await?;
         return Ok(());
     }
 
     // Kick off the daily TTL prune loop. Without this, AutoLog chunks
     // accumulate indefinitely (~537 in production at time of writing).
-    palimpsest::lifecycle::spawn_periodic_lifecycle(system.clone());
+    memnest::lifecycle::spawn_periodic_lifecycle(system.clone());
 
     // Start API server
-    let app = palimpsest::server::create_router(system.clone());
+    let app = memnest::server::create_router(system.clone());
     let addr = format!("{}:{}", config.api_host, config.api_port);
     info!("API server starting on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     let server = axum::serve(listener, app);
 
-    info!("palimpsest ready");
+    info!("memnest ready");
 
     tokio::select! {
         result = server => {
@@ -226,12 +226,12 @@ async fn shutdown_signal() {
 
 fn enforce_bind_safety(host: &str) -> anyhow::Result<()> {
     let local = matches!(host, "127.0.0.1" | "localhost" | "::1");
-    if local || std::env::var("PALIMPSEST_TOKEN").is_ok() {
+    if local || std::env::var("MEMNEST_TOKEN").is_ok() {
         return Ok(());
     }
 
     bail!(
-        "refusing to bind to {host} without authentication; set PALIMPSEST_TOKEN or bind to 127.0.0.1"
+        "refusing to bind to {host} without authentication; set MEMNEST_TOKEN or bind to 127.0.0.1"
     )
 }
 
@@ -385,7 +385,7 @@ async fn import_facts_json(
         let id = record
             .id
             .or(key)
-            .unwrap_or_else(|| palimpsest::facts::fact_id(&subject, &predicate));
+            .unwrap_or_else(|| memnest::facts::fact_id(&subject, &predicate));
         let history = record
             .history
             .into_iter()

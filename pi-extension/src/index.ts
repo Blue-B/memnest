@@ -1,10 +1,10 @@
 /**
- * pi-palimpsest
+ * pi-memnest
  *
- * Bridges pi's tool system to a locally running palimpsest server (default
- * http://127.0.0.1:3111). Only HTTP endpoints that exist in the palimpsest
- * Axum router are exposed here. For richer features (notes, facts, knowledge
- * graph), use the palimpsest MCP stdio mode directly.
+ * Bridges pi's tool system to a locally running memnest server (default
+ * http://127.0.0.1:3111). Only HTTP endpoints that exist in the memnest
+ * Axum router are exposed here, including memory search/update, context packs,
+ * notes, facts, secrets, collections, and health checks.
  */
 
 import { Type } from "typebox";
@@ -14,14 +14,14 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 
-const PALIMPSEST_URL = process.env.PALIMPSEST_URL ?? "http://127.0.0.1:3111";
+const MEMNEST_URL = process.env.MEMNEST_URL ?? "http://127.0.0.1:3111";
 
 // AutoLog can be disabled via env var if user wants tool-only mode.
-const AUTOLOG_ENABLED = (process.env.PALIMPSEST_AUTOLOG ?? "1") !== "0";
+const AUTOLOG_ENABLED = (process.env.MEMNEST_AUTOLOG ?? "1") !== "0";
 // Skip extremely short user messages (likely noise: "y", "ok", "\n").
-const AUTOLOG_MIN_USER_LEN = Number(process.env.PALIMPSEST_AUTOLOG_MIN_USER_LEN ?? "3");
-// Tool result bodies can be huge — cap them before sending to palimpsest.
-const AUTOLOG_MAX_CHARS = Number(process.env.PALIMPSEST_AUTOLOG_MAX_CHARS ?? "8000");
+const AUTOLOG_MIN_USER_LEN = Number(process.env.MEMNEST_AUTOLOG_MIN_USER_LEN ?? "3");
+// Tool result bodies can be huge — cap them before sending to memnest.
+const AUTOLOG_MAX_CHARS = Number(process.env.MEMNEST_AUTOLOG_MAX_CHARS ?? "8000");
 
 async function call(
   path: string,
@@ -31,13 +31,13 @@ async function call(
   try {
     const init: RequestInit = { method, headers: { "Content-Type": "application/json" } };
     if (body !== undefined && method !== "GET") init.body = JSON.stringify(body);
-    const res = await fetch(`${PALIMPSEST_URL}${path}`, init);
+    const res = await fetch(`${MEMNEST_URL}${path}`, init);
     const text = await res.text();
-    if (!res.ok) return { text: `palimpsest error ${res.status}: ${text}`, isError: true };
+    if (!res.ok) return { text: `memnest error ${res.status}: ${text}`, isError: true };
     return { text, isError: false };
   } catch (e: any) {
     return {
-      text: `palimpsest unreachable at ${PALIMPSEST_URL}: ${e?.message ?? e}. Check: systemctl --user status palimpsest`,
+      text: `memnest unreachable at ${MEMNEST_URL}: ${e?.message ?? e}. Check: systemctl --user status memnest`,
       isError: true,
     };
   }
@@ -67,7 +67,7 @@ const inFlight = new Set<Promise<unknown>>();
 // We DO track the promise so a graceful shutdown can wait for it briefly.
 function fireAndForget(path: string, body: unknown): void {
   try {
-    const p = fetch(`${PALIMPSEST_URL}${path}`, {
+    const p = fetch(`${MEMNEST_URL}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -137,7 +137,7 @@ function truncate(s: string, max: number): { text: string; truncated: boolean } 
  *   - tool_execution_end              → auto_log chunk, source=pi.tool.execute.after
  *   - session_compact                 → consolidated summary chunk
  *
- * Disabled when PALIMPSEST_AUTOLOG=0.
+ * Disabled when MEMNEST_AUTOLOG=0.
  */
 function installAutoLog(pi: ExtensionAPI): void {
   if (!AUTOLOG_ENABLED) return;
@@ -214,9 +214,14 @@ function installAutoLog(pi: ExtensionAPI): void {
     try {
       const e = event as any;
       const toolName: string = e.toolName ?? "unknown";
-      // Don't log palimpsest's own tools — would create infinite-ish chatter.
-      if (toolName.startsWith("memory_") || toolName.startsWith("secret_") ||
-          toolName.startsWith("notes_") || toolName === "collections_list") {
+      // Don't log memnest's own tools — would create infinite-ish chatter.
+      if (
+        toolName.startsWith("memory_") ||
+        toolName.startsWith("secret_") ||
+        toolName.startsWith("note_") ||
+        toolName.startsWith("notes_") ||
+        toolName === "collections_list"
+      ) {
         return;
       }
       const result = e.result;
@@ -323,10 +328,10 @@ export default function register(pi: ExtensionAPI): void {
     name: "memory_remember",
     label: "Memory: remember",
     description:
-      "Save a memory chunk to palimpsest. Call this proactively whenever you discover something " +
+      "Save a memory chunk to memnest. Call this proactively whenever you discover something " +
       "reusable across future sessions: project ports/paths, configuration choices, fixes installed, " +
-      "user preferences, corrections, gotchas. Persists in ~/.palimpsest/ and is shared with any " +
-      "other client (opencode, Claude Code, etc.) pointing at the same palimpsest server. " +
+      "user preferences, corrections, gotchas. Persists in ~/.memnest/ and is shared with any " +
+      "other client (opencode, Claude Code, etc.) pointing at the same memnest server. " +
       "Auto-routing: importance=preference|decision -> 'playbook' collection (cross-project knowledge). " +
       "Other importance values land in the current project bucket (cwd basename) or 'playbook' if none. " +
       "Reserved buckets ('root','default','global') are rejected for manual writes.",
@@ -370,12 +375,46 @@ export default function register(pi: ExtensionAPI): void {
     },
   });
 
+  // ─── memory_update (POST /update) ───────────────────────────────────────
+  pi.registerTool({
+    name: "memory_update",
+    label: "Memory: update",
+    description:
+      "Update an existing memnest memory by id and refresh search indexes. Use this to correct stale facts " +
+      "instead of adding contradictory memories. Supports text, project, importance, and chunk_type changes.",
+    parameters: Type.Object({
+      id: Type.String({ description: "Memory chunk id returned by memory_search or memory_remember." }),
+      text: Type.Optional(Type.String({ description: "Replacement memory text. Omit to keep current text." })),
+      project: Type.Optional(Type.String({ description: "Move the memory to a different collection." })),
+      importance: Type.Optional(
+        Type.Union([
+          Type.Literal("log"),
+          Type.Literal("knowledge"),
+          Type.Literal("decision"),
+          Type.Literal("preference"),
+        ]),
+      ),
+      chunk_type: Type.Optional(
+        Type.Union([
+          Type.Literal("auto_log"),
+          Type.Literal("manual"),
+          Type.Literal("filtered"),
+          Type.Literal("consolidated"),
+        ]),
+      ),
+    }),
+    async execute(_toolCallId: string, params: any) {
+      const r = await call("/update", params);
+      return textResult(r.text, r.isError);
+    },
+  });
+
   // ─── memory_search (POST /search) ────────────────────────────────────────
   pi.registerTool({
     name: "memory_search",
     label: "Memory: search",
     description:
-      "Hybrid BM25+vector search over palimpsest memory. Call at the START of any task touching " +
+      "Hybrid BM25+vector search over memnest memory. Call at the START of any task touching " +
       "a previously-discussed project, service, or tool — before guessing config paths or rerunning " +
       "discovery commands.",
     parameters: Type.Object({
@@ -391,12 +430,39 @@ export default function register(pi: ExtensionAPI): void {
     },
   });
 
+  // ─── memory_context (POST /context) ──────────────────────────────────────
+  pi.registerTool({
+    name: "memory_context",
+    label: "Memory: context",
+    description:
+      "Build a compact context pack from memnest: core notes + matching facts + retrieved memories. " +
+      "Use when preparing an agent prompt or before answering a question that needs durable memory.",
+    parameters: Type.Object({
+      query: Type.String({ description: "Question or topic to gather durable context for." }),
+      project: Type.Optional(Type.String({ description: "Restrict retrieved memories to a project bucket." })),
+      n_results: Type.Optional(Type.Integer({ default: 6, minimum: 1, maximum: 20 })),
+      max_notes: Type.Optional(Type.Integer({ default: 12, minimum: 0, maximum: 50 })),
+      max_facts: Type.Optional(Type.Integer({ default: 8, minimum: 0, maximum: 50 })),
+    }),
+    async execute(_toolCallId: string, params: any) {
+      const body: any = {
+        query: params.query,
+        project: params.project ?? "all",
+        n_results: params.n_results ?? 6,
+        max_notes: params.max_notes ?? 12,
+        max_facts: params.max_facts ?? 8,
+      };
+      const r = await call("/context", body);
+      return textResult(r.text, r.isError);
+    },
+  });
+
   // ─── memory_stats (GET /stats) ───────────────────────────────────────────
   pi.registerTool({
     name: "memory_stats",
     label: "Memory: stats",
     description:
-      "Palimpsest server statistics (total_chunks, total_sessions, total_facts, total_notes).",
+      "Memnest server statistics (total_chunks, total_sessions, total_facts, total_notes).",
     parameters: EmptyParams,
     async execute() {
       const r = await call("/stats", undefined, "GET");
@@ -408,7 +474,7 @@ export default function register(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "memory_sessions",
     label: "Memory: sessions",
-    description: "List recent session summaries stored in palimpsest.",
+    description: "List recent session summaries stored in memnest.",
     parameters: EmptyParams,
     async execute() {
       const r = await call("/sessions", undefined, "GET");
@@ -421,7 +487,7 @@ export default function register(pi: ExtensionAPI): void {
     name: "memory_facts_list",
     label: "Memory: facts",
     description:
-      "List structured facts (subject-predicate-object triples) from the palimpsest knowledge graph.",
+      "List structured facts (subject-predicate-object triples) from the memnest knowledge graph.",
     parameters: EmptyParams,
     async execute() {
       const r = await call("/facts", undefined, "GET");
@@ -429,14 +495,52 @@ export default function register(pi: ExtensionAPI): void {
     },
   });
 
-  // ─── notes_list (GET /notes) ─────────────────────────────────────────────
+  // ─── note_set / note_get / notes_list / note_delete ─────────────────────
+  pi.registerTool({
+    name: "note_set",
+    label: "Notes: set",
+    description:
+      "Set a durable memnest key-value note. Notes act like small always-available memory blocks " +
+      "for persona, user profile, active projects, or operating rules.",
+    parameters: Type.Object({
+      key: Type.String(),
+      value: Type.String(),
+    }),
+    async execute(_toolCallId: string, params: any) {
+      const r = await call("/notes", { key: params.key, value: params.value });
+      return textResult(r.text, r.isError);
+    },
+  });
+
+  pi.registerTool({
+    name: "note_get",
+    label: "Notes: get",
+    description: "Get a single memnest key-value note by key.",
+    parameters: Type.Object({ key: Type.String() }),
+    async execute(_toolCallId: string, params: any) {
+      const r = await call(`/notes/${encodeURIComponent(params.key)}`, undefined, "GET");
+      return textResult(r.text, r.isError);
+    },
+  });
+
   pi.registerTool({
     name: "notes_list",
     label: "Notes: list",
-    description: "List all palimpsest key-value notes.",
+    description: "List all memnest key-value notes.",
     parameters: EmptyParams,
     async execute() {
       const r = await call("/notes", undefined, "GET");
+      return textResult(r.text, r.isError);
+    },
+  });
+
+  pi.registerTool({
+    name: "note_delete",
+    label: "Notes: delete",
+    description: "Delete a memnest key-value note by key.",
+    parameters: Type.Object({ key: Type.String() }),
+    async execute(_toolCallId: string, params: any) {
+      const r = await call(`/notes/${encodeURIComponent(params.key)}`, undefined, "DELETE");
       return textResult(r.text, r.isError);
     },
   });
@@ -446,7 +550,7 @@ export default function register(pi: ExtensionAPI): void {
     name: "secret_set",
     label: "Secret: set",
     description:
-      "Store a credential (PAT, API key, password) AES-GCM encrypted in palimpsest. Plain value is only returned via secret_get.",
+      "Store a credential (PAT, API key, password) AES-GCM encrypted in memnest. Plain value is only returned via secret_get.",
     parameters: Type.Object({
       key: Type.String(),
       value: Type.String(),
@@ -507,7 +611,7 @@ export default function register(pi: ExtensionAPI): void {
     name: "collections_list",
     label: "Collections: list",
     description:
-      "List all palimpsest project collections (buckets) with their chunk counts and metadata. " +
+      "List all memnest project collections (buckets) with their chunk counts and metadata. " +
       "Use this to discover which projects already have memory recorded before searching.",
     parameters: EmptyParams,
     async execute() {
@@ -520,7 +624,7 @@ export default function register(pi: ExtensionAPI): void {
     name: "memory_health",
     label: "Memory: health",
     description:
-      "Check whether the palimpsest server is reachable and responsive. Returns server liveness. " +
+      "Check whether the memnest server is reachable and responsive. Returns server liveness. " +
       "Useful as a first call when memory tools start failing.",
     parameters: EmptyParams,
     async execute() {

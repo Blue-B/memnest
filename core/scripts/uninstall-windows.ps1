@@ -1,5 +1,5 @@
 param(
-  [string]$InstallDir = "$env:ProgramData\Palimpsest\app",
+  [string]$InstallDir = "$env:ProgramData\Memnest\app",
   [switch]$RemoveData
 )
 
@@ -10,7 +10,7 @@ if (-not $isAdmin) {
   throw "uninstall-windows.ps1 must run from an elevated PowerShell prompt."
 }
 
-$winsw = "$InstallDir\palimpsest-service.exe"
+$winsw = "$InstallDir\memnest-service.exe"
 if (Test-Path $winsw) {
   Push-Location $InstallDir
   try {
@@ -24,7 +24,7 @@ if (Test-Path $winsw) {
 
 Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue
 if ($RemoveData) {
-  Remove-Item -Recurse -Force "$env:ProgramData\Palimpsest" -ErrorAction SilentlyContinue
+  Remove-Item -Recurse -Force "$env:ProgramData\Memnest" -ErrorAction SilentlyContinue
 }
 
-Write-Host "Palimpsest uninstalled."
+Write-Host "Memnest uninstalled."

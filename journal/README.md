@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="./docs/logo.png" alt="palimpsest-journal" width="160" />
+  <img src="./docs/logo.png" alt="memnest-journal" width="160" />
 </p>
 
-<h1 align="center">palimpsest-journal</h1>
+<h1 align="center">memnest-journal</h1>
 
 <p align="center">
   <strong>Your AI memory as a git-backed markdown repo you own, edit, diff, and revert.</strong>
@@ -11,22 +11,22 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/palimpsest-journal"><img src="https://img.shields.io/npm/v/palimpsest-journal.svg?style=flat&color=blue" alt="npm version" /></a>
-  <a href="https://www.npmjs.com/package/palimpsest-journal"><img src="https://img.shields.io/npm/dm/palimpsest-journal.svg?style=flat&color=blue" alt="downloads" /></a>
-  <a href="https://github.com/Blue-B/palimpsest/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/palimpsest-journal.svg?style=flat&color=green" alt="license" /></a>
-  <a href="https://github.com/Blue-B/palimpsest/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Blue-B/palimpsest/ci.yml?branch=main&style=flat&label=CI" alt="CI" /></a>
+  <a href="https://www.npmjs.com/package/memnest-journal"><img src="https://img.shields.io/npm/v/memnest-journal.svg?style=flat&color=blue" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/memnest-journal"><img src="https://img.shields.io/npm/dm/memnest-journal.svg?style=flat&color=blue" alt="downloads" /></a>
+  <a href="https://github.com/Blue-B/memnest/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/memnest-journal.svg?style=flat&color=green" alt="license" /></a>
+  <a href="https://github.com/Blue-B/memnest/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Blue-B/memnest/ci.yml?branch=main&style=flat&label=CI" alt="CI" /></a>
   <a href="https://github.com/sponsors/Blue-B"><img src="https://img.shields.io/badge/sponsor-❤-ea4aaa.svg?style=flat" alt="sponsor" /></a>
 </p>
 
 ---
 
-`palimpsest-journal` is the missing **human layer** on top of
-[palimpsest](https://github.com/Blue-B/palimpsest). It exports every
+`memnest-journal` is the missing **human layer** on top of
+[memnest](https://github.com/Blue-B/memnest). It exports every
 memory chunk, fact, note, session summary, and (encrypted) secret to a
 plain markdown tree under git — then lets you `diff`, `revert`, `push`,
 review, and edit them by hand like any other source file.
 
-It does not replace palimpsest, mem0, agentmemory, Letta, or Zep. It
+It does not replace memnest, mem0, agentmemory, Letta, or Zep. It
 turns the one you already have into something you can **trust and
 collaborate on**, because the memory finally lives where you already
 have tools: in git.
@@ -45,9 +45,9 @@ Every persistent-memory product today treats memory as a black box:
 - You **can't** ship the memory through your existing PR + audit
   pipeline.
 
-`palimpsest-journal` makes memory a first-class versioned artifact:
+`memnest-journal` makes memory a first-class versioned artifact:
 
-| Pain                                        | Black-box memory     | palimpsest-journal                |
+| Pain                                        | Black-box memory     | memnest-journal                |
 | ------------------------------------------- | -------------------- | --------------------------------- |
 | AI learned a wrong fact                     | Live with it / wipe  | `vim chunks/…` + `pjournal import` |
 | AI wrote a 1-million-token mess overnight   | Manual cleanup       | `git revert HEAD`                  |
@@ -62,11 +62,11 @@ Every persistent-memory product today treats memory as a black box:
 
 ```bash
 # zero native deps — works on Node 20+ and Bun
-npm install -g palimpsest-journal
+npm install -g memnest-journal
 ```
 
-Requires a running palimpsest server (default `http://127.0.0.1:3111`)
-and access to its sqlite store (default `~/.palimpsest/memory.db`).
+Requires a running memnest server (default `http://127.0.0.1:3111`)
+and access to its sqlite store (default `~/.memnest/memory.db`).
 
 ## Quick start
 
@@ -79,7 +79,7 @@ pjournal sync                               # incremental commit, no push
 
 # you spot a wrong memory
 vim ~/memory-journal/chunks/myproject/manual_abc.md
-pjournal import                             # push your edit back into palimpsest
+pjournal import                             # push your edit back into memnest
 
 # the AI overnight wrote 200 bad memories
 cd ~/memory-journal && git log --oneline -10
@@ -117,15 +117,15 @@ cooldown cache. Fix: `systemctl --user restart cliproxyapi`.
 ```
 
 Edit the body, run `pjournal import`, and the corrected memory becomes
-searchable in palimpsest — with a provenance marker
-(`<!-- palimpsest-journal: edited-from=<old_id> -->`) so reviewers can
+searchable in memnest — with a provenance marker
+(`<!-- memnest-journal: edited-from=<old_id> -->`) so reviewers can
 trace the lineage.
 
 ## Security model
 
 - **Secrets are never exported in plaintext.** Only the AES-256-GCM
   ciphertext blob and metadata leave the local store. The decryption
-  key (`~/.palimpsest/master.key`) lives outside the repo and is in the
+  key (`~/.memnest/master.key`) lives outside the repo and is in the
   default `.gitignore`.
 - **Sensitive chunks are skipped by default.** Pass
   `--include-sensitive` to opt in (e.g. for a private repo you'll push
@@ -142,14 +142,14 @@ trace the lineage.
 pjournal init   <dir>                    # initialize a journal repo
 pjournal export                          # DB -> markdown (idempotent)
 pjournal sync   [--push] [--message ...] # export then git add+commit (+push)
-pjournal import                          # apply your *.md edits back to palimpsest
+pjournal import                          # apply your *.md edits back to memnest
 pjournal log    [-n N]                   # show commit history
 pjournal status                          # show pending changes
 
 Common flags:
-  --dir <path>          journal dir (default: ~/.palimpsest/journal)
-  --db  <path>          palimpsest sqlite (default: ~/.palimpsest/memory.db)
-  --url <url>           palimpsest server (default: http://127.0.0.1:3111)
+  --dir <path>          journal dir (default: ~/.memnest/journal)
+  --db  <path>          memnest sqlite (default: ~/.memnest/memory.db)
+  --url <url>           memnest server (default: http://127.0.0.1:3111)
   --project <a,b,c>     limit to specific projects (export/sync)
   --since <iso>         only export chunks newer than this timestamp
   --include-sensitive   include chunks flagged sensitive=true
@@ -193,16 +193,16 @@ repo leaks, the master.key never does.
 This is intentionally **not** a memory system. It is a thin adapter on
 top of one. If you already use:
 
-- **palimpsest** — first-class support today.
+- **memnest** — first-class support today.
 - **mem0 / agentmemory / Letta / Zep** — pluggable in principle; only
-  palimpsest is implemented in 0.x. PRs welcome.
+  memnest is implemented in 0.x. PRs welcome.
 
 The whole codebase is ~870 lines (including the 94-line smoke harness).
 The value is the workflow, not the algorithm.
 
 ### Capability comparison
 
-|                                                | palimpsest-journal | mem0 export | agentmemory dump | Letta replay | Zep “documents” |
+|                                                | memnest-journal | mem0 export | agentmemory dump | Letta replay | Zep “documents” |
 |------------------------------------------------|:------------------:|:-----------:|:----------------:|:------------:|:---------------:|
 | Memory lives as plain `.md` files              |         ✅         |     ❌      |        ❌         |      ❌       |        ❌        |
 | `git diff` between two memory snapshots        |         ✅         |     ❌      |        ❌         |      ❌       |        ❌        |
@@ -216,7 +216,7 @@ The value is the workflow, not the algorithm.
 
 ## Contributing & support
 
-Issues and PRs welcome at [github.com/Blue-B/palimpsest](https://github.com/Blue-B/palimpsest/issues).
+Issues and PRs welcome at [github.com/Blue-B/memnest](https://github.com/Blue-B/memnest/issues).
 
 If you adopt this in a team and it removes a real audit gap, consider [sponsoring](https://github.com/sponsors/Blue-B) to fund maintenance and a hosted review UI (planned for 0.3.x).
 

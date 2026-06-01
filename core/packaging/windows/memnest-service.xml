@@ -1,8 +1,8 @@
 <service>
-  <id>palimpsest</id>
-  <name>Palimpsest Memory Server</name>
-  <description>Local Palimpsest memory server and dashboard.</description>
-  <executable>%BASE%\palimpsest.exe</executable>
+  <id>memnest</id>
+  <name>Memnest Memory Server</name>
+  <description>Local Memnest memory server and dashboard.</description>
+  <executable>%BASE%\memnest.exe</executable>
   <arguments>--host 127.0.0.1 --port 3111 --data-dir "%BASE%\..\data"</arguments>
   <workingdirectory>%BASE%</workingdirectory>
   <logpath>%BASE%\..\logs</logpath>

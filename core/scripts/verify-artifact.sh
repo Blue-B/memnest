@@ -8,7 +8,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/verify-artifact.sh path/to/archive path/to/archive.sha256
 
-Verifies a downloaded Palimpsest release archive against its SHA-256 file.
+Verifies a downloaded Memnest release archive against its SHA-256 file.
 EOF
 }
 

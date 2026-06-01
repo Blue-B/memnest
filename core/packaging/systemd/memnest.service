@@ -1,0 +1,20 @@
+[Unit]
+Description=Memnest memory server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=RUST_LOG=info
+Environment=MEMNEST_HOST=127.0.0.1
+Environment=MEMNEST_PORT=3111
+ExecStart=/usr/local/bin/memnest --host ${MEMNEST_HOST} --port ${MEMNEST_PORT} --data-dir /var/lib/memnest
+Restart=on-failure
+RestartSec=5
+StateDirectory=memnest
+WorkingDirectory=/usr/local/share/memnest
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

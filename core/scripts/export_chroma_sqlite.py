@@ -3,7 +3,7 @@
 
 This reads Chroma's sqlite metadata store directly. Vector payloads are not
 portable across all Chroma versions, so this exporter intentionally writes
-``embedding: null`` and lets Palimpsest re-embed during import.
+``embedding: null`` and lets Memnest re-embed during import.
 """
 
 import argparse

@@ -53,8 +53,8 @@ impl Embedder {
             model_name: model_name.to_string(),
             cache_dir: cache_dir.to_path_buf(),
             // Default: keep model resident in memory after first load.
-            // Set PALIMPSEST_EMBED_KEEP_LOADED=0 to opt out (e.g. for memory-constrained envs).
-            keep_loaded: env_flag("PALIMPSEST_EMBED_KEEP_LOADED", true),
+            // Set MEMNEST_EMBED_KEEP_LOADED=0 to opt out (e.g. for memory-constrained envs).
+            keep_loaded: env_flag("MEMNEST_EMBED_KEEP_LOADED", true),
             cache: Mutex::new(EmbedCache::default()),
         })
     }
@@ -154,7 +154,7 @@ fn init_model(model_name: &str, cache_dir: &Path) -> Result<TextEmbedding> {
     TextEmbedding::try_new(opts).context(
         "failed to initialize embedding model. \
          If this is the first run, an internet connection is required to download the model. \
-         If you are offline, run 'palimpsest' on a machine with internet first, then copy the model cache directory."
+         If you are offline, run 'memnest' on a machine with internet first, then copy the model cache directory."
     )
 }
 

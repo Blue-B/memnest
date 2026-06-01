@@ -1,4 +1,4 @@
-// Core export/import between palimpsest sqlite and a git-friendly
+// Core export/import between memnest sqlite and a git-friendly
 // markdown tree. Everything here is pure-ish (no shell, no network) so
 // the same logic is testable headlessly.
 
@@ -196,7 +196,7 @@ async function* walk(dir) {
   }
 }
 
-// ---- importer (markdown -> palimpsest HTTP API) ----
+// ---- importer (markdown -> memnest HTTP API) ----
 // We never write the sqlite directly. The HTTP server is the canonical
 // owner; this keeps invariants (FTS index, vector store) intact.
 
@@ -212,7 +212,7 @@ async function httpJSON(url, method, body) {
 }
 
 export async function importChangedFiles({ repoDir, baseURL = "http://127.0.0.1:3111", files }) {
-  // Apply user edits back into palimpsest. Strategy:
+  // Apply user edits back into memnest. Strategy:
   //   chunks/*: re-POST /add (server upserts on id collision? if not, we
   //             dedupe by hashing on the server side eventually; for now
   //             we add new rows and rely on user's intent — emit warning)
@@ -227,14 +227,14 @@ export async function importChangedFiles({ repoDir, baseURL = "http://127.0.0.1:
     const { data, body } = parseFrontmatter(text);
     try {
       if (f.startsWith("chunks/")) {
-        // palimpsest 0.1.x has no /update/:id and dedupes identical
+        // memnest 0.1.x has no /update/:id and dedupes identical
         // (project, text) pairs. To make user edits actually reach the
         // searchable store, we append a hidden provenance marker — this
         // makes the post unique even when the body is identical to a
         // previous chunk, and gives reviewers an audit trail.
         const project = data.project && !/^(root|default|global)$/.test(data.project)
           ? data.project : "playbook";
-        const marker = `\n\n<!-- palimpsest-journal: edited-from=${data.id ?? "unknown"} at=${new Date().toISOString()} -->`;
+        const marker = `\n\n<!-- memnest-journal: edited-from=${data.id ?? "unknown"} at=${new Date().toISOString()} -->`;
         await httpJSON(`${baseURL}/add`, "POST", {
           project,
           text: body.replace(/\n+$/, "") + marker,
@@ -242,12 +242,12 @@ export async function importChangedFiles({ repoDir, baseURL = "http://127.0.0.1:
             chunk_type: data.chunk_type ?? "manual",
             importance: data.importance ?? "knowledge",
             edited_from: data.id ?? null,
-            edited_via: "palimpsest-journal",
+            edited_via: "memnest-journal",
           },
         });
         stats.chunks_applied++;
       } else if (f.startsWith("notes/")) {
-        // Server lacks PUT /notes — stage for next palimpsest release.
+        // Server lacks PUT /notes — stage for next memnest release.
         stats.notes_pending++;
       } else if (f.startsWith("secrets/")) {
         stats.chunks_skipped++; // explicit no-op

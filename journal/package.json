@@ -1,10 +1,10 @@
 {
-  "name": "palimpsest-journal",
+  "name": "memnest-journal",
   "version": "0.1.0",
-  "description": "Your AI memory as a git-backed markdown repo you own and edit. Export, version, diff, revert, push, and review palimpsest memory chunks through familiar git workflows.",
+  "description": "Your AI memory as a git-backed markdown repo you own and edit. Export, version, diff, revert, push, and review memnest memory chunks through familiar git workflows.",
   "type": "module",
   "bin": {
-    "palimpsest-journal": "./bin/cli.mjs",
+    "memnest-journal": "./bin/cli.mjs",
     "pjournal": "./bin/cli.mjs"
   },
   "files": [
@@ -29,7 +29,7 @@
   },
   "license": "MIT",
   "keywords": [
-    "palimpsest",
+    "memnest",
     "memory",
     "ai",
     "git",
@@ -40,11 +40,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Blue-B/palimpsest.git"
+    "url": "git+https://github.com/Blue-B/memnest.git"
   },
   "author": "Blue-B",
   "bugs": {
-    "url": "https://github.com/Blue-B/palimpsest/issues"
+    "url": "https://github.com/Blue-B/memnest/issues"
   },
-  "homepage": "https://github.com/Blue-B/palimpsest#readme"
+  "homepage": "https://github.com/Blue-B/memnest#readme"
 }

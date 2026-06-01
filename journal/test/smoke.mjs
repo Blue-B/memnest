@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// End-to-end smoke: assumes a running palimpsest server at PALIMPSEST_URL
-// (defaults to 127.0.0.1:3111) and a populated sqlite at PALIMPSEST_DB.
+// End-to-end smoke: assumes a running memnest server at MEMNEST_URL
+// (defaults to 127.0.0.1:3111) and a populated sqlite at MEMNEST_DB.
 // Exits 0 if all assertions pass, non-zero otherwise.
 
 import { spawnSync } from "node:child_process";
@@ -10,8 +10,8 @@ import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 
 const CLI = join(import.meta.dirname, "..", "bin", "cli.mjs");
-const URL = process.env.PALIMPSEST_URL || "http://127.0.0.1:3111";
-const DB = process.env.PALIMPSEST_DB || join(homedir(), ".palimpsest", "memory.db");
+const URL = process.env.MEMNEST_URL || "http://127.0.0.1:3111";
+const DB = process.env.MEMNEST_DB || join(homedir(), ".memnest", "memory.db");
 const DIR = join(tmpdir(), `pj-smoke-${Date.now()}`);
 
 let ok = 0, fail = 0;
@@ -37,13 +37,13 @@ const chunkDirs = existsSync(join(DIR, "chunks")) ? readdirSync(join(DIR, "chunk
 assert("chunks/ subtree exists", chunkDirs.length > 0);
 
 // 3. add a fresh chunk via HTTP to ensure something new on next sync.
-//     palimpsest /add is queued — we poll /stats until total_chunks
+//     memnest /add is queued — we poll /stats until total_chunks
 //     increments before re-syncing.
-// Probe must be plain alphanumerics with no special chars — palimpsest's
+// Probe must be plain alphanumerics with no special chars — memnest's
 // BM25 tokenizer drops dash/uppercase tokens for some configurations.
-// Probe must be plain alphanumerics with no special chars — palimpsest's
+// Probe must be plain alphanumerics with no special chars — memnest's
 // BM25 tokenizer drops dash/uppercase tokens for some configurations.
-// We also use a fresh project per run because palimpsest can blacklist
+// We also use a fresh project per run because memnest can blacklist
 // a project's FTS partition once it has hit certain dedup heuristics.
 const probe = `smokeprobeword${randomBytes(8).toString("hex")}`;
 const project = `smokeproject${randomBytes(4).toString("hex")}`;
@@ -56,7 +56,7 @@ const addJson = await addR.json();
 assert("HTTP /add returns id", typeof addJson.id === "string", JSON.stringify(addJson));
 
 // Poll search by the unique probe token until the new chunk is findable.
-// palimpsest batches FTS commits; under load this can take 5–10s.
+// memnest batches FTS commits; under load this can take 5–10s.
 let committed = false;
 let lastResults = null;
 const deadline = Date.now() + 30000;
@@ -70,7 +70,7 @@ while (Date.now() < deadline && !committed) {
   lastResults = sr.results || [];
   committed = lastResults.some(x => x.id === addJson.id);
 }
-assert("palimpsest persisted the new chunk", committed, `probe=${probe} last=${JSON.stringify(lastResults?.map(x=>x.id)).slice(0,200)}`);
+assert("memnest persisted the new chunk", committed, `probe=${probe} last=${JSON.stringify(lastResults?.map(x=>x.id)).slice(0,200)}`);
 
 // 4. now sync — must surface the new chunk on disk
 cli("sync", "--message", "smoke: pick up new chunk");
@@ -100,7 +100,7 @@ if (existsSync(newPath)) {
     }).then(r => r.json());
     hit = (sj.results || []).some(x => x.document.includes(marker));
   }
-  assert("edited body shows up in palimpsest search", hit, JSON.stringify(sj?.results?.[0] || sj).slice(0, 200));
+  assert("edited body shows up in memnest search", hit, JSON.stringify(sj?.results?.[0] || sj).slice(0, 200));
 }
 
 // 6. secrets are exported as ciphertext only (never plaintext)
@@ -109,7 +109,7 @@ let secretSafe = true;
 if (existsSync(secretsDir)) {
   for (const f of readdirSync(secretsDir)) {
     const t = readFileSync(join(secretsDir, f), "utf8");
-    // ciphertext lines start with $enc$ in palimpsest's encoding
+    // ciphertext lines start with $enc$ in memnest's encoding
     if (!t.includes("$enc$") && !t.includes("encryption: aes-256-gcm")) {
       secretSafe = false;
       break;

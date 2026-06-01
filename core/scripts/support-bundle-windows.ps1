@@ -1,6 +1,6 @@
 param(
-  [string]$Out = "palimpsest-support-$(Get-Date -Format yyyyMMdd-HHmmss).txt",
-  [string]$ServiceName = "palimpsest",
+  [string]$Out = "memnest-support-$(Get-Date -Format yyyyMMdd-HHmmss).txt",
+  [string]$ServiceName = "memnest",
   [int]$Port = 3111
 )
 
@@ -27,7 +27,7 @@ function Add-Command {
   }
 }
 
-Set-Content -Path $Out -Value "## Palimpsest Support Bundle"
+Set-Content -Path $Out -Value "## Memnest Support Bundle"
 Add-Content -Path $Out -Value "created_at=$(Get-Date -Format o)"
 Add-Content -Path $Out -Value "health_url=http://127.0.0.1:$Port/health"
 
@@ -37,7 +37,7 @@ Add-Command "Get-Date" { Get-Date -Format o }
 Add-Command "Get-PSDrive" { Get-PSDrive -PSProvider FileSystem }
 
 Add-Section "Binary"
-Add-Command "palimpsest --version" { & "$env:ProgramData\Palimpsest\app\palimpsest.exe" --version }
+Add-Command "memnest --version" { & "$env:ProgramData\Memnest\app\memnest.exe" --version }
 
 Add-Section "Health"
 Add-Command "Invoke-WebRequest health" { Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:$Port/health" | Select-Object -ExpandProperty Content }
@@ -45,7 +45,7 @@ Add-Command "Invoke-WebRequest health" { Invoke-WebRequest -UseBasicParsing "htt
 Add-Section "Service"
 Add-Command "Get-Service" { Get-Service -Name $ServiceName }
 Add-Command "Recent service logs" {
-  Get-ChildItem "$env:ProgramData\Palimpsest\logs" -File -ErrorAction SilentlyContinue |
+  Get-ChildItem "$env:ProgramData\Memnest\logs" -File -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 5 |
     ForEach-Object {

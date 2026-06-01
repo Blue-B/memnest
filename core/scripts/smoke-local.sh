@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN="${BIN:-$ROOT/target/release/palimpsest}"
+BIN="${BIN:-$ROOT/target/release/memnest}"
 PORT="${PORT:-$((39000 + RANDOM % 2000))}"
 TMP_DIR="$(mktemp -d)"
 PID=""
@@ -42,7 +42,7 @@ printf 'backup-check' > "$TMP_DIR/data/sub/file.txt"
 cmp "$TMP_DIR/data/sub/file.txt" "$TMP_DIR/restore/sub/file.txt"
 
 if "$BIN" --host 0.0.0.0 --port 39999 --data-dir "$TMP_DIR/bind" >"$TMP_DIR/bind.out" 2>"$TMP_DIR/bind.err"; then
-  echo "remote bind without PALIMPSEST_TOKEN unexpectedly succeeded" >&2
+  echo "remote bind without MEMNEST_TOKEN unexpectedly succeeded" >&2
   exit 1
 fi
 grep -q "refusing to bind" "$TMP_DIR/bind.err"
@@ -62,7 +62,7 @@ grep -qi '^x-content-type-options: nosniff$' "$TMP_DIR/headers.normalized.txt"
 grep -qi '^content-security-policy:' "$TMP_DIR/headers.normalized.txt"
 grep -qi '^referrer-policy: no-referrer$' "$TMP_DIR/headers.normalized.txt"
 curl --max-time 5 -fsS "http://127.0.0.1:${PORT}/" -o "$TMP_DIR/dashboard.html"
-grep -q "Palimpsest" "$TMP_DIR/dashboard.html"
+grep -q "Memnest" "$TMP_DIR/dashboard.html"
 if grep -Eq 'cdn\.tailwindcss\.com|fonts\.googleapis\.com|fonts\.gstatic\.com' "$TMP_DIR/dashboard.html"; then
   echo "dashboard must not depend on external CDN assets" >&2
   exit 1

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Smoke test for pi-palimpsest dist/index.mjs.
+// Smoke test for pi-memnest dist/index.mjs.
 //
 // Verifies:
 //   1. ESM bundle loads without throwing.
 //   2. register() registers exactly the expected tool set.
 //   3. Each registered tool has a callable .execute function.
-//   4. memory_health round-trip succeeds against a running palimpsest server.
+//   4. memory_health round-trip succeeds against a running memnest server.
 //   5. memory_stats returns a JSON body with total_chunks.
 //
 // Run: node test/smoke.mjs    (or)    bun test/smoke.mjs
@@ -47,11 +47,16 @@ assert("register() called without throwing", true);
 
 const EXPECTED = [
   "memory_remember",
+  "memory_update",
   "memory_search",
+  "memory_context",
   "memory_stats",
   "memory_sessions",
   "memory_facts_list",
+  "note_set",
+  "note_get",
   "notes_list",
+  "note_delete",
   "secret_set",
   "secret_get",
   "secret_list",
@@ -68,7 +73,7 @@ for (const name of EXPECTED) {
 }
 
 // Live server round-trip (skipped gracefully if 3111 is down).
-const URL = process.env.PALIMPSEST_URL ?? "http://127.0.0.1:3111";
+const URL = process.env.MEMNEST_URL ?? "http://127.0.0.1:3111";
 let reachable = false;
 try {
   const r = await fetch(`${URL}/health`);
@@ -76,7 +81,7 @@ try {
 } catch {}
 
 if (!reachable) {
-  console.log(`\n(palimpsest server not reachable at ${URL} — skipping live calls)`);
+  console.log(`\n(memnest server not reachable at ${URL} — skipping live calls)`);
 } else {
   const health = tools.get("memory_health");
   const r1 = await health.execute("id", {}, undefined, noop, { cwd: process.cwd() });
@@ -92,6 +97,15 @@ if (!reachable) {
   const r3 = await cols.execute("id", {}, undefined, noop, { cwd: process.cwd() });
   const t3 = r3.content?.[0]?.text ?? "";
   assert("collections_list returns an array", t3.trim().startsWith("["), t3.slice(0, 200));
+
+  const ctx = tools.get("memory_context");
+  const r4 = await ctx.execute("id", { query: "memnest smoke", n_results: 1 }, undefined, noop, { cwd: process.cwd() });
+  const t4 = r4.content?.[0]?.text ?? "";
+  if (/memnest error 404/.test(t4)) {
+    console.log("  SKIP  memory_context live call (server does not expose /context yet)");
+  } else {
+    assert("memory_context returns a context pack", /prompt|memnest_context|memories/.test(t4), t4.slice(0, 200));
+  }
 }
 
 console.log(`\nsmoke: ${ok} passed, ${fail} failed`);

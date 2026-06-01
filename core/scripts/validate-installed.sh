@@ -2,17 +2,17 @@
 set -euo pipefail
 
 MODE="${MODE:-user}"
-HOST="${PALIMPSEST_HOST:-127.0.0.1}"
-PORT="${PALIMPSEST_PORT:-3111}"
-SERVICE="${SERVICE:-palimpsest.service}"
-DATA_DIR="${PALIMPSEST_DATA_DIR:-}"
+HOST="${MEMNEST_HOST:-127.0.0.1}"
+PORT="${MEMNEST_PORT:-3111}"
+SERVICE="${SERVICE:-memnest.service}"
+DATA_DIR="${MEMNEST_DATA_DIR:-}"
 BIN="${BIN:-}"
 
 usage() {
   cat <<'EOF'
 Usage: scripts/validate-installed.sh [--user|--system]
 
-Validates an already installed Linux Palimpsest service by checking service
+Validates an already installed Linux Memnest service by checking service
 state, health, doctor diagnostics, restart recovery, and health again.
 EOF
 }
@@ -44,8 +44,8 @@ if ! command -v curl >/dev/null 2>&1; then
 fi
 
 if [ "$MODE" = "system" ]; then
-  DATA_DIR="${DATA_DIR:-/var/lib/palimpsest}"
-  BIN="${BIN:-/usr/local/bin/palimpsest}"
+  DATA_DIR="${DATA_DIR:-/var/lib/memnest}"
+  BIN="${BIN:-/usr/local/bin/memnest}"
   systemctl is-enabled "$SERVICE"
   systemctl is-active "$SERVICE"
   wait_for_health
@@ -53,8 +53,8 @@ if [ "$MODE" = "system" ]; then
   sudo systemctl restart "$SERVICE"
   systemctl is-active "$SERVICE"
 else
-  DATA_DIR="${DATA_DIR:-$HOME/.palimpsest}"
-  BIN="${BIN:-$HOME/.local/bin/palimpsest}"
+  DATA_DIR="${DATA_DIR:-$HOME/.memnest}"
+  BIN="${BIN:-$HOME/.local/bin/memnest}"
   systemctl --user is-enabled "$SERVICE"
   systemctl --user is-active "$SERVICE"
   wait_for_health

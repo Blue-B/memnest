@@ -1,4 +1,4 @@
-# Updating Palimpsest
+# Updating Memnest
 
 The supported update channel is installer-managed upgrade: install the new release over the existing service. Data remains in the configured data directory.
 
@@ -7,8 +7,8 @@ The supported update channel is installer-managed upgrade: install the new relea
 Back up first:
 
 ```bash
-systemctl --user stop palimpsest.service
-palimpsest --data-dir ~/.palimpsest --backup-dir ~/palimpsest-backup
+systemctl --user stop memnest.service
+memnest --data-dir ~/.memnest --backup-dir ~/memnest-backup
 ```
 
 Install the new release:
@@ -21,7 +21,7 @@ Verify:
 
 ```bash
 curl -fsS http://127.0.0.1:3111/health
-systemctl --user status palimpsest.service --no-pager -l
+systemctl --user status memnest.service --no-pager -l
 ```
 
 ## WSL
@@ -29,7 +29,7 @@ systemctl --user status palimpsest.service --no-pager -l
 Run from Windows PowerShell:
 
 ```powershell
-.\scripts\install-wsl.ps1 -Distro Ubuntu-24.04 -RepoPath /home/<your-wsl-username>/palimpsest
+.\scripts\install-wsl.ps1 -Distro Ubuntu-24.04 -RepoPath /home/<your-wsl-username>/memnest
 ```
 
 ## Windows native
@@ -47,7 +47,7 @@ The installer stops and replaces the existing service wrapper, then starts the s
 Restore from backup:
 
 ```bash
-systemctl --user stop palimpsest.service
-palimpsest --data-dir ~/.palimpsest --restore-dir ~/palimpsest-backup --force
-systemctl --user start palimpsest.service
+systemctl --user stop memnest.service
+memnest --data-dir ~/.memnest --restore-dir ~/memnest-backup --force
+systemctl --user start memnest.service
 ```

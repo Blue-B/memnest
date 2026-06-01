@@ -6,20 +6,20 @@ import { existsSync } from "node:fs";
 import { exportAll, pruneRemovedFiles, importChangedFiles } from "../src/journal.mjs";
 import * as git from "../src/git.mjs";
 
-const HELP = `palimpsest-journal — your AI memory as a git-backed markdown repo
+const HELP = `memnest-journal — your AI memory as a git-backed markdown repo
 
 Usage:
   pjournal init   <dir>           # initialize a journal repo at <dir>
   pjournal export [opts]          # write DB -> markdown (incremental)
   pjournal sync   [opts]          # export, then git add+commit (+push if --push)
-  pjournal import [opts]          # apply user edits to *.md back into palimpsest
+  pjournal import [opts]          # apply user edits to *.md back into memnest
   pjournal log    [-n N]          # show commit history of the journal
   pjournal status                 # show pending changes
 
 Common options:
-  --dir <path>          Journal repo dir (default: ~/.palimpsest/journal)
-  --db  <path>          palimpsest sqlite path (default: ~/.palimpsest/memory.db)
-  --url <url>           palimpsest server URL (default: http://127.0.0.1:3111)
+  --dir <path>          Journal repo dir (default: ~/.memnest/journal)
+  --db  <path>          memnest sqlite path (default: ~/.memnest/memory.db)
+  --url <url>           memnest server URL (default: http://127.0.0.1:3111)
   --project <name,...>  Limit to specific projects (export only)
   --since <iso>         Only chunks newer than <iso> (export only)
   --include-sensitive   Include chunks flagged sensitive=true in export
@@ -47,21 +47,21 @@ function parseArgs(argv) {
 
 function cfg(args) {
   return {
-    dir: resolve(args.dir || join(homedir(), ".palimpsest", "journal")),
-    db:  args.db  || join(homedir(), ".palimpsest", "memory.db"),
+    dir: resolve(args.dir || join(homedir(), ".memnest", "journal")),
+    db:  args.db  || join(homedir(), ".memnest", "memory.db"),
     url: args.url || "http://127.0.0.1:3111",
   };
 }
 
 async function cmdInit(args) {
-  const dir = resolve(args._[0] || args.dir || join(homedir(), ".palimpsest", "journal"));
+  const dir = resolve(args._[0] || args.dir || join(homedir(), ".memnest", "journal"));
   await mkdir(dir, { recursive: true });
   if (!git.isRepo(dir)) git.init(dir);
   // README + .gitignore (master.key must never be committed)
-  const readme = `# palimpsest-journal\n\nThis repo is the human-readable, version-controlled view of your\npalimpsest AI memory. The canonical store is sqlite at \`~/.palimpsest/\`;\nthis tree is generated from it and can be edited then synced back.\n\n- \`chunks/\` — memory chunks grouped by project\n- \`facts/\`  — structured (subject, predicate, object) facts\n- \`notes/\`  — key-value notes\n- \`secrets/\` — encrypted blobs only (AES-256-GCM); plaintext stays in the local store\n- \`sessions/\` — session summaries\n\nWorkflow:\n\n  pjournal sync           # export DB -> commit\n  vim chunks/root/foo.md  # edit a memory by hand\n  pjournal import         # apply edits back to palimpsest\n  pjournal sync --push    # publish to your remote\n`;
+  const readme = `# memnest-journal\n\nThis repo is the human-readable, version-controlled view of your\nmemnest AI memory. The canonical store is sqlite at \`~/.memnest/\`;\nthis tree is generated from it and can be edited then synced back.\n\n- \`chunks/\` — memory chunks grouped by project\n- \`facts/\`  — structured (subject, predicate, object) facts\n- \`notes/\`  — key-value notes\n- \`secrets/\` — encrypted blobs only (AES-256-GCM); plaintext stays in the local store\n- \`sessions/\` — session summaries\n\nWorkflow:\n\n  pjournal sync           # export DB -> commit\n  vim chunks/root/foo.md  # edit a memory by hand\n  pjournal import         # apply edits back to memnest\n  pjournal sync --push    # publish to your remote\n`;
   await writeFile(join(dir, "README.md"), readme);
   await writeFile(join(dir, ".gitignore"), [
-    "# never commit these — they belong only in the local palimpsest store",
+    "# never commit these — they belong only in the local memnest store",
     "master.key",
     "memory.db",
     "memory.db-shm",

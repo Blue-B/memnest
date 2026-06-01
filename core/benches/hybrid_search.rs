@@ -1,5 +1,5 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use palimpsest::index::{TextIndex, VectorIndex};
+use memnest::index::{TextIndex, VectorIndex};
 use rand::Rng;
 use tempfile::TempDir;
 

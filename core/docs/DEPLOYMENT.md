@@ -1,4 +1,4 @@
-# Palimpsest deployment
+# Memnest deployment
 
 This document defines the supported local-product deployment targets.
 
@@ -6,18 +6,18 @@ This document defines the supported local-product deployment targets.
 
 - Linux native: systemd user service for developer machines, system service for servers.
 - WSL: systemd user service inside the distro plus a Windows Scheduled Task that wakes WSL at logon.
-- Windows native: `palimpsest.exe` wrapped by WinSW and installed as an automatic Windows service.
+- Windows native: `memnest.exe` wrapped by WinSW and installed as an automatic Windows service.
 
 All packaged service installers bind to `127.0.0.1:3111` by default and intentionally support only local binds. Do not expose the server on a public interface without adding authentication in front of it.
 
 The runtime data directory is explicit in every supported service installer:
 
-- Linux user service: `~/.palimpsest`
-- Linux system service: `/var/lib/palimpsest`
+- Linux user service: `~/.memnest`
+- Linux system service: `/var/lib/memnest`
 - WSL installer: the Linux user service path inside the selected distro
-- Windows native service: `%ProgramData%\Palimpsest\data`
+- Windows native service: `%ProgramData%\Memnest\data`
 
-For manual runs, pass `--data-dir` or set `PALIMPSEST_DATA_DIR` to avoid mixing development and production memory stores.
+For manual runs, pass `--data-dir` or set `MEMNEST_DATA_DIR` to avoid mixing development and production memory stores.
 
 ## Linux native
 
@@ -25,28 +25,28 @@ Build and install for the current user:
 
 ```bash
 cargo build --release
-scripts/preflight-linux.sh --user --bin target/release/palimpsest
-scripts/install-linux.sh --user --bin target/release/palimpsest
+scripts/preflight-linux.sh --user --bin target/release/memnest
+scripts/install-linux.sh --user --bin target/release/memnest
 ```
 
 Install as a system service:
 
 ```bash
 cargo build --release
-scripts/install-linux.sh --system --bin target/release/palimpsest
+scripts/install-linux.sh --system --bin target/release/memnest
 ```
 
 Verify:
 
 ```bash
 curl -fsS http://127.0.0.1:3111/health
-systemctl --user status palimpsest.service
+systemctl --user status memnest.service
 scripts/validate-installed.sh --user
-~/.local/bin/palimpsest --data-dir ~/.palimpsest --warmup-embedding
+~/.local/bin/memnest --data-dir ~/.memnest --warmup-embedding
 ```
 
-For system mode, use `systemctl status palimpsest.service` and `scripts/validate-installed.sh --system`.
-Run `/usr/local/bin/palimpsest --data-dir /var/lib/palimpsest --warmup-embedding` once on an online system if the machine must work offline later.
+For system mode, use `systemctl status memnest.service` and `scripts/validate-installed.sh --system`.
+Run `/usr/local/bin/memnest --data-dir /var/lib/memnest --warmup-embedding` once on an online system if the machine must work offline later.
 
 Uninstall:
 
@@ -60,7 +60,7 @@ scripts/uninstall-linux.sh --system
 Run from Windows PowerShell:
 
 ```powershell
-.\scripts\install-wsl.ps1 -Distro Ubuntu-24.04 -RepoPath /home/<your-wsl-username>/palimpsest
+.\scripts\install-wsl.ps1 -Distro Ubuntu-24.04 -RepoPath /home/<your-wsl-username>/memnest
 ```
 
 This installs the service inside WSL and registers a Windows logon task that starts it again after reboot.
@@ -68,7 +68,7 @@ This installs the service inside WSL and registers a Windows logon task that sta
 For a product install from a Linux release archive, run the Linux installer inside WSL first:
 
 ```bash
-scripts/install-linux.sh --user --bin ./palimpsest
+scripts/install-linux.sh --user --bin ./memnest
 ```
 
 Then register only the Windows wake task from PowerShell:
@@ -80,16 +80,16 @@ Then register only the Windows wake task from PowerShell:
 Verify:
 
 ```powershell
-wsl -d Ubuntu-24.04 -- systemctl --user status palimpsest.service
+wsl -d Ubuntu-24.04 -- systemctl --user status memnest.service
 Invoke-WebRequest http://127.0.0.1:3111/health
-wsl -d Ubuntu-24.04 -- bash -lc "cd /home/<your-wsl-username>/palimpsest && scripts/validate-installed.sh --user"
-wsl -d Ubuntu-24.04 -- bash -lc "$HOME/.local/bin/palimpsest --data-dir $HOME/.palimpsest --warmup-embedding"
+wsl -d Ubuntu-24.04 -- bash -lc "cd /home/<your-wsl-username>/memnest && scripts/validate-installed.sh --user"
+wsl -d Ubuntu-24.04 -- bash -lc "$HOME/.local/bin/memnest --data-dir $HOME/.memnest --warmup-embedding"
 ```
 
 Uninstall:
 
 ```powershell
-.\scripts\uninstall-wsl.ps1 -Distro Ubuntu-24.04 -RepoPath /home/<your-wsl-username>/palimpsest
+.\scripts\uninstall-wsl.ps1 -Distro Ubuntu-24.04 -RepoPath /home/<your-wsl-username>/memnest
 ```
 
 ## Windows native
@@ -101,10 +101,10 @@ Run from an elevated PowerShell prompt. The installer, validator, and uninstalle
 .\scripts\install-windows.ps1
 ```
 
-This accepts a release archive with `palimpsest.exe` in the current directory. From a source checkout it builds `target\release\palimpsest.exe` when needed. To use a custom binary:
+This accepts a release archive with `memnest.exe` in the current directory. From a source checkout it builds `target\release\memnest.exe` when needed. To use a custom binary:
 
 ```powershell
-.\scripts\install-windows.ps1 -BinPath C:\path\to\palimpsest.exe
+.\scripts\install-windows.ps1 -BinPath C:\path\to\memnest.exe
 ```
 
 The release archive includes `WinSW-x64.exe` and `WinSW-x64.exe.sha256`; the installer uses them automatically when present. For controlled enterprise installs, provide a different pre-approved WinSW wrapper and expected hash:
@@ -113,7 +113,7 @@ The release archive includes `WinSW-x64.exe` and `WinSW-x64.exe.sha256`; the ins
 .\scripts\install-windows.ps1 -WinSWPath C:\path\WinSW-x64.exe -WinSWSha256 "<sha256>"
 ```
 
-The installer copies `palimpsest.exe` under `%ProgramData%\Palimpsest\app` and registers it as an automatic service through WinSW.
+The installer copies `memnest.exe` under `%ProgramData%\Memnest\app` and registers it as an automatic service through WinSW.
 
 To use another local port:
 
@@ -124,10 +124,10 @@ To use another local port:
 Verify:
 
 ```powershell
-Get-Service palimpsest
+Get-Service memnest
 Invoke-WebRequest http://127.0.0.1:3111/health
 .\scripts\validate-installed-windows.ps1
-& "$env:ProgramData\Palimpsest\app\palimpsest.exe" --data-dir "$env:ProgramData\Palimpsest\data" --warmup-embedding
+& "$env:ProgramData\Memnest\app\memnest.exe" --data-dir "$env:ProgramData\Memnest\data" --warmup-embedding
 ```
 
 Uninstall:
@@ -140,7 +140,7 @@ Uninstall:
 
 Release archives should include:
 
-- `palimpsest` or `palimpsest.exe`
+- `memnest` or `memnest.exe`
 - `scripts/`
 - `packaging/`
 - `docs/DEPLOYMENT.md`
@@ -175,24 +175,24 @@ The `CI` workflow runs these checks on pull requests and pushes to the default b
 Stop the service before taking an offline backup:
 
 ```bash
-systemctl --user stop palimpsest.service
-palimpsest --data-dir ~/.palimpsest --backup-dir ~/palimpsest-backup
-systemctl --user start palimpsest.service
+systemctl --user stop memnest.service
+memnest --data-dir ~/.memnest --backup-dir ~/memnest-backup
+systemctl --user start memnest.service
 ```
 
 Restore into the configured data directory:
 
 ```bash
-palimpsest --data-dir ~/.palimpsest --restore-dir ~/palimpsest-backup --force
+memnest --data-dir ~/.memnest --restore-dir ~/memnest-backup --force
 ```
 
-On Windows, use the same CLI flags with the installed `palimpsest.exe` and stop the Windows service first.
+On Windows, use the same CLI flags with the installed `memnest.exe` and stop the Windows service first.
 
 ## Remote access
 
-The packaged service installers are local-only. For remote access, run the binary manually or provide a reviewed custom service definition. If you bind to anything other than localhost, set `PALIMPSEST_TOKEN`; otherwise Palimpsest refuses to start.
+The packaged service installers are local-only. For remote access, run the binary manually or provide a reviewed custom service definition. If you bind to anything other than localhost, set `MEMNEST_TOKEN`; otherwise Memnest refuses to start.
 
 ```bash
-PALIMPSEST_TOKEN='replace-with-a-secret' palimpsest --host 0.0.0.0
+MEMNEST_TOKEN='replace-with-a-secret' memnest --host 0.0.0.0
 curl -H "Authorization: Bearer replace-with-a-secret" http://127.0.0.1:3111/health
 ```

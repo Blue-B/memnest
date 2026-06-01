@@ -1,6 +1,6 @@
 # Product readiness
 
-Palimpsest is not considered sellable until every required gate below has evidence.
+Memnest is not considered sellable until every required gate below has evidence.
 
 ## Completed in repo
 
@@ -8,7 +8,7 @@ Palimpsest is not considered sellable until every required gate below has eviden
 - Linux systemd user service template.
 - Linux systemd system service template.
 - WSL installer that installs inside WSL and registers a Windows logon task.
-- Windows native installer that wraps `palimpsest.exe` with WinSW.
+- Windows native installer that wraps `memnest.exe` with WinSW.
 - Windows release archives include the WinSW wrapper and checksum; the installer also supports a pre-approved wrapper override.
 - Linux, WSL, and Windows uninstall scripts.
 - Linux and Windows preflight scripts catch install blockers before changing service state.
@@ -25,11 +25,11 @@ Palimpsest is not considered sellable until every required gate below has eviden
 - Text index readers are loaded lazily so dashboard startup does not immediately pay search-index memory cost.
 - Service shutdown handles SIGTERM on Unix and saves the vector index before exit.
 - CLI supports offline backup and restore through `--backup-dir` and `--restore-dir`.
-- Non-localhost server binds are refused unless `PALIMPSEST_TOKEN` is configured.
+- Non-localhost server binds are refused unless `MEMNEST_TOKEN` is configured.
 - Dashboard/API responses include baseline browser security headers, verified in smoke tests.
-- Runtime data directory can be set with `PALIMPSEST_DATA_DIR` or `--data-dir`.
-- `palimpsest --warmup-embedding` verifies and warms the local embedding model cache before offline use.
-- `palimpsest --doctor` warns when the embedding model cache has not been warmed yet.
+- Runtime data directory can be set with `MEMNEST_DATA_DIR` or `--data-dir`.
+- `memnest --warmup-embedding` verifies and warms the local embedding model cache before offline use.
+- `memnest --doctor` warns when the embedding model cache has not been warmed yet.
 - Update channel is documented as installer-managed upgrade.
 - Release signoff checklist defines clean-machine Linux, WSL, Windows, reboot, uninstall, and signing gates.
 - Product audit maps requirements to concrete repository evidence and lists external gates.
@@ -59,7 +59,7 @@ Palimpsest is not considered sellable until every required gate below has eviden
 
 - Linux native uses systemd. If the distribution does not run systemd, the binary can run manually but the packaged service installer is not a supported path.
 - WSL uses the Linux service inside the distro and a Windows Scheduled Task only to wake the distro at Windows logon. If Windows sleeps or shuts WSL down, the service restarts when the task or any WSL session wakes the distro.
-- Windows native uses the Windows service manager through WinSW, stores service data under `%ProgramData%\Palimpsest`, and does not require WSL.
+- Windows native uses the Windows service manager through WinSW, stores service data under `%ProgramData%\Memnest`, and does not require WSL.
 - macOS is not a paid supported target until a launchd installer, signing, notarization, and clean-machine validation are added.
 
 ## Release gate commands
@@ -90,6 +90,6 @@ foreach ($file in $files) {
 
 - Dashboard: `http://127.0.0.1:3111/`
 - Health: `http://127.0.0.1:3111/health`
-- Linux user logs: `journalctl --user -u palimpsest.service`
-- Linux system logs: `journalctl -u palimpsest.service`
-- Windows logs: `%ProgramData%\Palimpsest\logs`
+- Linux user logs: `journalctl --user -u memnest.service`
+- Linux system logs: `journalctl -u memnest.service`
+- Windows logs: `%ProgramData%\Memnest\logs`

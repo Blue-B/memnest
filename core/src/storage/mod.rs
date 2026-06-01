@@ -24,11 +24,7 @@ const DEFAULT_COLLECTION_META: &[(&str, &str, &str)] = &[
         "project",
         "프로젝트 cwd를 판별할 수 없을 때 쓰이는 루트 버킷. 도구 호출 로그가 이곳으로 온다.",
     ),
-    (
-        "default",
-        "project",
-        "cwd 메타가 아예 없을 때의 폴백.",
-    ),
+    ("default", "project", "cwd 메타가 아예 없을 때의 폴백."),
     (
         "global",
         "project",
@@ -296,7 +292,8 @@ impl Database {
                 |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
             )
             .ok();
-        let (cur_kind, cur_desc) = existing.unwrap_or_else(|| ("project".to_string(), String::new()));
+        let (cur_kind, cur_desc) =
+            existing.unwrap_or_else(|| ("project".to_string(), String::new()));
         let new_kind = kind.map(|k| k.to_string()).unwrap_or(cur_kind);
         let new_desc = description.map(|d| d.to_string()).unwrap_or(cur_desc);
         conn.execute(
@@ -442,10 +439,7 @@ impl Database {
             !from_session_id.is_empty(),
             "from_session_id must not be empty"
         );
-        anyhow::ensure!(
-            !to_session_id.is_empty(),
-            "to_session_id must not be empty"
-        );
+        anyhow::ensure!(!to_session_id.is_empty(), "to_session_id must not be empty");
         anyhow::ensure!(
             from_session_id != to_session_id,
             "from_session_id and to_session_id must differ"
@@ -793,6 +787,12 @@ impl Database {
         Ok(result)
     }
 
+    pub fn delete_note(&self, key: &str) -> Result<bool> {
+        let conn = self.pool.get()?;
+        let affected = conn.execute("DELETE FROM notes WHERE key = ?1", params![key])?;
+        Ok(affected > 0)
+    }
+
     pub fn note_count(&self) -> Result<usize> {
         let conn = self.pool.get()?;
         let count: i64 = conn.query_row("SELECT COUNT(*) FROM notes", [], |row| row.get(0))?;
@@ -911,7 +911,7 @@ impl Database {
 }
 
 fn encode_embedding(vector: &[f32]) -> Vec<u8> {
-    if std::env::var("PALIMPSEST_EMBED_STORAGE").as_deref() == Ok("f32") {
+    if std::env::var("MEMNEST_EMBED_STORAGE").as_deref() == Ok("f32") {
         let mut bytes = Vec::with_capacity(vector.len() * 4);
         for value in vector {
             bytes.extend_from_slice(&value.to_le_bytes());
@@ -1061,7 +1061,12 @@ mod tests {
         db.insert_chunk(&c3).unwrap();
 
         let moved = db
-            .reparent_session("sess_A", "sess_NEW", "new-proj", "/mnt/c/Users/root/new-proj")
+            .reparent_session(
+                "sess_A",
+                "sess_NEW",
+                "new-proj",
+                "/mnt/c/Users/root/new-proj",
+            )
             .expect("reparent");
         assert_eq!(moved.len(), 2);
         for chunk in &moved {

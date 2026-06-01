@@ -64,6 +64,86 @@ pub struct DeleteRequest {
 }
 
 #[derive(Deserialize)]
+pub struct UpdateRequest {
+    id: String,
+    #[serde(default)]
+    text: Option<String>,
+    #[serde(default)]
+    project: Option<String>,
+    #[serde(default)]
+    metadata: Option<MetadataPatch>,
+    #[serde(default)]
+    chunk_type: Option<ChunkType>,
+    #[serde(default)]
+    importance: Option<Importance>,
+}
+
+#[derive(Deserialize)]
+pub struct MetadataPatch {
+    #[serde(default)]
+    chunk_type: Option<ChunkType>,
+    #[serde(default)]
+    importance: Option<Importance>,
+    #[serde(default)]
+    session_id: Option<String>,
+    #[serde(default)]
+    cwd: Option<String>,
+    #[serde(default)]
+    parent_session_id: Option<String>,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    role: Option<String>,
+    #[serde(default)]
+    tool: Option<String>,
+    #[serde(default)]
+    event_id: Option<String>,
+    #[serde(default)]
+    sequence: Option<i64>,
+    #[serde(default)]
+    total: Option<i64>,
+    #[serde(default)]
+    truncated: Option<bool>,
+    #[serde(default)]
+    raw_chunk: Option<String>,
+    #[serde(default)]
+    access_count: Option<i64>,
+    #[serde(default)]
+    keywords: Option<Vec<String>>,
+    #[serde(default)]
+    sensitive: Option<bool>,
+}
+
+#[derive(Deserialize)]
+pub struct ContextRequest {
+    query: String,
+    #[serde(default = "default_project")]
+    project: String,
+    #[serde(default = "default_context_results")]
+    n_results: usize,
+    #[serde(default = "default_context_notes")]
+    max_notes: usize,
+    #[serde(default = "default_context_facts")]
+    max_facts: usize,
+}
+
+fn default_context_results() -> usize {
+    6
+}
+fn default_context_notes() -> usize {
+    12
+}
+fn default_context_facts() -> usize {
+    8
+}
+
+#[derive(Deserialize)]
+pub struct NoteSetRequest {
+    key: String,
+    value: String,
+}
+
+#[derive(Deserialize)]
 pub struct PruneRequest {
     #[serde(default)]
     project: String,
@@ -183,6 +263,16 @@ pub struct CompactResponse {
     matched: usize,
     updated: usize,
     vacuumed: bool,
+}
+
+#[derive(Serialize)]
+pub struct ContextResponse {
+    query: String,
+    project: String,
+    notes: Vec<Note>,
+    facts: Vec<Fact>,
+    memories: Vec<SearchResultItem>,
+    prompt: String,
 }
 
 #[derive(Serialize)]
@@ -504,6 +594,276 @@ pub async fn delete(
     Json(result)
 }
 
+pub async fn update(
+    State(system): State<Arc<RwLock<MemorySystem>>>,
+    Json(req): Json<UpdateRequest>,
+) -> Json<HashMap<String, serde_json::Value>> {
+    let mut out = HashMap::new();
+    let id = req.id.trim();
+    if id.is_empty() {
+        out.insert("status".to_string(), serde_json::json!("error"));
+        out.insert("message".to_string(), serde_json::json!("id is required"));
+        return Json(out);
+    }
+
+    let sys = system.read().await;
+    let mut chunk = {
+        let db = sys.db.read().await;
+        match db.get_chunk(id) {
+            Ok(Some(chunk)) => chunk,
+            Ok(None) => {
+                out.insert("status".to_string(), serde_json::json!("not_found"));
+                out.insert("id".to_string(), serde_json::json!(id));
+                return Json(out);
+            }
+            Err(e) => {
+                out.insert("status".to_string(), serde_json::json!("error"));
+                out.insert("message".to_string(), serde_json::json!(e.to_string()));
+                return Json(out);
+            }
+        }
+    };
+
+    let original_document = chunk.document.clone();
+    let mut text_changed = false;
+    if let Some(text) = req.text {
+        if text.trim().is_empty() {
+            out.insert("status".to_string(), serde_json::json!("error"));
+            out.insert(
+                "message".to_string(),
+                serde_json::json!("text must not be empty"),
+            );
+            return Json(out);
+        }
+        let redacted = redact_text(&text);
+        text_changed = redacted != original_document;
+        chunk.document = redacted;
+    }
+    if let Some(project) = req.project {
+        let project = project.trim();
+        if !project.is_empty() {
+            chunk.project = project.to_string();
+        }
+    }
+    if let Some(metadata) = req.metadata {
+        apply_metadata_patch(&mut chunk.metadata, metadata);
+    }
+    if let Some(chunk_type) = req.chunk_type {
+        chunk.metadata.chunk_type = chunk_type;
+    }
+    if let Some(importance) = req.importance {
+        chunk.metadata.importance = importance;
+    }
+
+    let mut embedding_changed = false;
+    if text_changed || chunk.embedding.is_none() {
+        let embedder = sys.embedder.clone();
+        let embed_text = chunk.document.clone();
+        match tokio::task::spawn_blocking(move || embedder.encode_document(&embed_text)).await {
+            Ok(Ok(embedding)) => {
+                chunk.embedding = Some(embedding);
+                embedding_changed = true;
+            }
+            Ok(Err(e)) => {
+                out.insert("status".to_string(), serde_json::json!("error"));
+                out.insert("message".to_string(), serde_json::json!(e.to_string()));
+                return Json(out);
+            }
+            Err(e) => {
+                out.insert("status".to_string(), serde_json::json!("error"));
+                out.insert(
+                    "message".to_string(),
+                    serde_json::json!(format!("embed join: {e}")),
+                );
+                return Json(out);
+            }
+        }
+    }
+
+    chunk.updated_at = chrono::Utc::now();
+    match sys.db.write().await.insert_chunk(&chunk) {
+        Ok(()) => {}
+        Err(e) => {
+            out.insert("status".to_string(), serde_json::json!("error"));
+            out.insert("message".to_string(), serde_json::json!(e.to_string()));
+            return Json(out);
+        }
+    }
+
+    if let Err(e) = sys
+        .add_text_doc(&chunk.id, &chunk.project, &chunk.document)
+        .await
+    {
+        out.insert("status".to_string(), serde_json::json!("error"));
+        out.insert("message".to_string(), serde_json::json!(e.to_string()));
+        return Json(out);
+    }
+    if embedding_changed {
+        if let Some(embedding) = &chunk.embedding {
+            let mut vector_index = sys.vector_index.write().await;
+            if let Err(e) = vector_index
+                .add(&chunk.id, embedding)
+                .and_then(|_| vector_index.save())
+            {
+                out.insert("status".to_string(), serde_json::json!("error"));
+                out.insert("message".to_string(), serde_json::json!(e.to_string()));
+                return Json(out);
+            }
+        }
+    }
+
+    out.insert("status".to_string(), serde_json::json!("ok"));
+    out.insert("id".to_string(), serde_json::json!(chunk.id));
+    out.insert("project".to_string(), serde_json::json!(chunk.project));
+    out.insert(
+        "updated_at".to_string(),
+        serde_json::json!(chunk.updated_at.to_rfc3339()),
+    );
+    out.insert("text_changed".to_string(), serde_json::json!(text_changed));
+    Json(out)
+}
+
+fn apply_metadata_patch(target: &mut Metadata, patch: MetadataPatch) {
+    if let Some(value) = patch.chunk_type {
+        target.chunk_type = value;
+    }
+    if let Some(value) = patch.importance {
+        target.importance = value;
+    }
+    if let Some(value) = patch.session_id {
+        target.session_id = value;
+    }
+    if let Some(value) = patch.cwd {
+        target.cwd = Some(value);
+    }
+    if let Some(value) = patch.parent_session_id {
+        target.parent_session_id = Some(value);
+    }
+    if let Some(value) = patch.source {
+        target.source = Some(value);
+    }
+    if let Some(value) = patch.role {
+        target.role = Some(value);
+    }
+    if let Some(value) = patch.tool {
+        target.tool = Some(value);
+    }
+    if let Some(value) = patch.event_id {
+        target.event_id = Some(value);
+    }
+    if let Some(value) = patch.sequence {
+        target.sequence = Some(value);
+    }
+    if let Some(value) = patch.total {
+        target.total = Some(value);
+    }
+    if let Some(value) = patch.truncated {
+        target.truncated = value;
+    }
+    if let Some(value) = patch.raw_chunk {
+        target.raw_chunk = Some(value);
+    }
+    if let Some(value) = patch.access_count {
+        target.access_count = value;
+    }
+    if let Some(value) = patch.keywords {
+        target.keywords = value;
+    }
+    if let Some(value) = patch.sensitive {
+        target.sensitive = value;
+    }
+}
+
+pub async fn context_pack(
+    State(system): State<Arc<RwLock<MemorySystem>>>,
+    Json(req): Json<ContextRequest>,
+) -> Json<ContextResponse> {
+    let query = req.query.trim().to_string();
+    let project = if req.project.trim().is_empty() {
+        "all".to_string()
+    } else {
+        req.project.trim().to_string()
+    };
+    let memories = if query.is_empty() {
+        Vec::new()
+    } else {
+        run_hybrid_search(
+            system.clone(),
+            &query,
+            &project,
+            req.n_results.clamp(1, 20),
+            false,
+            true,
+        )
+        .await
+    };
+
+    let sys = system.read().await;
+    let db = sys.db.read().await;
+    let mut notes = db.get_notes().unwrap_or_default();
+    notes.sort_by(|a, b| b.updated.cmp(&a.updated));
+    notes.truncate(req.max_notes.clamp(0, 50));
+
+    let query_lower = query.to_lowercase();
+    let mut facts = db.get_facts(1000).unwrap_or_default();
+    if !query_lower.is_empty() {
+        facts.retain(|fact| {
+            format!("{} {} {}", fact.subject, fact.predicate, fact.object)
+                .to_lowercase()
+                .contains(&query_lower)
+        });
+    }
+    facts.truncate(req.max_facts.clamp(0, 50));
+    drop(db);
+    drop(sys);
+
+    let prompt = render_context_prompt(&notes, &facts, &memories);
+    Json(ContextResponse {
+        query,
+        project,
+        notes,
+        facts,
+        memories,
+        prompt,
+    })
+}
+
+fn render_context_prompt(notes: &[Note], facts: &[Fact], memories: &[SearchResultItem]) -> String {
+    let mut lines = vec!["<memnest_context>".to_string()];
+    if !notes.is_empty() {
+        lines.push("core_notes:".to_string());
+        for note in notes {
+            lines.push(format!("- {}: {}", note.key, redact_text(&note.value)));
+        }
+    }
+    if !facts.is_empty() {
+        lines.push("facts:".to_string());
+        for fact in facts {
+            lines.push(format!(
+                "- {} {} {}",
+                fact.subject, fact.predicate, fact.object
+            ));
+        }
+    }
+    if !memories.is_empty() {
+        lines.push("retrieved_memories:".to_string());
+        for item in memories {
+            lines.push(format!(
+                "- [{}:{} score={:.3}] {}",
+                item.project,
+                item.id,
+                item.score,
+                item.document.replace('\n', " ")
+            ));
+        }
+    }
+    if notes.is_empty() && facts.is_empty() && memories.is_empty() {
+        lines.push("(no relevant context)".to_string());
+    }
+    lines.push("</memnest_context>".to_string());
+    lines.join("\n")
+}
+
 pub async fn prune(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<PruneRequest>,
@@ -662,9 +1022,7 @@ pub async fn fork_session(
             moved: 0,
             to_project: String::new(),
             ids: Vec::new(),
-            message: Some(
-                "from_session_id, to_session_id, and to_cwd are required".into(),
-            ),
+            message: Some("from_session_id, to_session_id, and to_cwd are required".into()),
         });
     }
     if from == to {
@@ -1114,6 +1472,89 @@ pub async fn list_notes(State(system): State<Arc<RwLock<MemorySystem>>>) -> Json
     Json(notes)
 }
 
+pub async fn get_note(
+    State(system): State<Arc<RwLock<MemorySystem>>>,
+    Path(key): Path<String>,
+) -> Json<HashMap<String, serde_json::Value>> {
+    let mut out = HashMap::new();
+    let sys = system.read().await;
+    let db = sys.db.read().await;
+    match db.get_note(&key) {
+        Ok(Some(note)) => {
+            out.insert("status".into(), serde_json::json!("ok"));
+            out.insert("note".into(), serde_json::json!(note));
+        }
+        Ok(None) => {
+            out.insert("status".into(), serde_json::json!("not_found"));
+            out.insert("key".into(), serde_json::json!(key));
+        }
+        Err(e) => {
+            out.insert("status".into(), serde_json::json!("error"));
+            out.insert("message".into(), serde_json::json!(e.to_string()));
+        }
+    }
+    Json(out)
+}
+
+pub async fn set_note(
+    State(system): State<Arc<RwLock<MemorySystem>>>,
+    Json(req): Json<NoteSetRequest>,
+) -> Json<HashMap<String, serde_json::Value>> {
+    let mut out = HashMap::new();
+    let key = req.key.trim();
+    if key.is_empty() {
+        out.insert("status".into(), serde_json::json!("error"));
+        out.insert("message".into(), serde_json::json!("key is required"));
+        return Json(out);
+    }
+    let sys = system.read().await;
+    let db = sys.db.write().await;
+    let prev = db.get_note(key).ok().flatten().map(|note| NotePrev {
+        value: note.value,
+        date: note.updated,
+    });
+    let note = Note {
+        key: key.to_string(),
+        value: req.value,
+        updated: chrono::Utc::now(),
+        prev,
+    };
+    match db.insert_note(&note) {
+        Ok(()) => {
+            out.insert("status".into(), serde_json::json!("ok"));
+            out.insert("note".into(), serde_json::json!(note));
+        }
+        Err(e) => {
+            out.insert("status".into(), serde_json::json!("error"));
+            out.insert("message".into(), serde_json::json!(e.to_string()));
+        }
+    }
+    Json(out)
+}
+
+pub async fn delete_note(
+    State(system): State<Arc<RwLock<MemorySystem>>>,
+    Path(key): Path<String>,
+) -> Json<HashMap<String, serde_json::Value>> {
+    let mut out = HashMap::new();
+    let sys = system.read().await;
+    match sys.db.write().await.delete_note(&key) {
+        Ok(true) => {
+            out.insert("status".into(), serde_json::json!("deleted"));
+            out.insert("key".into(), serde_json::json!(key));
+        }
+        Ok(false) => {
+            out.insert("status".into(), serde_json::json!("not_found"));
+            out.insert("key".into(), serde_json::json!(key));
+        }
+        Err(e) => {
+            out.insert("status".into(), serde_json::json!("error"));
+            out.insert("message".into(), serde_json::json!(e.to_string()));
+        }
+    }
+    Json(out)
+}
+
 pub async fn list_servers(
     State(system): State<Arc<RwLock<MemorySystem>>>,
 ) -> Json<Vec<ServerInfo>> {
@@ -1310,7 +1751,7 @@ pub async fn stats(
                <pre class="text-xs overflow-x-auto rounded-xl bg-stone-950 text-stone-100 p-4">curl -s http://127.0.0.1:3111/health</pre>
                <pre class="text-xs overflow-x-auto rounded-xl bg-stone-950 text-stone-100 p-4">curl -s -X POST http://127.0.0.1:3111/search \
   -H 'content-type: application/json' \
-  -d '{{"query":"palimpsest","project":"all","n_results":10}}'</pre>
+  -d '{{"query":"memnest","project":"all","n_results":10}}'</pre>
                <p class="text-xs leading-relaxed text-slate-500 dark:text-slate-400">컬렉션 범위는 요청의 project 값으로 지정합니다. 전체 검색은 project를 all로 보냅니다.</p>
               </div>
              </section>
@@ -1328,18 +1769,9 @@ pub async fn stats(
         let html = BASE_HTML
             .replace("__TITLE__", "System")
             .replace("__VERSION__", env!("CARGO_PKG_VERSION"))
-            .replace(
-                "__ACTIVE_DASHBOARD__",
-                "",
-            )
-            .replace(
-                "__ACTIVE_COLLECTIONS__",
-                "",
-            )
-            .replace(
-                "__ACTIVE_SEARCH__",
-                "",
-            )
+            .replace("__ACTIVE_DASHBOARD__", "")
+            .replace("__ACTIVE_COLLECTIONS__", "")
+            .replace("__ACTIVE_SEARCH__", "")
             .replace("__CONTENT__", &content);
 
         return Html(html).into_response();
@@ -1364,7 +1796,7 @@ const BASE_HTML: &str = r##"<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>__TITLE__ | Palimpsest</title>
+<title>__TITLE__ | Memnest</title>
 <style>
 * { box-sizing: border-box; }
 body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
@@ -2713,7 +3145,7 @@ svg { display: block; }
    <circle cx="47" cy="17" r="4" fill="currentColor" opacity=".55"/>
   </svg>
   <span>
-   <span class="block text-sm font-semibold tracking-tight">Palimpsest</span>
+   <span class="block text-sm font-semibold tracking-tight">Memnest</span>
    <span class="block text-[10px] uppercase tracking-[0.18em] text-stone-500 dark:text-stone-400" data-i18n="brand.subtitle">Memory atlas</span>
   </span>
  </a>
@@ -2735,7 +3167,7 @@ svg { display: block; }
 
 <!-- Mobile Header -->
 <div class="md:hidden fixed top-0 left-0 right-0 h-14 glass-strong z-40 flex items-center justify-between px-4">
- <div class="flex items-center gap-2"><svg class="w-7 h-7 text-stone-700 dark:text-stone-200" viewBox="0 0 64 64" fill="none"><path d="M9 34c8-18 29-27 45-15" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M20 28c3-6 11-9 17-6 7 3 8 12 2 17-6 5-17 2-19-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="47" cy="17" r="4" fill="currentColor" opacity=".55"/></svg><span class="text-sm font-semibold">Palimpsest</span><span class="ml-2 text-xs text-stone-500" data-i18n="status.ok">서비스 정상</span></div>
+ <div class="flex items-center gap-2"><svg class="w-7 h-7 text-stone-700 dark:text-stone-200" viewBox="0 0 64 64" fill="none"><path d="M9 34c8-18 29-27 45-15" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M20 28c3-6 11-9 17-6 7 3 8 12 2 17-6 5-17 2-19-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="47" cy="17" r="4" fill="currentColor" opacity=".55"/></svg><span class="text-sm font-semibold">Memnest</span><span class="ml-2 text-xs text-stone-500" data-i18n="status.ok">서비스 정상</span></div>
  <button onclick="document.getElementById('mob').classList.toggle('hidden')" class="p-2 text-gray-500" aria-label="menu"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none"><path d="M5 7h14M5 12h14M5 17h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
 </div>
 <div id="mob" class="hidden md:hidden fixed top-14 left-0 right-0 glass z-30 p-3 space-y-1">
@@ -3124,18 +3556,9 @@ pub async fn viewer_dashboard(State(system): State<Arc<RwLock<MemorySystem>>>) -
     let html = BASE_HTML
         .replace("__TITLE__", "대시보드")
         .replace("__VERSION__", env!("CARGO_PKG_VERSION"))
-        .replace(
-            "__ACTIVE_DASHBOARD__",
-            "is-active",
-        )
-        .replace(
-            "__ACTIVE_COLLECTIONS__",
-            "",
-        )
-        .replace(
-            "__ACTIVE_SEARCH__",
-            "",
-        )
+        .replace("__ACTIVE_DASHBOARD__", "is-active")
+        .replace("__ACTIVE_COLLECTIONS__", "")
+        .replace("__ACTIVE_SEARCH__", "")
         .replace("__CONTENT__", &content);
 
     Html(html)
@@ -3251,7 +3674,8 @@ pub async fn viewer_collections(State(system): State<Arc<RwLock<MemorySystem>>>)
          </div>
         </section>"##,
         collections = total_collections,
-        pb = playbook_count, pr = project_count,
+        pb = playbook_count,
+        pr = project_count,
         manual = total_manual,
         autolog = total_autolog,
         total = total_chunks,
@@ -3277,18 +3701,9 @@ pub async fn viewer_collections(State(system): State<Arc<RwLock<MemorySystem>>>)
     let html = BASE_HTML
         .replace("__TITLE__", "컬렉션")
         .replace("__VERSION__", env!("CARGO_PKG_VERSION"))
-        .replace(
-            "__ACTIVE_DASHBOARD__",
-            "",
-        )
-        .replace(
-            "__ACTIVE_COLLECTIONS__",
-            "is-active",
-        )
-        .replace(
-            "__ACTIVE_SEARCH__",
-            "",
-        )
+        .replace("__ACTIVE_DASHBOARD__", "")
+        .replace("__ACTIVE_COLLECTIONS__", "is-active")
+        .replace("__ACTIVE_SEARCH__", "")
         .replace("__CONTENT__", &content);
 
     Html(html)
@@ -3389,18 +3804,9 @@ pub async fn viewer_search(
     let html = BASE_HTML
         .replace("__TITLE__", "검색")
         .replace("__VERSION__", env!("CARGO_PKG_VERSION"))
-        .replace(
-            "__ACTIVE_DASHBOARD__",
-            "",
-        )
-        .replace(
-            "__ACTIVE_COLLECTIONS__",
-            "",
-        )
-        .replace(
-            "__ACTIVE_SEARCH__",
-            "is-active",
-        )
+        .replace("__ACTIVE_DASHBOARD__", "")
+        .replace("__ACTIVE_COLLECTIONS__", "")
+        .replace("__ACTIVE_SEARCH__", "is-active")
         .replace("__CONTENT__", &content);
 
     Html(html)
