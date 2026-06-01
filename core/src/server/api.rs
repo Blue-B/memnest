@@ -3995,3 +3995,20 @@ fn diversify_by_project(items: Vec<SearchResultItem>, limit: usize) -> Vec<Searc
     }
     selected
 }
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::*;
+    use crate::config::Config;
+
+    pub(crate) async fn build_system() -> (tempfile::TempDir, Arc<RwLock<MemorySystem>>) {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut cfg = Config::default();
+        cfg.data_dir = tmp.path().to_path_buf();
+        let mut sys = MemorySystem::new(cfg)
+            .await
+            .expect("MemorySystem::new failed (offline and no cached model?)");
+        sys.secret_tools_enabled = true;
+        (tmp, Arc::new(RwLock::new(sys)))
+    }
+}
