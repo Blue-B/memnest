@@ -19,19 +19,18 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { complete } from "@earendil-works/pi-ai";
+import { Type } from "@sinclair/typebox";
 
 import { MemnestClient } from "./memnest-client.js";
 import { MemorySnapshot } from "./kv-snapshot.js";
 import { captureCorrection, captureMemories, looksLikeCorrection } from "./capture.js";
-import { consolidate } from "./consolidate.js";
+import { consolidateByEmbedding } from "./consolidate.js";
 import {
   appendDaily,
   applyScratch,
   buildHandoff,
-  formatDailyEntry,
   formatScratchpad,
   parseScratchpad,
-  type ScratchAction,
 } from "./working-memory.js";
 import type { LlmComplete, TranscriptTurn } from "./types.js";
 
@@ -180,29 +179,37 @@ export default function (pi: ExtensionAPI) {
   });
 
   // tool: scratchpad checklist (working memory)
+  const ScratchParams = Type.Object({
+    action: Type.Union(
+      [
+        Type.Literal("add"),
+        Type.Literal("done"),
+        Type.Literal("undo"),
+        Type.Literal("remove"),
+        Type.Literal("list"),
+        Type.Literal("clear"),
+      ],
+      { description: "Checklist action" },
+    ),
+    text: Type.Optional(
+      Type.String({ description: "Item text (substring match for done/undo/remove)" }),
+    ),
+  });
   pi.registerTool({
     name: "scratchpad",
+    label: "Scratchpad",
     description:
-      "Manage a short-term checklist of things to do / remember this session. Actions: add, done, undo, remove, list, clear.",
-    parameters: {
-      type: "object",
-      properties: {
-        action: { type: "string", enum: ["add", "done", "undo", "remove", "list", "clear"] },
-        text: { type: "string", description: "Item text (substring match for done/undo/remove)" },
-      },
-      required: ["action"],
-    },
-    async execute(_id, params: { action: string; text?: string }) {
+      "Manage a short-term checklist of things to do / remember this session (add, done, undo, remove, list, clear).",
+    parameters: ScratchParams,
+    async execute(_id, params, _signal, _onUpdate, _ctx) {
       ensureDirs();
       let items = parseScratchpad(readSafe(SCRATCHPAD_FILE));
       const { action, text } = params;
       if (action === "clear") {
         items = [];
-      } else if (action === "list") {
-        // no mutation
-      } else {
+      } else if (action !== "list") {
         if (!text) return toolText("text is required for this action");
-        items = applyScratch(items, action as ScratchAction, text);
+        items = applyScratch(items, action, text);
       }
       if (action !== "list") fs.writeFileSync(SCRATCHPAD_FILE, formatScratchpad(items), "utf-8");
       const rendered = items.length
@@ -213,21 +220,19 @@ export default function (pi: ExtensionAPI) {
   });
 
   // tool: skill (procedural "how", stored in memnest's _skills project)
+  const SkillParams = Type.Object({
+    action: Type.Union([Type.Literal("create"), Type.Literal("find")]),
+    title: Type.Optional(Type.String()),
+    body: Type.Optional(Type.String({ description: "Step-by-step procedure (for create)" })),
+    query: Type.Optional(Type.String({ description: "Search text (for find)" })),
+  });
   pi.registerTool({
     name: "skill",
+    label: "Skill",
     description:
       "Save or recall a reusable procedure (how to do something). create: save a how-to; find: search saved skills.",
-    parameters: {
-      type: "object",
-      properties: {
-        action: { type: "string", enum: ["create", "find"] },
-        title: { type: "string" },
-        body: { type: "string", description: "Step-by-step procedure (for create)" },
-        query: { type: "string", description: "Search text (for find)" },
-      },
-      required: ["action"],
-    },
-    async execute(_id, params: { action: string; title?: string; body?: string; query?: string }) {
+    parameters: SkillParams,
+    async execute(_id, params, _signal, _onUpdate, _ctx) {
       if (params.action === "create") {
         if (!params.title || !params.body) return toolText("title and body are required");
         const res = await client.add({
@@ -239,29 +244,36 @@ export default function (pi: ExtensionAPI) {
         });
         return toolText(`Saved skill "${params.title}" (id=${res.id}).`);
       }
-      const hits = await client.search(params.query ?? params.title ?? "", { project: SKILL_PROJECT, nResults: 5 });
+      const hits = await client.search(params.query ?? params.title ?? "", {
+        project: SKILL_PROJECT,
+        nResults: 5,
+      });
       if (hits.length === 0) return toolText("No matching skills.");
       return toolText(hits.map((h, i) => `[${i + 1}] ${h.document.slice(0, 400)}`).join("\n\n"));
     },
   });
 
-  // manual consolidation: /memnest-consolidate-style trigger via tool
+  // tool: manual consolidation trigger (embedding-based, dry-run by default)
+  const ConsolidateParams = Type.Object({
+    query: Type.String({ description: "Topic to consolidate around" }),
+    apply: Type.Optional(Type.Boolean({ description: "Apply changes (default false = dry run)" })),
+    maxDistance: Type.Optional(
+      Type.Number({ description: "Cosine-distance cap for clustering (default 0.25)" }),
+    ),
+  });
   pi.registerTool({
     name: "memory_consolidate",
+    label: "Consolidate memories",
     description: "Merge near-duplicate memories for a topic into one canonical entry (non-destructive).",
-    parameters: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Topic to consolidate around" },
-        apply: { type: "boolean", description: "Apply changes (default false = dry run)" },
-      },
-      required: ["query"],
-    },
-    async execute(_id, params: { query: string; apply?: boolean }, _signal, _onUpdate, ctx) {
+    parameters: ConsolidateParams,
+    async execute(_id, params, _signal, _onUpdate, ctx) {
       const llm = makeLlm(ctx);
       if (!llm) return toolText("No active model for consolidation.");
       const items = await client.search(params.query, { nResults: 25 });
-      const res = await consolidate(client, items, llm, { apply: params.apply ?? false });
+      const res = await consolidateByEmbedding(client, items, llm, {
+        maxDistance: params.maxDistance ?? 0.25,
+        apply: params.apply ?? false,
+      });
       return toolText(
         `Consolidation (${params.apply ? "applied" : "dry-run"}): ${res.clusters} clusters, ${res.merged} merged, ${res.superseded} superseded.`,
       );
@@ -270,5 +282,5 @@ export default function (pi: ExtensionAPI) {
 }
 
 function toolText(text: string) {
-  return { content: [{ type: "text" as const, text }] };
+  return { content: [{ type: "text" as const, text }], details: undefined };
 }

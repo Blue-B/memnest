@@ -70,9 +70,21 @@ bun test test/      # 14 tests, pure core (no pi / no network / no LLM)
 bunx tsc --noEmit   # full typecheck incl. the pi-runtime wiring
 ```
 
-The **pure core** (capture, extraction parsing, consolidation/clustering,
-KV-cache snapshot, working-memory, the memnest HTTP client) is unit-tested with
-injected mocks. `src/index.ts` is the pi-runtime wiring; its hook/tool surface
-is modelled on the two shipping pi memory extensions and typechecks against the
-`@earendil-works/pi-*` API (see `src/pi.d.ts`), but the end-to-end loop has not
-been exercised against a live `pi` + model + memnest in this repo yet.
+Three levels of verification:
+
+1. **Pure core** (capture, extraction parsing, consolidation/clustering,
+   KV-cache snapshot, working-memory, the memnest HTTP client) — 15 unit tests
+   with injected mocks (`bun test`).
+2. **Live data path** — `test/integration.live.ts` runs capture -> categorised
+   `/add` -> search -> `/context` injection -> `consolidateByEmbedding` merge +
+   `_superseded` -> correction fast-path against a REAL throwaway memnest engine
+   (deterministic stub LLM). 12/12 verified.
+3. **pi contract** — `src/index.ts` typechecks against the REAL
+   `@earendil-works/pi-coding-agent` / `@earendil-works/pi-ai` types (`tsc
+   --noEmit` clean), so the hook signatures, the TypeBox tool schemas and the
+   `complete()` call match the runtime API.
+
+Still open: the full loop has not been run inside a live `pi` session with a
+real model (capture/merge *quality* depends on the host model + prompt). The
+data plumbing and the pi type contract are verified; the live-model smoke is
+the remaining step.
