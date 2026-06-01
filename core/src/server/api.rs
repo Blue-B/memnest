@@ -3995,3 +3995,165 @@ fn diversify_by_project(items: Vec<SearchResultItem>, limit: usize) -> Vec<Searc
     }
     selected
 }
+
+#[cfg(test)]
+mod retrieval_eval {
+    //! Offline retrieval-quality baseline over a small hand-labeled corpus.
+    //!
+    //! Runs the *real* `run_hybrid_search` path (BM25 + vector + RRF + composite
+    //! rerank + project diversification) so it doubles as a regression guard for
+    //! any later ranking change (e.g. wiring MMR or retuning composite weights).
+    //! It builds a throwaway data dir; the live server's store is never touched.
+    //! The embedding model is symlinked from an existing fastembed cache so the
+    //! test does not trigger a fresh ~400 MB download.
+    use super::*;
+    use crate::config::Config;
+    use crate::eval::{mrr_at_k, precision_at_1, recall_at_k};
+    use crate::models::{ChunkType, Importance, MemoryChunk, Metadata};
+
+    fn labeled_corpus() -> Vec<(&'static str, &'static str, &'static str)> {
+        vec![
+            ("d_rust_async", "backend", "Rust async runtime tokio spawns tasks and awaits futures for non-blocking IO in the HTTP server"),
+            ("d_rust_err", "backend", "Error handling in Rust uses Result and the question mark operator with anyhow context wrapping"),
+            ("d_sqlite_wal", "backend", "SQLite WAL mode improves concurrent read performance and is set via PRAGMA journal_mode=WAL"),
+            ("d_cache_lru", "backend", "An in-memory LRU cache for embedding vectors avoids recomputing the model on repeated queries"),
+            ("d_hnsw", "search", "HNSW vector index for approximate nearest neighbor cosine similarity search over embeddings"),
+            ("d_bm25", "search", "BM25 lexical ranking through a Tantivy full text search index with stemming"),
+            ("d_rrf", "search", "Reciprocal rank fusion merges a vector result list and a keyword result list into one ranking"),
+            ("d_embed", "search", "The multilingual e5 embedding model produces 768 dimensional sentence vectors"),
+            ("d_graph", "search", "A knowledge graph stores subject predicate object edges describing entity relationships"),
+            ("d_deploy_k8s", "ops", "Deploy the service to Kubernetes with a Deployment manifest and a rolling update strategy"),
+            ("d_backup", "ops", "A nightly database backup cron job uploads a gzipped dump to object storage"),
+            ("d_tls", "ops", "Configure TLS certificates with Let's Encrypt and auto renew them via certbot"),
+            ("d_metrics", "ops", "Prometheus scrapes metrics and Grafana dashboards visualize request latency and error rate"),
+            ("d_ko_login", "app", "사용자 로그인 화면에서 비밀번호 재설정 링크를 이메일로 보낸다"),
+            ("d_ko_payment", "app", "결제 모듈은 카드 승인 후 영수증을 발급하고 환불은 3일 이내에 처리한다"),
+            ("d_ko_search", "app", "검색 기능은 한국어 형태소 분석과 조사 제거로 정확도를 높인다"),
+        ]
+    }
+
+    fn labeled_queries() -> Vec<(&'static str, Vec<&'static str>)> {
+        vec![
+            ("how does tokio handle non blocking io", vec!["d_rust_async"]),
+            ("combine keyword and vector search results into one ranking", vec!["d_rrf"]),
+            ("approximate nearest neighbor search over embeddings", vec!["d_hnsw"]),
+            ("sqlite write ahead log journal mode", vec!["d_sqlite_wal"]),
+            ("renew https certificate automatically", vec!["d_tls"]),
+            ("how many dimensions does the embedding model output", vec!["d_embed"]),
+            ("deploy to kubernetes with rolling updates", vec!["d_deploy_k8s"]),
+            ("비밀번호 재설정 이메일", vec!["d_ko_login"]),
+            ("환불 처리 기간", vec!["d_ko_payment"]),
+            ("한국어 조사 제거 검색", vec!["d_ko_search"]),
+        ]
+    }
+
+    /// Symlink an already-downloaded fastembed model into the throwaway data dir
+    /// so the test reuses the live model cache instead of downloading afresh.
+    fn link_model_cache(data_dir: &std::path::Path) {
+        let model_dir = data_dir.join("models");
+        let _ = std::fs::create_dir_all(&model_dir);
+        let home = dirs::home_dir().unwrap_or_default();
+        let candidates = [
+            home.join(".palimpsest/models"),
+            home.join(".memnest/models"),
+            home.join(".factory/memories/models"),
+        ];
+        for cand in candidates {
+            if !cand.is_dir() {
+                continue;
+            }
+            if let Ok(entries) = std::fs::read_dir(&cand) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name();
+                    if name.to_string_lossy().starts_with("models--") {
+                        let link = model_dir.join(&name);
+                        if !link.exists() {
+                            let _ = std::os::unix::fs::symlink(entry.path(), &link);
+                        }
+                    }
+                }
+            }
+            return;
+        }
+    }
+
+    async fn build_system() -> (tempfile::TempDir, Arc<RwLock<MemorySystem>>) {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        link_model_cache(tmp.path());
+        let mut cfg = Config::default();
+        cfg.data_dir = tmp.path().to_path_buf();
+        let sys = MemorySystem::new(cfg)
+            .await
+            .expect("MemorySystem::new failed (offline and no cached model?)");
+        (tmp, Arc::new(RwLock::new(sys)))
+    }
+
+    async fn ingest(system: &Arc<RwLock<MemorySystem>>) {
+        let sys = system.read().await;
+        for (id, project, text) in labeled_corpus() {
+            let embedding = sys.embedder.encode_document(text).expect("encode_document");
+            let now = chrono::Utc::now();
+            let chunk = MemoryChunk {
+                id: id.to_string(),
+                project: project.to_string(),
+                document: text.to_string(),
+                embedding: Some(embedding.clone()),
+                metadata: Metadata {
+                    chunk_type: ChunkType::Manual,
+                    importance: Importance::Knowledge,
+                    ..Default::default()
+                },
+                created_at: now,
+                updated_at: now,
+            };
+            sys.db.write().await.insert_chunk(&chunk).expect("insert_chunk");
+            sys.add_text_doc(id, project, text)
+                .await
+                .expect("add_text_doc");
+            sys.vector_index
+                .write()
+                .await
+                .add(id, &embedding)
+                .expect("vector add");
+        }
+    }
+
+    #[tokio::test]
+    async fn retrieval_baseline_recall_and_mrr() {
+        let (_tmp, system) = build_system().await;
+        ingest(&system).await;
+
+        let queries = labeled_queries();
+        let k = 5usize;
+        let mut gold = Vec::new();
+        let mut retrieved = Vec::new();
+        for (q, g) in &queries {
+            let items = run_hybrid_search(system.clone(), q, "all", k, false, false).await;
+            gold.push(g.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+            retrieved.push(items.iter().map(|it| it.id.clone()).collect::<Vec<_>>());
+        }
+
+        let r1 = recall_at_k(&gold, &retrieved, 1);
+        let r3 = recall_at_k(&gold, &retrieved, 3);
+        let r5 = recall_at_k(&gold, &retrieved, 5);
+        let mrr = mrr_at_k(&gold, &retrieved, k);
+        let p1 = precision_at_1(&gold, &retrieved);
+
+        eprintln!("\n=== memnest retrieval eval (queries={}) ===", queries.len());
+        eprintln!("recall@1={r1:.3}  recall@3={r3:.3}  recall@5={r5:.3}  MRR@5={mrr:.3}  P@1={p1:.3}");
+        for ((q, _), (g, r)) in queries.iter().zip(gold.iter().zip(retrieved.iter())) {
+            let top: Vec<&String> = r.iter().take(5).collect();
+            eprintln!("  q='{q}'  gold={g:?}  top5={top:?}");
+        }
+
+        // Baseline observed at recall@5 = MRR = 1.0 on this (deliberately
+        // unambiguous) corpus. The floor below guards against gross ranking
+        // breakage; it intentionally leaves a small margin so a single query may
+        // degrade without a red build. NOTE: this corpus saturates at 1.0, so it
+        // cannot yet *measure* diversity/MMR gains — P1 adds a redundant-cluster,
+        // multi-relevant sub-corpus to create that headroom.
+        assert!(r5 >= 0.9, "recall@5 regressed below 0.9: {r5:.3}");
+        assert!(mrr >= 0.85, "MRR@5 regressed below 0.85: {mrr:.3}");
+        assert!(p1 >= 0.8, "precision@1 regressed below 0.8: {p1:.3}");
+    }
+}

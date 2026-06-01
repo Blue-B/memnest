@@ -2,6 +2,7 @@ pub mod config;
 pub mod crypto;
 pub mod doctor;
 pub mod embedding;
+pub mod eval;
 pub mod facts;
 pub mod graph;
 pub mod index;
