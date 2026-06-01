@@ -4045,10 +4045,18 @@ fn mmr_select(
         let mut best_idx = 0usize;
         let mut best_mmr = f32::MIN;
         for (i, (cand, emb)) in candidates.iter().enumerate() {
-            let max_sim = selected
-                .iter()
-                .map(|(_, sel_emb)| crate::eval::cosine(emb, sel_emb))
-                .fold(0.0_f32, f32::max);
+            // A candidate with no embedding has unknown similarity; deny it the
+            // diversity bonus (treat as fully redundant) so a missing vector
+            // can't masquerade as "maximally diverse" and jump genuinely
+            // relevant chunks. It can still be selected on relevance alone.
+            let max_sim = if emb.is_empty() {
+                1.0
+            } else {
+                selected
+                    .iter()
+                    .map(|(_, sel_emb)| crate::eval::cosine(emb, sel_emb))
+                    .fold(0.0_f32, f32::max)
+            };
             let mmr = lambda * norm(cand.score) - (1.0 - lambda) * max_sim;
             if mmr > best_mmr {
                 best_mmr = mmr;

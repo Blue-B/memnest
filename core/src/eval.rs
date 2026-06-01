@@ -16,10 +16,12 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
         nb += b[i] * b[i];
     }
     if na == 0.0 || nb == 0.0 {
-        0.0
-    } else {
-        dot / (na.sqrt() * nb.sqrt())
+        return 0.0;
     }
+    let sim = dot / (na.sqrt() * nb.sqrt());
+    // Guard against NaN/inf from degenerate (e.g. NaN-bearing) embeddings so a
+    // bad vector can't poison sort_by(partial_cmp) ordering downstream.
+    if sim.is_finite() { sim } else { 0.0 }
 }
 
 #[cfg(test)]
