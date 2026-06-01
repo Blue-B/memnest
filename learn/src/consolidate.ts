@@ -116,3 +116,71 @@ export async function consolidate(
   }
   return { clusters: clusters.length, merged, superseded };
 }
+
+/**
+ * Embedding-based consolidation (preferred). Instead of client-side trigrams
+ * — which miss paraphrase duplicates (real paraphrases score ~0.3 trigram while
+ * the engine's write-time dedup only catches >0.95 cosine, so the consolidation
+ * window is exactly where trigrams are weakest) — this clusters `items` using
+ * the engine's cosine neighbours, then merges each cluster like `consolidate`.
+ */
+export async function consolidateByEmbedding(
+  client: MemnestClient,
+  items: SearchItem[],
+  llm: LlmComplete,
+  opts: { maxDistance?: number; apply?: boolean } = {},
+): Promise<ConsolidateResult> {
+  const maxDistance = opts.maxDistance ?? 0.25; // cosine distance (~0.75 similarity)
+  const apply = opts.apply ?? true;
+  const byId = new Map(items.map((i) => [i.id, i]));
+
+  // Union-find over engine cosine adjacency (edges only between items in the set).
+  const parent = new Map<string, string>();
+  for (const i of items) parent.set(i.id, i.id);
+  const find = (x: string): string => {
+    let r = x;
+    while (parent.get(r) !== r) r = parent.get(r)!;
+    let c = x;
+    while (parent.get(c) !== r) {
+      const next = parent.get(c)!;
+      parent.set(c, r);
+      c = next;
+    }
+    return r;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+
+  for (const it of items) {
+    const ns = await client.neighbors({ id: it.id, maxDistance, k: 20 });
+    for (const n of ns) if (byId.has(n.id)) union(it.id, n.id);
+  }
+
+  const groups = new Map<string, SearchItem[]>();
+  for (const it of items) {
+    const root = find(it.id);
+    const g = groups.get(root) ?? [];
+    g.push(it);
+    groups.set(root, g);
+  }
+  const clusters = [...groups.values()]
+    .filter((c) => c.length >= 2)
+    .map((c) => c.slice().sort((a, b) => b.score - a.score));
+
+  let merged = 0;
+  let superseded = 0;
+  for (const cluster of clusters) {
+    const plan = await planClusterMerge(cluster, llm);
+    if (!plan) continue;
+    if (apply) {
+      await client.update(plan.keepId, { text: plan.mergedText, chunkType: "consolidated" });
+      for (const id of plan.supersededIds) await client.supersede(id);
+    }
+    merged++;
+    superseded += plan.supersededIds.length;
+  }
+  return { clusters: clusters.length, merged, superseded };
+}

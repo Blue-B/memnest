@@ -12,6 +12,7 @@ import { extractJsonArray, parseExtraction } from "../src/extract.js";
 import {
   clusterBySimilarity,
   consolidate,
+  consolidateByEmbedding,
   planClusterMerge,
   trigramSimilarity,
 } from "../src/consolidate.js";
@@ -140,6 +141,29 @@ test("consolidate dry-run plans without writing; apply updates + supersedes", as
 
 test("planClusterMerge returns null for singletons", async () => {
   expect(await planClusterMerge([item("a", "x")], async () => "y")).toBeNull();
+});
+
+test("consolidateByEmbedding clusters via engine cosine neighbors", async () => {
+  const items = [
+    item("a", "Deploy failed: a stuck worker held the migration lock", 0.9),
+    item("b", "Our deploy broke because a hung worker kept the migration lock", 0.8),
+    item("c", "User prefers a dark theme in the editor", 0.7),
+  ];
+  // engine says a<->b are cosine-near; c is isolated (trigram would miss a/b)
+  const adj: Record<string, string[]> = { a: ["b"], b: ["a"], c: [] };
+  const calls: string[] = [];
+  const client = {
+    neighbors: async ({ id }: { id: string }) =>
+      (adj[id] ?? []).map((nid) => ({ id: nid, project: "p", document: "", distance: 0.1, category: "", importance: "", chunk_type: "" })),
+    update: async (id: string) => calls.push(`update:${id}`),
+    supersede: async (id: string) => calls.push(`supersede:${id}`),
+  } as unknown as MemnestClient;
+  const llm = async () => "Deploy broke because a worker held the migration lock.";
+  const res = await consolidateByEmbedding(client, items, llm, { maxDistance: 0.25, apply: true });
+  expect(res.clusters).toBe(1);
+  expect(res.merged).toBe(1);
+  expect(res.superseded).toBe(1);
+  expect(calls).toEqual(["update:a", "supersede:b"]);
 });
 
 // ── capture ──────────────────────────────────────────────────────────────────
