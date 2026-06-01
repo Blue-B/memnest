@@ -40,13 +40,13 @@ pub struct SearchResponse {
 
 #[derive(Serialize)]
 pub struct SearchResultItem {
-    id: String,
-    project: String,
-    document: String,
-    score: f32,
-    timestamp: String,
-    chunk_type: String,
-    importance: String,
+    pub id: String,
+    pub project: String,
+    pub document: String,
+    pub score: f32,
+    pub timestamp: String,
+    pub chunk_type: String,
+    pub importance: String,
 }
 
 #[derive(Deserialize)]
@@ -323,7 +323,7 @@ pub async fn search(
     })
 }
 
-async fn run_hybrid_search(
+pub(crate) async fn run_hybrid_search(
     system: Arc<RwLock<MemorySystem>>,
     query: &str,
     project: &str,
@@ -4338,6 +4338,35 @@ mod retrieval_eval {
         // Balanced MMR breaks the dup run and surfaces the distinct doc.
         let mmr: Vec<String> = mmr_select(make(), 0.5, 3).into_iter().map(|i| i.id).collect();
         assert!(mmr.contains(&"d".to_string()), "MMR did not surface distinct doc: {mmr:?}");
+    }
+
+    /// The MCP `memory_search` tool must return the same ranking as the HTTP
+    /// /search path now that it delegates to the shared core. Guards against a
+    /// future revert that re-forks the ranking logic.
+    #[tokio::test]
+    async fn mcp_search_matches_http_ranking() {
+        let (_tmp, system) = build_system().await;
+        ingest(&system, &labeled_corpus()).await;
+        let query = "approximate nearest neighbor search over embeddings";
+        let http = run_hybrid_search(system.clone(), query, "all", 5, false, false).await;
+        let http_ids: Vec<String> = http.iter().map(|it| it.id.clone()).collect();
+        assert!(!http_ids.is_empty(), "http path returned nothing");
+        let mcp_out = crate::server::mcp::memory_search(
+            system.clone(),
+            &serde_json::json!({"query": query, "n_results": 5}),
+        )
+        .await
+        .expect("mcp memory_search");
+        // Every HTTP id must appear in the MCP output in the same relative order.
+        let mut last = 0usize;
+        for id in &http_ids {
+            let needle = format!("id={id}");
+            let pos = mcp_out
+                .find(&needle)
+                .unwrap_or_else(|| panic!("MCP output missing {id}:\n{mcp_out}"));
+            assert!(pos >= last, "MCP ranking order diverged at {id}");
+            last = pos;
+        }
     }
 
     /// Gives the composite re-rank measurable coverage beyond the saturated

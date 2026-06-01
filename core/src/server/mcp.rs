@@ -447,81 +447,43 @@ async fn memory_context(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Resu
     Ok(lines.join("\n"))
 }
 
-async fn memory_search(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
+pub(crate) async fn memory_search(
+    system: Arc<RwLock<MemorySystem>>,
+    args: &Value,
+) -> Result<String> {
     let query = args.get("query").and_then(Value::as_str).unwrap_or("");
     anyhow::ensure!(!query.trim().is_empty(), "query is required");
     let project = args.get("project").and_then(Value::as_str).unwrap_or("all");
     let n = args.get("n_results").and_then(Value::as_u64).unwrap_or(10) as usize;
-    let sys = system.read().await;
-    let text_results = sys.text_search(query, n * 3).await?;
-    let text_score_by_id: std::collections::HashMap<String, f32> =
-        text_results.iter().cloned().collect();
-    let embedder = sys.embedder.clone();
-    let query_owned = query.to_string();
-    let query_embedding = tokio::task::spawn_blocking(move || embedder.encode_query(&query_owned))
-        .await
-        .map_err(|e| anyhow::anyhow!("embed task join: {e}"))??;
-    let vector_results = sys
-        .vector_index
-        .read()
-        .await
-        .search(&query_embedding, n * 3)?;
-    let vector_distance_by_id: std::collections::HashMap<String, f32> =
-        vector_results.iter().cloned().collect();
-    let fused = crate::index::hybrid::rrf_fusion(&vector_results, &text_results, 60.0)?;
-    let db = sys.db.read().await;
-    let keywords = crate::search::extract_keywords(query, 2);
-    let distance_cutoff = sys.config.distance_cutoff;
-    let lexical_available = !text_results.is_empty();
-    let allow_semantic_fallback = keywords.len() >= 2;
-    let vector_only_budget = if lexical_available || !allow_semantic_fallback {
-        0
-    } else {
-        sys.config.low_relevance_fallback
-    };
+    let recent_first = args
+        .get("recent_first")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    // Delegate to the shared HTTP ranking core so the MCP tool and the HTTP
+    // /search endpoint return identically-ranked results (composite scoring +
+    // MMR diversity + config-driven weights). Previously this path had its own
+    // weaker scoring — RRF order plus a keyword bonus, with no composite
+    // re-rank and no diversification.
+    let items =
+        crate::server::api::run_hybrid_search(system, query, project, n, recent_first, false).await;
+
     let mut lines = vec![format!("=== memory search results ({}) ===", query)];
-    let mut count = 0usize;
-    let mut vector_only_used = 0usize;
-    for (id, score) in fused {
-        if count >= n {
-            break;
-        }
-        if let Some(chunk) = db.get_chunk(&id)? {
-            if project != "all" && chunk.project != project {
-                continue;
-            }
-            let keyword_ratio = keyword_match_ratio(&chunk.document, &keywords);
-            let text_hit = text_score_by_id.contains_key(&id);
-            let vector_hit = vector_distance_by_id
-                .get(&id)
-                .is_some_and(|distance| *distance <= distance_cutoff);
-            if !text_hit && keyword_ratio <= 0.0 {
-                if vector_hit && vector_only_used < vector_only_budget {
-                    vector_only_used += 1;
-                } else {
-                    continue;
-                }
-            }
-            let bonus = keyword_bonus(&chunk.document, &keywords);
-            lines.push(format!(
-                "[{}] project={} score={:.4} id={}",
-                count + 1,
-                chunk.project,
-                score + bonus,
-                chunk.id
-            ));
-            lines.push(format!(
-                "    {}",
-                redact_text(&chunk.document)
-                    .chars()
-                    .take(500)
-                    .collect::<String>()
-            ));
-            count += 1;
-        }
-    }
-    if count == 0 {
+    if items.is_empty() {
         lines.push("no results".to_string());
+    }
+    for (i, item) in items.iter().enumerate() {
+        lines.push(format!(
+            "[{}] project={} score={:.4} id={}",
+            i + 1,
+            item.project,
+            item.score,
+            item.id
+        ));
+        lines.push(format!(
+            "    {}",
+            item.document.chars().take(500).collect::<String>()
+        ));
     }
     Ok(lines.join("\n"))
 }
@@ -848,18 +810,6 @@ fn project_from_cwd(cwd: &str) -> String {
     }
 }
 
-fn keyword_bonus(document: &str, keywords: &[String]) -> f32 {
-    0.15 * keyword_match_ratio(document, keywords)
-}
 
-fn keyword_match_ratio(document: &str, keywords: &[String]) -> f32 {
-    if keywords.is_empty() {
-        return 0.0;
-    }
-    let doc = document.to_lowercase();
-    let matched = keywords
-        .iter()
-        .filter(|kw| doc.contains(&kw.to_lowercase()))
-        .count();
-    matched as f32 / keywords.len() as f32
-}
+
+
