@@ -381,7 +381,7 @@ async fn run_hybrid_search(
         sys.config.low_relevance_fallback
     };
     let mut vector_only_used = 0usize;
-    let mut items = Vec::new();
+    let mut items: Vec<(SearchResultItem, Vec<f32>)> = Vec::new();
     for (id, score) in fused {
         if let Ok(Some(c)) = db.get_chunk(&id) {
             if project != "all" && c.project != project {
@@ -407,33 +407,49 @@ async fn run_hybrid_search(
                 + importance_bonus(&c.metadata.importance)
                 + type_bonus(&c.metadata.chunk_type)
                 - recency_penalty(c.created_at);
-            items.push(SearchResultItem {
-                id: c.id,
-                project: c.project,
-                document: if require_visible_match {
-                    query_excerpt(&redact_text(&c.document), query, 600)
-                } else {
-                    redact_text(&c.document).chars().take(600).collect()
+            let embedding = c.embedding.clone().unwrap_or_default();
+            items.push((
+                SearchResultItem {
+                    id: c.id,
+                    project: c.project,
+                    document: if require_visible_match {
+                        query_excerpt(&redact_text(&c.document), query, 600)
+                    } else {
+                        redact_text(&c.document).chars().take(600).collect()
+                    },
+                    score: final_score,
+                    timestamp: c.created_at.to_rfc3339(),
+                    chunk_type: format!("{:?}", c.metadata.chunk_type),
+                    importance: format!("{:?}", c.metadata.importance),
                 },
-                score: final_score,
-                timestamp: c.created_at.to_rfc3339(),
-                chunk_type: format!("{:?}", c.metadata.chunk_type),
-                importance: format!("{:?}", c.metadata.importance),
-            });
+                embedding,
+            ));
             if items.len() >= candidate_limit {
                 break;
             }
         }
     }
     items.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
+        b.0.score
+            .partial_cmp(&a.0.score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     if recent_first {
-        items.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        items.sort_by(|a, b| b.0.timestamp.cmp(&a.0.timestamp));
+        let ranked = items.into_iter().map(|(item, _)| item).collect();
+        return diversify_by_project(ranked, n_results);
     }
-    diversify_by_project(items, n_results)
+    // Content-diversify with MMR when enabled (0 < mmr_lambda < 1); otherwise
+    // fall back to the legacy per-project cap. MMR stops near-duplicate chunks
+    // from crowding out distinct-but-relevant ones — the dominant failure mode
+    // on auto-logged stores where a single project holds nearly all chunks.
+    let lambda = sys.config.mmr_lambda;
+    if lambda > 0.0 && lambda < 1.0 {
+        mmr_select(items, lambda, n_results)
+    } else {
+        let ranked = items.into_iter().map(|(item, _)| item).collect();
+        diversify_by_project(ranked, n_results)
+    }
 }
 
 pub async fn add(
@@ -3994,6 +4010,50 @@ fn diversify_by_project(items: Vec<SearchResultItem>, limit: usize) -> Vec<Searc
         selected.push(item);
     }
     selected
+}
+
+/// Maximal Marginal Relevance selection over scored candidates.
+///
+/// Greedily builds the result list; at each step it picks the candidate that
+/// maximises `lambda * relevance - (1 - lambda) * max_sim_to_selected`, where
+/// relevance is the composite score (min-max normalised across candidates) and
+/// similarity is cosine over chunk embeddings. The first pick is always the
+/// most-relevant candidate, so top-1 relevance is preserved; subsequent picks
+/// trade a little relevance for diversity. `lambda` is expected in (0, 1);
+/// callers gate on that range. Candidates must be pre-sorted by score desc.
+fn mmr_select(
+    mut candidates: Vec<(SearchResultItem, Vec<f32>)>,
+    lambda: f32,
+    n: usize,
+) -> Vec<SearchResultItem> {
+    let limit = n.min(candidates.len());
+    if limit <= 1 {
+        return candidates.into_iter().take(limit).map(|(it, _)| it).collect();
+    }
+    let max_rel = candidates.first().map(|(it, _)| it.score).unwrap_or(0.0);
+    let min_rel = candidates.last().map(|(it, _)| it.score).unwrap_or(0.0);
+    let span = max_rel - min_rel;
+    let norm = |s: f32| if span.abs() <= f32::EPSILON { 1.0 } else { (s - min_rel) / span };
+
+    let mut selected: Vec<(SearchResultItem, Vec<f32>)> = Vec::with_capacity(limit);
+    selected.push(candidates.remove(0));
+    while selected.len() < limit && !candidates.is_empty() {
+        let mut best_idx = 0usize;
+        let mut best_mmr = f32::MIN;
+        for (i, (cand, emb)) in candidates.iter().enumerate() {
+            let max_sim = selected
+                .iter()
+                .map(|(_, sel_emb)| crate::eval::cosine(emb, sel_emb))
+                .fold(0.0_f32, f32::max);
+            let mmr = lambda * norm(cand.score) - (1.0 - lambda) * max_sim;
+            if mmr > best_mmr {
+                best_mmr = mmr;
+                best_idx = i;
+            }
+        }
+        selected.push(candidates.remove(best_idx));
+    }
+    selected.into_iter().map(|(it, _)| it).collect()
 }
 
 #[cfg(test)]
