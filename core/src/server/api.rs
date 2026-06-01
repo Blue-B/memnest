@@ -403,10 +403,14 @@ async fn run_hybrid_search(
                 }
             }
             let final_score = score
-                + keyword_bonus_from_ratio(keyword_ratio)
+                + keyword_bonus_from_ratio(keyword_ratio, sys.config.keyword_max_bonus)
                 + importance_bonus(&c.metadata.importance)
                 + type_bonus(&c.metadata.chunk_type)
-                - recency_penalty(c.created_at);
+                - recency_penalty(
+                    c.created_at,
+                    sys.config.recency_penalty_rate,
+                    sys.config.recency_penalty_cap,
+                );
             let embedding = c.embedding.clone().unwrap_or_default();
             items.push((
                 SearchResultItem {
@@ -3959,8 +3963,8 @@ fn keyword_match_ratio(document: &str, keywords: &[String]) -> f32 {
     matched as f32 / keywords.len() as f32
 }
 
-fn keyword_bonus_from_ratio(ratio: f32) -> f32 {
-    0.15 * ratio
+fn keyword_bonus_from_ratio(ratio: f32, max_bonus: f32) -> f32 {
+    max_bonus * ratio
 }
 
 fn importance_bonus(importance: &Importance) -> f32 {
@@ -3981,9 +3985,9 @@ fn type_bonus(chunk_type: &ChunkType) -> f32 {
     }
 }
 
-fn recency_penalty(created_at: chrono::DateTime<chrono::Utc>) -> f32 {
+fn recency_penalty(created_at: chrono::DateTime<chrono::Utc>, rate: f32, cap: f32) -> f32 {
     let days = (chrono::Utc::now() - created_at).num_seconds().max(0) as f32 / 86_400.0;
-    (days * 0.008).min(0.30)
+    (days * rate).min(cap)
 }
 
 fn diversify_by_project(items: Vec<SearchResultItem>, limit: usize) -> Vec<SearchResultItem> {
@@ -4326,5 +4330,66 @@ mod retrieval_eval {
         // Balanced MMR breaks the dup run and surfaces the distinct doc.
         let mmr: Vec<String> = mmr_select(make(), 0.5, 3).into_iter().map(|i| i.id).collect();
         assert!(mmr.contains(&"d".to_string()), "MMR did not surface distinct doc: {mmr:?}");
+    }
+
+    /// Gives the composite re-rank measurable coverage beyond the saturated
+    /// baseline: two chunks with identical text (hence identical lexical/vector
+    /// relevance) but different importance/type/recency must order by the
+    /// composite bonuses — the important, recent, manual chunk above the stale
+    /// auto-logged one.
+    #[tokio::test]
+    async fn composite_ranks_important_recent_above_stale_log() {
+        let (_tmp, system) = build_system().await;
+        let text =
+            "the widget service circuit breaker trips after five consecutive upstream timeouts";
+        {
+            let sys = system.read().await;
+            let emb = sys.embedder.encode_document(text).expect("encode");
+            let now = chrono::Utc::now();
+            let mk = |id: &str, imp: Importance, ct: ChunkType, created: chrono::DateTime<chrono::Utc>| {
+                MemoryChunk {
+                    id: id.to_string(),
+                    project: "svc".to_string(),
+                    document: text.to_string(),
+                    embedding: Some(emb.clone()),
+                    metadata: Metadata {
+                        chunk_type: ct,
+                        importance: imp,
+                        ..Default::default()
+                    },
+                    created_at: created,
+                    updated_at: created,
+                }
+            };
+            let hi = mk("doc_hi", Importance::Knowledge, ChunkType::Manual, now);
+            let lo = mk(
+                "doc_lo",
+                Importance::Log,
+                ChunkType::AutoLog,
+                now - chrono::Duration::days(200),
+            );
+            sys.db.write().await.insert_chunk(&hi).expect("insert hi");
+            sys.db.write().await.insert_chunk(&lo).expect("insert lo");
+            sys.add_text_doc("doc_hi", "svc", text).await.expect("text hi");
+            sys.add_text_doc("doc_lo", "svc", text).await.expect("text lo");
+            sys.vector_index.write().await.add("doc_hi", &emb).expect("vec hi");
+            sys.vector_index.write().await.add("doc_lo", &emb).expect("vec lo");
+        }
+        let items = run_hybrid_search(
+            system.clone(),
+            "circuit breaker upstream timeouts widget service",
+            "all",
+            2,
+            false,
+            false,
+        )
+        .await;
+        let ids: Vec<String> = items.iter().map(|it| it.id.clone()).collect();
+        eprintln!("composite order: {ids:?}");
+        assert_eq!(
+            ids.first().map(String::as_str),
+            Some("doc_hi"),
+            "important+recent+manual should outrank stale autolog: {ids:?}"
+        );
     }
 }
