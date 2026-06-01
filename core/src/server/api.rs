@@ -40,13 +40,13 @@ pub struct SearchResponse {
 
 #[derive(Serialize)]
 pub struct SearchResultItem {
-    id: String,
-    project: String,
-    document: String,
-    score: f32,
-    timestamp: String,
-    chunk_type: String,
-    importance: String,
+    pub id: String,
+    pub project: String,
+    pub document: String,
+    pub score: f32,
+    pub timestamp: String,
+    pub chunk_type: String,
+    pub importance: String,
 }
 
 #[derive(Deserialize)]
@@ -323,7 +323,7 @@ pub async fn search(
     })
 }
 
-async fn run_hybrid_search(
+pub(crate) async fn run_hybrid_search(
     system: Arc<RwLock<MemorySystem>>,
     query: &str,
     project: &str,
