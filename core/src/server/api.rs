@@ -47,6 +47,7 @@ pub struct SearchResultItem {
     pub timestamp: String,
     pub chunk_type: String,
     pub importance: String,
+    pub category: String,
 }
 
 #[derive(Deserialize)]
@@ -430,6 +431,7 @@ pub(crate) async fn run_hybrid_search(
                     timestamp: c.created_at.to_rfc3339(),
                     chunk_type: format!("{:?}", c.metadata.chunk_type),
                     importance: format!("{:?}", c.metadata.importance),
+                    category: format!("{:?}", c.metadata.category),
                 },
                 embedding,
             ));
@@ -1520,6 +1522,7 @@ pub async fn collection_detail(
             timestamp: c.created_at.to_rfc3339(),
             chunk_type: format!("{:?}", c.metadata.chunk_type),
             importance: format!("{:?}", c.metadata.importance),
+            category: format!("{:?}", c.metadata.category),
         })
         .collect();
 
@@ -4410,6 +4413,7 @@ mod retrieval_eval {
             timestamp: String::new(),
             chunk_type: String::new(),
             importance: String::new(),
+            category: String::new(),
         };
         let dup = vec![1.0f32, 0.0, 0.0];
         let other = vec![0.0f32, 1.0, 0.0];
@@ -4490,7 +4494,10 @@ mod retrieval_eval {
                     updated_at: created,
                 }
             };
-            let hi = mk("doc_hi", Importance::Knowledge, ChunkType::Manual, now);
+            // doc_hi carries a non-default category to verify it round-trips to
+            // SearchResultItem.category (the field the learning layer filters on).
+            let mut hi = mk("doc_hi", Importance::Knowledge, ChunkType::Manual, now);
+            hi.metadata.category = crate::models::MemoryCategory::Insight;
             let lo = mk(
                 "doc_lo",
                 Importance::Log,
@@ -4520,6 +4527,8 @@ mod retrieval_eval {
             Some("doc_hi"),
             "important+recent+manual should outrank stale autolog: {ids:?}"
         );
+        let hi_item = items.iter().find(|it| it.id == "doc_hi").expect("doc_hi present");
+        assert_eq!(hi_item.category, "Insight", "category should round-trip to results");
     }
 
     #[test]
@@ -4533,6 +4542,7 @@ mod retrieval_eval {
                 timestamp: String::new(),
                 chunk_type: "Manual".to_string(),
                 importance: "Knowledge".to_string(),
+                category: "General".to_string(),
             })
             .collect();
         // Tight budget: must stay within it and flag truncation.
