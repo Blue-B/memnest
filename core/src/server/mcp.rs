@@ -401,50 +401,15 @@ async fn memory_context(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Resu
     let n = args.get("n_results").and_then(Value::as_u64).unwrap_or(6) as usize;
     let max_notes = args.get("max_notes").and_then(Value::as_u64).unwrap_or(12) as usize;
     let max_facts = args.get("max_facts").and_then(Value::as_u64).unwrap_or(8) as usize;
+    let max_chars = args.get("max_chars").and_then(Value::as_u64).unwrap_or(6000) as usize;
 
-    let search_text = memory_search(
-        system.clone(),
-        &json!({"query": query, "project": project, "n_results": n.clamp(1, 20)}),
+    // Delegate to the shared context-pack core so the MCP tool and the HTTP
+    // /context endpoint return an identical, budget-bounded prompt.
+    let resp = crate::server::api::build_context(
+        system, query, project, n, max_notes, max_facts, max_chars,
     )
-    .await?;
-
-    let sys = system.read().await;
-    let db = sys.db.read().await;
-    let mut notes = db.get_notes()?;
-    notes.sort_by(|a, b| b.updated.cmp(&a.updated));
-    notes.truncate(max_notes.clamp(0, 50));
-    let query_lower = query.to_lowercase();
-    let mut facts = db
-        .get_facts(1000)?
-        .into_iter()
-        .filter(|fact| {
-            format!("{} {} {}", fact.subject, fact.predicate, fact.object)
-                .to_lowercase()
-                .contains(&query_lower)
-        })
-        .collect::<Vec<_>>();
-    facts.truncate(max_facts.clamp(0, 50));
-
-    let mut lines = vec!["<memnest_context>".to_string()];
-    if !notes.is_empty() {
-        lines.push("core_notes:".to_string());
-        for note in notes {
-            lines.push(format!("- {}: {}", note.key, redact_text(&note.value)));
-        }
-    }
-    if !facts.is_empty() {
-        lines.push("facts:".to_string());
-        for fact in facts {
-            lines.push(format!(
-                "- {} {} {}",
-                fact.subject, fact.predicate, fact.object
-            ));
-        }
-    }
-    lines.push("retrieved_memories:".to_string());
-    lines.push(search_text);
-    lines.push("</memnest_context>".to_string());
-    Ok(lines.join("\n"))
+    .await;
+    Ok(resp.prompt)
 }
 
 pub(crate) async fn memory_search(

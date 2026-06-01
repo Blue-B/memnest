@@ -125,6 +125,8 @@ pub struct ContextRequest {
     max_notes: usize,
     #[serde(default = "default_context_facts")]
     max_facts: usize,
+    #[serde(default = "default_context_chars")]
+    max_chars: usize,
 }
 
 fn default_context_results() -> usize {
@@ -135,6 +137,9 @@ fn default_context_notes() -> usize {
 }
 fn default_context_facts() -> usize {
     8
+}
+fn default_context_chars() -> usize {
+    6000
 }
 
 #[derive(Deserialize)]
@@ -267,12 +272,12 @@ pub struct CompactResponse {
 
 #[derive(Serialize)]
 pub struct ContextResponse {
-    query: String,
-    project: String,
-    notes: Vec<Note>,
-    facts: Vec<Fact>,
-    memories: Vec<SearchResultItem>,
-    prompt: String,
+    pub query: String,
+    pub project: String,
+    pub notes: Vec<Note>,
+    pub facts: Vec<Fact>,
+    pub memories: Vec<SearchResultItem>,
+    pub prompt: String,
 }
 
 #[derive(Serialize)]
@@ -798,31 +803,50 @@ pub async fn context_pack(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<ContextRequest>,
 ) -> Json<ContextResponse> {
-    let query = req.query.trim().to_string();
-    let project = if req.project.trim().is_empty() {
+    Json(
+        build_context(
+            system,
+            &req.query,
+            &req.project,
+            req.n_results,
+            req.max_notes,
+            req.max_facts,
+            req.max_chars,
+        )
+        .await,
+    )
+}
+
+/// Shared context-pack builder used by both the HTTP `/context` endpoint and
+/// the MCP `memory_context` tool, so both return an identical prompt. Assembles
+/// core notes + query-matching facts + retrieved memories and renders a
+/// budget-bounded prompt string.
+pub(crate) async fn build_context(
+    system: Arc<RwLock<MemorySystem>>,
+    query: &str,
+    project: &str,
+    n_results: usize,
+    max_notes: usize,
+    max_facts: usize,
+    max_chars: usize,
+) -> ContextResponse {
+    let query = query.trim().to_string();
+    let project = if project.trim().is_empty() {
         "all".to_string()
     } else {
-        req.project.trim().to_string()
+        project.trim().to_string()
     };
     let memories = if query.is_empty() {
         Vec::new()
     } else {
-        run_hybrid_search(
-            system.clone(),
-            &query,
-            &project,
-            req.n_results.clamp(1, 20),
-            false,
-            true,
-        )
-        .await
+        run_hybrid_search(system.clone(), &query, &project, n_results.clamp(1, 20), false, true).await
     };
 
     let sys = system.read().await;
     let db = sys.db.read().await;
     let mut notes = db.get_notes().unwrap_or_default();
     notes.sort_by(|a, b| b.updated.cmp(&a.updated));
-    notes.truncate(req.max_notes.clamp(0, 50));
+    notes.truncate(max_notes.clamp(0, 50));
 
     let query_lower = query.to_lowercase();
     let mut facts = db.get_facts(1000).unwrap_or_default();
@@ -833,55 +857,123 @@ pub async fn context_pack(
                 .contains(&query_lower)
         });
     }
-    facts.truncate(req.max_facts.clamp(0, 50));
+    facts.truncate(max_facts.clamp(0, 50));
     drop(db);
     drop(sys);
 
-    let prompt = render_context_prompt(&notes, &facts, &memories);
-    Json(ContextResponse {
+    let prompt = render_context_prompt(&notes, &facts, &memories, max_chars);
+    ContextResponse {
         query,
         project,
         notes,
         facts,
         memories,
         prompt,
-    })
+    }
 }
 
-fn render_context_prompt(notes: &[Note], facts: &[Fact], memories: &[SearchResultItem]) -> String {
-    let mut lines = vec!["<memnest_context>".to_string()];
-    if !notes.is_empty() {
-        lines.push("core_notes:".to_string());
-        for note in notes {
-            lines.push(format!("- {}: {}", note.key, redact_text(&note.value)));
+/// Render the context prompt, never exceeding `max_chars`. Sections are added
+/// in priority order (notes → facts → memories); once the budget is hit the
+/// remainder is dropped and a truncation marker is appended. This keeps the
+/// prompt-pack — whose whole purpose is to economise the model's context — from
+/// itself blowing the window.
+fn render_context_prompt(
+    notes: &[Note],
+    facts: &[Fact],
+    memories: &[SearchResultItem],
+    max_chars: usize,
+) -> String {
+    const OPEN: &str = "<memnest_context>";
+    const CLOSE: &str = "</memnest_context>";
+    const TRUNC_MARK: &str = "(context truncated to fit budget)";
+    let reserved = OPEN.len() + CLOSE.len() + TRUNC_MARK.len() + 4;
+    let budget = max_chars.max(reserved);
+
+    let mut body: Vec<String> = Vec::new();
+    let mut used = reserved;
+    let mut truncated = false;
+    let add = |line: String, body: &mut Vec<String>, used: &mut usize| -> bool {
+        let cost = line.len() + 1;
+        if *used + cost > budget {
+            false
+        } else {
+            *used += cost;
+            body.push(line);
+            true
+        }
+    };
+
+    'fill: {
+        if !notes.is_empty() {
+            if !add("core_notes:".to_string(), &mut body, &mut used) {
+                truncated = true;
+                break 'fill;
+            }
+            for note in notes {
+                if !add(
+                    format!("- {}: {}", note.key, redact_text(&note.value)),
+                    &mut body,
+                    &mut used,
+                ) {
+                    truncated = true;
+                    break 'fill;
+                }
+            }
+        }
+        if !facts.is_empty() {
+            if !add("facts:".to_string(), &mut body, &mut used) {
+                truncated = true;
+                break 'fill;
+            }
+            for fact in facts {
+                if !add(
+                    format!("- {} {} {}", fact.subject, fact.predicate, fact.object),
+                    &mut body,
+                    &mut used,
+                ) {
+                    truncated = true;
+                    break 'fill;
+                }
+            }
+        }
+        if !memories.is_empty() {
+            if !add("retrieved_memories:".to_string(), &mut body, &mut used) {
+                truncated = true;
+                break 'fill;
+            }
+            for item in memories {
+                if !add(
+                    format!(
+                        "- [{}:{} score={:.3}] {}",
+                        item.project,
+                        item.id,
+                        item.score,
+                        item.document.replace('\n', " ")
+                    ),
+                    &mut body,
+                    &mut used,
+                ) {
+                    truncated = true;
+                    break 'fill;
+                }
+            }
         }
     }
-    if !facts.is_empty() {
-        lines.push("facts:".to_string());
-        for fact in facts {
-            lines.push(format!(
-                "- {} {} {}",
-                fact.subject, fact.predicate, fact.object
-            ));
-        }
+
+    if body.is_empty() {
+        body.push("(no relevant context)".to_string());
     }
-    if !memories.is_empty() {
-        lines.push("retrieved_memories:".to_string());
-        for item in memories {
-            lines.push(format!(
-                "- [{}:{} score={:.3}] {}",
-                item.project,
-                item.id,
-                item.score,
-                item.document.replace('\n', " ")
-            ));
-        }
+    let mut out = String::with_capacity(used);
+    out.push_str(OPEN);
+    out.push('\n');
+    out.push_str(&body.join("\n"));
+    if truncated {
+        out.push('\n');
+        out.push_str(TRUNC_MARK);
     }
-    if notes.is_empty() && facts.is_empty() && memories.is_empty() {
-        lines.push("(no relevant context)".to_string());
-    }
-    lines.push("</memnest_context>".to_string());
-    lines.join("\n")
+    out.push('\n');
+    out.push_str(CLOSE);
+    out
 }
 
 pub async fn prune(
@@ -4428,5 +4520,33 @@ mod retrieval_eval {
             Some("doc_hi"),
             "important+recent+manual should outrank stale autolog: {ids:?}"
         );
+    }
+
+    #[test]
+    fn context_prompt_respects_char_budget() {
+        let memories: Vec<SearchResultItem> = (0..50)
+            .map(|i| SearchResultItem {
+                id: format!("m{i}"),
+                project: "p".to_string(),
+                document: "lorem ipsum dolor sit amet ".repeat(20),
+                score: 1.0 - i as f32 * 0.01,
+                timestamp: String::new(),
+                chunk_type: "Manual".to_string(),
+                importance: "Knowledge".to_string(),
+            })
+            .collect();
+        // Tight budget: must stay within it and flag truncation.
+        let max = 800usize;
+        let out = render_context_prompt(&[], &[], &memories, max);
+        assert!(out.len() <= max, "prompt {} chars exceeds budget {max}", out.len());
+        assert!(
+            out.contains("(context truncated to fit budget)"),
+            "expected truncation marker"
+        );
+        assert!(out.starts_with("<memnest_context>") && out.ends_with("</memnest_context>"));
+        // Generous budget: everything fits, no truncation.
+        let full = render_context_prompt(&[], &[], &memories, 100_000);
+        assert!(!full.contains("(context truncated"), "unexpected truncation");
+        assert!(full.contains("m0") && full.contains("m49"), "missing memories");
     }
 }
