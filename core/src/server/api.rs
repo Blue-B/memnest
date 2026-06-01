@@ -403,10 +403,14 @@ async fn run_hybrid_search(
                 }
             }
             let final_score = score
-                + keyword_bonus_from_ratio(keyword_ratio)
+                + keyword_bonus_from_ratio(keyword_ratio, sys.config.keyword_max_bonus)
                 + importance_bonus(&c.metadata.importance)
                 + type_bonus(&c.metadata.chunk_type)
-                - recency_penalty(c.created_at);
+                - recency_penalty(
+                    c.created_at,
+                    sys.config.recency_penalty_rate,
+                    sys.config.recency_penalty_cap,
+                );
             let embedding = c.embedding.clone().unwrap_or_default();
             items.push((
                 SearchResultItem {
@@ -3959,8 +3963,8 @@ fn keyword_match_ratio(document: &str, keywords: &[String]) -> f32 {
     matched as f32 / keywords.len() as f32
 }
 
-fn keyword_bonus_from_ratio(ratio: f32) -> f32 {
-    0.15 * ratio
+fn keyword_bonus_from_ratio(ratio: f32, max_bonus: f32) -> f32 {
+    max_bonus * ratio
 }
 
 fn importance_bonus(importance: &Importance) -> f32 {
@@ -3981,9 +3985,9 @@ fn type_bonus(chunk_type: &ChunkType) -> f32 {
     }
 }
 
-fn recency_penalty(created_at: chrono::DateTime<chrono::Utc>) -> f32 {
+fn recency_penalty(created_at: chrono::DateTime<chrono::Utc>, rate: f32, cap: f32) -> f32 {
     let days = (chrono::Utc::now() - created_at).num_seconds().max(0) as f32 / 86_400.0;
-    (days * 0.008).min(0.30)
+    (days * rate).min(cap)
 }
 
 fn diversify_by_project(items: Vec<SearchResultItem>, limit: usize) -> Vec<SearchResultItem> {
