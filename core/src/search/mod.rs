@@ -23,31 +23,6 @@ pub fn compute_decay_score(access_count: i64, days_old: f64, importance: &Import
     salience * 0.5_f64.powf(days_old / half_life)
 }
 
-pub fn compute_composite_score(
-    distance: f32,
-    days_old: f64,
-    chunk_type: &ChunkType,
-    importance: &Importance,
-    keyword_match_ratio: f32,
-) -> f32 {
-    let recency_penalty = (days_old as f32 * 0.008).min(0.30);
-    let type_bonus = match chunk_type {
-        ChunkType::Manual => -0.1,
-        ChunkType::Filtered => 0.0,
-        ChunkType::AutoLog => 0.05,
-        ChunkType::Consolidated => 0.0,
-    };
-    let importance_bonus = match importance {
-        Importance::Knowledge => -0.1,
-        Importance::Decision => -0.05,
-        Importance::Preference => -0.08,
-        Importance::Log => 0.0,
-    };
-    let kw_bonus = keyword_match_ratio * 0.15;
-
-    distance + recency_penalty + type_bonus + importance_bonus - kw_bonus
-}
-
 pub fn strip_korean_particles(token: &str) -> String {
     let particles = [
         "에서", "부터", "까지", "으로", "처럼", "이나", "은", "는", "이", "가", "에", "의", "로",

@@ -172,9 +172,13 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    // Kick off the daily TTL prune loop. Without this, AutoLog chunks
-    // accumulate indefinitely (~537 in production at time of writing).
-    memnest::lifecycle::spawn_periodic_lifecycle(system.clone());
+    // Kick off the daily TTL prune loop (gated by config). Without this,
+    // AutoLog chunks accumulate indefinitely.
+    if config.enable_lifecycle {
+        memnest::lifecycle::spawn_periodic_lifecycle(system.clone());
+    } else {
+        info!("lifecycle prune loop disabled (enable_lifecycle=false)");
+    }
 
     // Start API server
     let app = memnest::server::create_router(system.clone());

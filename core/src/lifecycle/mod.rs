@@ -1,4 +1,3 @@
-pub mod consolidate;
 pub mod decay;
 
 use crate::MemorySystem;
