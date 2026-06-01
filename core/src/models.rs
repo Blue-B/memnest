@@ -18,6 +18,11 @@ pub struct Metadata {
     pub chunk_type: ChunkType,
     #[serde(default)]
     pub importance: Importance,
+    /// Semantic category for the learning layer (failure/correction/insight/...).
+    /// Stored in the metadata JSON blob; `#[serde(default)]` keeps legacy rows
+    /// (written before this field existed) deserializing as `General`.
+    #[serde(default)]
+    pub category: MemoryCategory,
     #[serde(default)]
     pub session_id: String,
     /// Absolute working directory of the client that produced this chunk.
@@ -76,6 +81,22 @@ pub enum Importance {
     Knowledge,
     Decision,
     Preference,
+}
+
+/// Semantic memory category used by the (client-side) learning layer to mark
+/// what kind of durable knowledge a chunk represents. The engine only stores
+/// and returns it; classification happens in the learning layer.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryCategory {
+    #[default]
+    General,
+    Failure,
+    Correction,
+    Insight,
+    Preference,
+    Convention,
+    ToolQuirk,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

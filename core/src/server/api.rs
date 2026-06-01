@@ -47,6 +47,7 @@ pub struct SearchResultItem {
     pub timestamp: String,
     pub chunk_type: String,
     pub importance: String,
+    pub category: String,
 }
 
 #[derive(Deserialize)]
@@ -430,6 +431,7 @@ pub(crate) async fn run_hybrid_search(
                     timestamp: c.created_at.to_rfc3339(),
                     chunk_type: format!("{:?}", c.metadata.chunk_type),
                     importance: format!("{:?}", c.metadata.importance),
+                    category: format!("{:?}", c.metadata.category),
                 },
                 embedding,
             ));
@@ -1520,6 +1522,7 @@ pub async fn collection_detail(
             timestamp: c.created_at.to_rfc3339(),
             chunk_type: format!("{:?}", c.metadata.chunk_type),
             importance: format!("{:?}", c.metadata.importance),
+            category: format!("{:?}", c.metadata.category),
         })
         .collect();
 
