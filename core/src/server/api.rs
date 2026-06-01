@@ -381,7 +381,7 @@ async fn run_hybrid_search(
         sys.config.low_relevance_fallback
     };
     let mut vector_only_used = 0usize;
-    let mut items = Vec::new();
+    let mut items: Vec<(SearchResultItem, Vec<f32>)> = Vec::new();
     for (id, score) in fused {
         if let Ok(Some(c)) = db.get_chunk(&id) {
             if project != "all" && c.project != project {
@@ -407,33 +407,49 @@ async fn run_hybrid_search(
                 + importance_bonus(&c.metadata.importance)
                 + type_bonus(&c.metadata.chunk_type)
                 - recency_penalty(c.created_at);
-            items.push(SearchResultItem {
-                id: c.id,
-                project: c.project,
-                document: if require_visible_match {
-                    query_excerpt(&redact_text(&c.document), query, 600)
-                } else {
-                    redact_text(&c.document).chars().take(600).collect()
+            let embedding = c.embedding.clone().unwrap_or_default();
+            items.push((
+                SearchResultItem {
+                    id: c.id,
+                    project: c.project,
+                    document: if require_visible_match {
+                        query_excerpt(&redact_text(&c.document), query, 600)
+                    } else {
+                        redact_text(&c.document).chars().take(600).collect()
+                    },
+                    score: final_score,
+                    timestamp: c.created_at.to_rfc3339(),
+                    chunk_type: format!("{:?}", c.metadata.chunk_type),
+                    importance: format!("{:?}", c.metadata.importance),
                 },
-                score: final_score,
-                timestamp: c.created_at.to_rfc3339(),
-                chunk_type: format!("{:?}", c.metadata.chunk_type),
-                importance: format!("{:?}", c.metadata.importance),
-            });
+                embedding,
+            ));
             if items.len() >= candidate_limit {
                 break;
             }
         }
     }
     items.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
+        b.0.score
+            .partial_cmp(&a.0.score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     if recent_first {
-        items.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        items.sort_by(|a, b| b.0.timestamp.cmp(&a.0.timestamp));
+        let ranked = items.into_iter().map(|(item, _)| item).collect();
+        return diversify_by_project(ranked, n_results);
     }
-    diversify_by_project(items, n_results)
+    // Content-diversify with MMR when enabled (0 < mmr_lambda < 1); otherwise
+    // fall back to the legacy per-project cap. MMR stops near-duplicate chunks
+    // from crowding out distinct-but-relevant ones — the dominant failure mode
+    // on auto-logged stores where a single project holds nearly all chunks.
+    let lambda = sys.config.mmr_lambda;
+    if lambda > 0.0 && lambda < 1.0 {
+        mmr_select(items, lambda, n_results)
+    } else {
+        let ranked = items.into_iter().map(|(item, _)| item).collect();
+        diversify_by_project(ranked, n_results)
+    }
 }
 
 pub async fn add(
@@ -3996,6 +4012,50 @@ fn diversify_by_project(items: Vec<SearchResultItem>, limit: usize) -> Vec<Searc
     selected
 }
 
+/// Maximal Marginal Relevance selection over scored candidates.
+///
+/// Greedily builds the result list; at each step it picks the candidate that
+/// maximises `lambda * relevance - (1 - lambda) * max_sim_to_selected`, where
+/// relevance is the composite score (min-max normalised across candidates) and
+/// similarity is cosine over chunk embeddings. The first pick is always the
+/// most-relevant candidate, so top-1 relevance is preserved; subsequent picks
+/// trade a little relevance for diversity. `lambda` is expected in (0, 1);
+/// callers gate on that range. Candidates must be pre-sorted by score desc.
+fn mmr_select(
+    mut candidates: Vec<(SearchResultItem, Vec<f32>)>,
+    lambda: f32,
+    n: usize,
+) -> Vec<SearchResultItem> {
+    let limit = n.min(candidates.len());
+    if limit <= 1 {
+        return candidates.into_iter().take(limit).map(|(it, _)| it).collect();
+    }
+    let max_rel = candidates.first().map(|(it, _)| it.score).unwrap_or(0.0);
+    let min_rel = candidates.last().map(|(it, _)| it.score).unwrap_or(0.0);
+    let span = max_rel - min_rel;
+    let norm = |s: f32| if span.abs() <= f32::EPSILON { 1.0 } else { (s - min_rel) / span };
+
+    let mut selected: Vec<(SearchResultItem, Vec<f32>)> = Vec::with_capacity(limit);
+    selected.push(candidates.remove(0));
+    while selected.len() < limit && !candidates.is_empty() {
+        let mut best_idx = 0usize;
+        let mut best_mmr = f32::MIN;
+        for (i, (cand, emb)) in candidates.iter().enumerate() {
+            let max_sim = selected
+                .iter()
+                .map(|(_, sel_emb)| crate::eval::cosine(emb, sel_emb))
+                .fold(0.0_f32, f32::max);
+            let mmr = lambda * norm(cand.score) - (1.0 - lambda) * max_sim;
+            if mmr > best_mmr {
+                best_mmr = mmr;
+                best_idx = i;
+            }
+        }
+        selected.push(candidates.remove(best_idx));
+    }
+    selected.into_iter().map(|(it, _)| it).collect()
+}
+
 #[cfg(test)]
 mod retrieval_eval {
     //! Offline retrieval-quality baseline over a small hand-labeled corpus.
@@ -4088,9 +4148,9 @@ mod retrieval_eval {
         (tmp, Arc::new(RwLock::new(sys)))
     }
 
-    async fn ingest(system: &Arc<RwLock<MemorySystem>>) {
+    async fn ingest(system: &Arc<RwLock<MemorySystem>>, corpus: &[(&str, &str, &str)]) {
         let sys = system.read().await;
-        for (id, project, text) in labeled_corpus() {
+        for &(id, project, text) in corpus {
             let embedding = sys.embedder.encode_document(text).expect("encode_document");
             let now = chrono::Utc::now();
             let chunk = MemoryChunk {
@@ -4121,7 +4181,7 @@ mod retrieval_eval {
     #[tokio::test]
     async fn retrieval_baseline_recall_and_mrr() {
         let (_tmp, system) = build_system().await;
-        ingest(&system).await;
+        ingest(&system, &labeled_corpus()).await;
 
         let queries = labeled_queries();
         let k = 5usize;
@@ -4155,5 +4215,116 @@ mod retrieval_eval {
         assert!(r5 >= 0.9, "recall@5 regressed below 0.9: {r5:.3}");
         assert!(mrr >= 0.85, "MRR@5 regressed below 0.85: {mrr:.3}");
         assert!(p1 >= 0.8, "precision@1 regressed below 0.8: {p1:.3}");
+    }
+
+    /// A redundant cluster (all one project, mimicking an auto-logged store)
+    /// plus one distinct follow-up carrying unique information.
+    fn cluster_corpus() -> Vec<(&'static str, &'static str, &'static str)> {
+        vec![
+            ("inc_dup1", "incidents", "Deploy failed at 02:14 because the database migration lock was held by a stuck worker; we killed the stuck worker and the migration completed and the deploy succeeded"),
+            ("inc_dup2", "incidents", "The 02:14 deploy failure was caused by a stuck worker holding the database migration lock; killing the stuck worker let the migration finish and the deploy succeed"),
+            ("inc_dup3", "incidents", "Our 02:14 deploy failed because a stuck worker was holding the migration lock on the database; after we terminated the stuck worker the migration ran and the deploy went through"),
+            ("inc_distinct", "incidents", "Preventive fix after the migration lock incident: added a thirty second statement lock timeout and a liveness healthcheck that automatically restarts unresponsive workers"),
+        ]
+    }
+
+    async fn top_ids_and_embeddings(
+        system: &Arc<RwLock<MemorySystem>>,
+        query: &str,
+        k: usize,
+    ) -> (Vec<String>, Vec<Vec<f32>>) {
+        let items = run_hybrid_search(system.clone(), query, "all", k, false, false).await;
+        let sys = system.read().await;
+        let db = sys.db.read().await;
+        let mut ids = Vec::new();
+        let mut embs = Vec::new();
+        for it in &items {
+            ids.push(it.id.clone());
+            let emb = db
+                .get_chunk(&it.id)
+                .ok()
+                .flatten()
+                .and_then(|c| c.embedding)
+                .unwrap_or_default();
+            embs.push(emb);
+        }
+        (ids, embs)
+    }
+
+    // On realistic data MMR is a *safety net*: it must never make the result
+    // list more redundant or less relevant than pure relevance ranking. The
+    // strong de-duplication behaviour (replacing near-identical hits with
+    // distinct ones) is proven deterministically in
+    // `mmr_select_breaks_up_near_duplicates`; it only fires when a
+    // comparably-relevant *and* embedding-distinct alternative exists, which is
+    // rare among paraphrase-level chunks (relevance and embedding similarity are
+    // coupled). This test guards the no-regression property on real embeddings.
+    #[tokio::test]
+    async fn mmr_does_not_regress_relevance_or_redundancy() {
+        use crate::eval::intra_list_redundancy;
+        let (_tmp, system) = build_system().await;
+        ingest(&system, &labeled_corpus()).await;
+        ingest(&system, &cluster_corpus()).await;
+
+        let query =
+            "why did the 02:14 deploy fail with a stuck worker holding the migration lock";
+        let relevant: Vec<String> = ["inc_dup1", "inc_dup2", "inc_dup3", "inc_distinct"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let k = 3usize;
+        let thr = 0.88f32;
+
+        // Relevance-only: MMR with diversity weight ~0 (lambda near 1.0).
+        system.write().await.config.mmr_lambda = 0.99;
+        let (rel_ids, rel_emb) = top_ids_and_embeddings(&system, query, k).await;
+        let red_rel = intra_list_redundancy(&rel_emb, thr);
+        let rec_rel = recall_at_k(&[relevant.clone()], &[rel_ids.clone()], k);
+
+        // Balanced MMR (production default).
+        system.write().await.config.mmr_lambda = 0.5;
+        let (mmr_ids, mmr_emb) = top_ids_and_embeddings(&system, query, k).await;
+        let red_mmr = intra_list_redundancy(&mmr_emb, thr);
+        let rec_mmr = recall_at_k(&[relevant.clone()], &[mmr_ids.clone()], k);
+
+        eprintln!("\n=== MMR vs relevance-only (k={k}, redundancy thr={thr}) ===");
+        eprintln!("  relevance-only top{k}={rel_ids:?}  redundancy={red_rel:.3}  recall(relevant)={rec_rel:.3}");
+        eprintln!("  MMR(0.5)       top{k}={mmr_ids:?}  redundancy={red_mmr:.3}  recall(relevant)={rec_mmr:.3}");
+
+        // MMR must not increase redundancy nor lose relevant recall.
+        assert!(red_mmr <= red_rel + 1e-9, "MMR raised redundancy: {red_mmr:.3} > {red_rel:.3}");
+        assert!(rec_mmr >= rec_rel - 1e-9, "MMR hurt relevant recall: {rec_mmr:.3} < {rec_rel:.3}");
+    }
+
+    #[test]
+    fn mmr_select_breaks_up_near_duplicates() {
+        let item = |id: &str, score: f32| SearchResultItem {
+            id: id.to_string(),
+            project: "p".to_string(),
+            document: String::new(),
+            score,
+            timestamp: String::new(),
+            chunk_type: String::new(),
+            importance: String::new(),
+        };
+        let dup = vec![1.0f32, 0.0, 0.0];
+        let other = vec![0.0f32, 1.0, 0.0];
+        let make = || {
+            vec![
+                (item("a", 1.00), dup.clone()),
+                (item("b", 0.99), dup.clone()),
+                (item("c", 0.98), dup.clone()),
+                (item("d", 0.80), other.clone()),
+            ]
+        };
+        // Pure relevance (lambda ~1): the three near-duplicates win.
+        let rel: Vec<String> = mmr_select(make(), 0.99, 3)
+            .into_iter()
+            .map(|i| i.id)
+            .collect();
+        assert_eq!(rel, vec!["a", "b", "c"]);
+        // Balanced MMR breaks the dup run and surfaces the distinct doc.
+        let mmr: Vec<String> = mmr_select(make(), 0.5, 3).into_iter().map(|i| i.id).collect();
+        assert!(mmr.contains(&"d".to_string()), "MMR did not surface distinct doc: {mmr:?}");
     }
 }

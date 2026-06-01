@@ -85,12 +85,77 @@ pub fn precision_at_1(gold: &[Vec<String>], retrieved: &[Vec<String>]) -> f64 {
     }
 }
 
+/// Cosine similarity between two equal-length vectors. Returns 0.0 for empty,
+/// mismatched, or zero-norm inputs (so missing embeddings are treated as
+/// maximally diverse rather than panicking).
+pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
+    if a.is_empty() || a.len() != b.len() {
+        return 0.0;
+    }
+    let mut dot = 0.0f32;
+    let mut na = 0.0f32;
+    let mut nb = 0.0f32;
+    for i in 0..a.len() {
+        dot += a[i] * b[i];
+        na += a[i] * a[i];
+        nb += b[i] * b[i];
+    }
+    if na == 0.0 || nb == 0.0 {
+        0.0
+    } else {
+        dot / (na.sqrt() * nb.sqrt())
+    }
+}
+
+/// Intra-list redundancy: the fraction of unordered pairs in a result list whose
+/// cosine similarity exceeds `threshold`. 0.0 means a fully diverse top-k; 1.0
+/// means every pair is a near-duplicate. This is the metric MMR is meant to
+/// drive down on auto-logged stores where the same moment is recorded many
+/// times. Lists with fewer than two items have redundancy 0.0 by definition.
+pub fn intra_list_redundancy(embeddings: &[Vec<f32>], threshold: f32) -> f64 {
+    let n = embeddings.len();
+    if n < 2 {
+        return 0.0;
+    }
+    let mut redundant = 0usize;
+    let mut total = 0usize;
+    for i in 0..n {
+        for j in (i + 1)..n {
+            total += 1;
+            if cosine(&embeddings[i], &embeddings[j]) > threshold {
+                redundant += 1;
+            }
+        }
+    }
+    redundant as f64 / total as f64
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn v(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn cosine_basic() {
+        assert!((cosine(&[1.0, 0.0], &[1.0, 0.0]) - 1.0).abs() < 1e-6);
+        assert!(cosine(&[1.0, 0.0], &[0.0, 1.0]).abs() < 1e-6);
+        assert_eq!(cosine(&[], &[]), 0.0);
+        assert_eq!(cosine(&[1.0], &[1.0, 2.0]), 0.0);
+    }
+
+    #[test]
+    fn redundancy_detects_near_duplicates() {
+        let dup = vec![1.0f32, 0.0];
+        let other = vec![0.0f32, 1.0];
+        // [dup, dup, other]: only the dup/dup pair is redundant -> 1 of 3 pairs.
+        let r = intra_list_redundancy(&[dup.clone(), dup.clone(), other], 0.9);
+        assert!((r - (1.0 / 3.0)).abs() < 1e-9);
+        // all distinct -> 0 ; single item -> 0
+        assert_eq!(intra_list_redundancy(&[vec![1.0, 0.0], vec![0.0, 1.0]], 0.9), 0.0);
+        assert_eq!(intra_list_redundancy(&[vec![1.0, 0.0]], 0.9), 0.0);
     }
 
     #[test]
