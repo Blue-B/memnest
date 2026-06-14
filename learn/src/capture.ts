@@ -4,12 +4,15 @@
 
 import { extractMemories } from "./extract.js";
 import type { MemnestClient } from "./memnest-client.js";
-import { defaultImportanceFor, type LlmComplete, type TranscriptTurn } from "./types.js";
+import { defaultImportanceFor, type LearnedMemory, type LlmComplete, type TranscriptTurn } from "./types.js";
 
 export interface CaptureResult {
   extracted: number;
   written: string[]; // ids returned by the engine
   errors: number;
+  /** The (in-batch de-duped) memories actually persisted — for downstream
+   *  routing into skill self-improvement / the user model. */
+  memories: LearnedMemory[];
 }
 
 export interface CaptureOpts {
@@ -26,9 +29,15 @@ export async function captureMemories(
 ): Promise<CaptureResult> {
   const memories = await extractMemories(turns, llm);
   const limited = opts.max ? memories.slice(0, opts.max) : memories;
+  // Simple in-batch dedup (normalized text) so one LLM response doesn't spam identical entries
+  const seen = new Set<string>();
   const written: string[] = [];
+  const persisted: LearnedMemory[] = [];
   let errors = 0;
   for (const m of limited) {
+    const key = m.text.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
     try {
       const res = await client.add({
         text: m.text,
@@ -38,11 +47,12 @@ export async function captureMemories(
         chunkType: "manual",
       });
       if (res?.id) written.push(res.id);
+      persisted.push(m);
     } catch {
       errors++;
     }
   }
-  return { extracted: memories.length, written, errors };
+  return { extracted: memories.length, written, errors, memories: persisted };
 }
 
 /**
