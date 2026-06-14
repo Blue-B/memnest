@@ -14,7 +14,12 @@ import type { LearnedMemory, LlmComplete, MemoryCategory } from "./types.js";
 
 export const USER_MODEL_PROJECT = "_user_model";
 
-const FACET_CATS = new Set<MemoryCategory>(["preference", "correction"]);
+// Only `preference` describes the USER. `correction` was too loose: a technical
+// fix the user happened to state ("to clear EADDRINUSE, lsof + kill the PID")
+// got tagged correction and polluted the who-you-are model. Genuine user
+// preferences already surface as `preference`; corrections still drive normal
+// memory + reinforcement, just not the user model.
+const FACET_CATS = new Set<MemoryCategory>(["preference"]);
 
 export function isUserFacet(m: LearnedMemory): boolean {
   return FACET_CATS.has(m.category);
