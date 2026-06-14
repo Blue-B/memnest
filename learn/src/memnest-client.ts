@@ -27,6 +27,9 @@ export interface NeighborItem {
   project: string;
   document: string;
   distance: number;
+  // NOTE: the engine returns category/importance/chunk_type in PascalCase
+  // (Rust `format!("{:?}", enum)`), e.g. "Failure"/"Knowledge"/"Manual", whereas
+  // /add and /update accept snake_case. Always `.toLowerCase()` before comparing.
   category: string;
   importance: string;
   chunk_type: string;

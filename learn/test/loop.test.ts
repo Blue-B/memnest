@@ -85,6 +85,20 @@ test("reinforce(recurrence) bumps the matching failure + stamps recurrence", asy
   expect(updates[0].fields.importance).toBe("decision");
 });
 
+test("reinforce(recurrence) bumps importance only (no text rewrite) when doc may be truncated", async () => {
+  const updates: any[] = [];
+  const longDoc = "x".repeat(8000); // at/over the engine /neighbors doc limit
+  const client = {
+    neighbors: async () => [neighbor({ id: "big", category: "failure", importance: "knowledge", document: longDoc })],
+    update: async (id: string, fields: any) => updates.push({ id, fields }),
+  } as unknown as MemnestClient;
+  const r = await reinforce(client, "recurrence", "still broken, that big thing again");
+  expect(r).toMatchObject({ matched: true, id: "big", action: "reinforced", newImportance: "decision" });
+  expect(r.recurred).toBeUndefined(); // no marker stamped
+  expect(updates[0].fields.text).toBeUndefined(); // text NOT rewritten -> no truncation data loss
+  expect(updates[0].fields.importance).toBe("decision");
+});
+
 test("reinforce(success) validates by one step; no-op when nothing close", async () => {
   const updates: any[] = [];
   const close = {

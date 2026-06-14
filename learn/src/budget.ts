@@ -26,10 +26,10 @@ export class LlmBudget {
     return true;
   }
 
-  /** Current usage within the live window (for diagnostics). */
+  /** Current usage within the live window (read-only — no side effects). */
   state(): { used: number; max: number; windowMs: number } {
     const cutoff = this.now() - this.windowMs;
-    this.times = this.times.filter((x) => x > cutoff);
-    return { used: this.times.length, max: this.maxCalls, windowMs: this.windowMs };
+    const used = this.times.filter((x) => x > cutoff).length;
+    return { used, max: this.maxCalls, windowMs: this.windowMs };
   }
 }
