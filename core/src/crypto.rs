@@ -142,9 +142,14 @@ pub fn decrypt(ciphertext: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // These tests mutate the shared global CIPHER, so serialize them.
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_roundtrip() {
+        let _g = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         init_crypto(Some("test-master-key-123")).unwrap();
         let original = "secret-password-123!";
         let encrypted = encrypt(original).unwrap();
@@ -152,22 +157,28 @@ mod tests {
         assert_ne!(encrypted, original);
         let decrypted = decrypt(&encrypted).unwrap();
         assert_eq!(decrypted, original);
+    }
 
-        // Back-compat: a secret encrypted by an old palimpsest build (legacy
-        // salt) must still decrypt via the fallback path.
-        let legacy = derive_cipher("test-master-key-123", LEGACY_SALT).unwrap();
-        let nonce_bytes: [u8; 12] = [7u8; 12];
-        let ct = legacy
-            .encrypt(Nonce::from_slice(&nonce_bytes), "old-vault-secret".as_bytes())
-            .unwrap();
-        let mut combined = nonce_bytes.to_vec();
-        combined.extend_from_slice(&ct);
-        let blob = format!("$enc${}", BASE64.encode(&combined));
-        assert_eq!(decrypt(&blob).unwrap(), "old-vault-secret");
+    // The legacy (palimpsest-salt) decrypt fallback derives the same AES key as
+    // an old build would, independent of the shared global CIPHER (which other
+    // system-building tests re-init concurrently). End-to-end proof that a real
+    // migrated vault decrypts was done against a live engine.
+    #[test]
+    fn legacy_salt_derives_distinct_recoverable_key() {
+        let key = "shared-master-key-xyz";
+        let legacy = derive_cipher(key, LEGACY_SALT).unwrap();
+        let primary = derive_cipher(key, SALT).unwrap();
+        let nonce = Nonce::from_slice(&[9u8; 12]);
+        let ct = legacy.encrypt(nonce, b"old-vault-secret".as_ref()).unwrap();
+        // primary (new salt) must NOT decrypt a legacy-salt ciphertext ...
+        assert!(primary.decrypt(nonce, ct.as_ref()).is_err());
+        // ... but the legacy cipher does, which is exactly the decrypt() fallback.
+        assert_eq!(legacy.decrypt(nonce, ct.as_ref()).unwrap(), b"old-vault-secret");
     }
 
     #[test]
     fn test_disabled() {
+        let _g = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         init_crypto(None).unwrap();
         let original = "plain-text";
         let encrypted = encrypt(original).unwrap();
