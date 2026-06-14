@@ -961,7 +961,14 @@ pub(crate) async fn build_context(
     let memories = if query.is_empty() {
         Vec::new()
     } else {
-        run_hybrid_search(system.clone(), &query, &project, n_results.clamp(1, 20), false, true, category).await
+        // Injection/context recall must use the SAME hybrid (semantic + lexical)
+        // path as /search. The old `require_visible_match=true` disabled vector
+        // search AND hard-required literal keyword overlap, so a Korean query
+        // ("바이오스") never matched an English-stored memory ("BIOS") and the
+        // pack came back empty. Use false so cross-language / paraphrased recall
+        // actually surfaces; relevance stays bounded by distance_cutoff +
+        // low_relevance_fallback + n_results + max_chars.
+        run_hybrid_search(system.clone(), &query, &project, n_results.clamp(1, 20), false, false, category).await
     };
 
     let sys = system.read().await;
