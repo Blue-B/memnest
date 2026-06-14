@@ -25,6 +25,10 @@ import { MemnestClient } from "./memnest-client.js";
 import { MemorySnapshot } from "./kv-snapshot.js";
 import { captureCorrection, captureMemories, looksLikeCorrection } from "./capture.js";
 import { consolidateByEmbedding } from "./consolidate.js";
+import { detectOutcomeSignal, reinforce } from "./reinforce.js";
+import { improveSkills } from "./skills.js";
+import { updateUserModel, userModelContext } from "./user-model.js";
+import type { LearnedMemory } from "./types.js";
 import {
   appendDaily,
   applyScratch,
@@ -82,16 +86,34 @@ function makeLlm(ctx: ExtensionContext): LlmComplete | null {
   };
 }
 
+// ── learning fan-out: route freshly-captured memories into the loops ─────────
+// skill self-improvement (#2) + user-model deepening (#4). Best-effort; the
+// outcome-reinforcement loop (#1) runs separately off the input signal.
+async function learnFromMemories(memories: LearnedMemory[], llm: LlmComplete): Promise<void> {
+  if (memories.length === 0) return;
+  await Promise.allSettled([
+    improveSkills(client, memories, llm, { max: 4 }),
+    updateUserModel(client, memories, llm, { max: 4 }),
+  ]);
+}
+
 // ── injection block (byte-stable) ────────────────────────────────────────────
 async function buildInjection(prompt: string): Promise<string> {
   const parts: string[] = [];
-  // 1) open scratchpad items (working memory)
+  // 1) who the user is (deepening user model) — kept first so it's always seen
+  try {
+    const profile = await userModelContext(client, prompt || "user preferences working style");
+    if (profile.trim()) parts.push(profile);
+  } catch {
+    /* user model unavailable — skip */
+  }
+  // 2) open scratchpad items (working memory)
   const open = parseScratchpad(readSafe(SCRATCHPAD_FILE)).filter((i) => !i.done);
   if (open.length > 0) {
     parts.push("open_tasks:");
     for (const i of open) parts.push(`- [ ] ${i.text}`);
   }
-  // 2) memnest budget-bounded context pack (notes + facts + retrieved memories)
+  // 3) memnest budget-bounded context pack (notes + facts + retrieved memories)
   try {
     const { prompt: pack } = await client.context(prompt || "recent work", { maxChars: 4000 });
     if (pack.trim()) parts.push(pack);
@@ -139,11 +161,23 @@ export default function (pi: ExtensionAPI) {
         .catch(() => {});
     }
 
+    // outcome reinforcement (#1): the closed loop. "still broken" raises the
+    // matching failure memory; "works now" validates the one that helped.
+    const signal = detectOutcomeSignal(text);
+    if (signal) {
+      reinforce(client, signal, text)
+        .then((r) => {
+          if (r.matched) snapshot.markDirty();
+        })
+        .catch(() => {});
+    }
+
     if (llm && turnCounter % CAPTURE_EVERY_TURNS === 0 && recentTurns.length > 0) {
       const slice = recentTurns.slice(-40);
       captureMemories(slice, llm, client, { project, max: 8 })
-        .then((r) => {
+        .then(async (r) => {
           if (r.written.length > 0) snapshot.markDirty();
+          await learnFromMemories(r.memories, llm);
         })
         .catch(() => {});
     }
@@ -169,10 +203,11 @@ export default function (pi: ExtensionAPI) {
     const llm = makeLlm(ctx);
     if (!llm || recentTurns.length === 0) return;
     try {
-      await captureMemories(recentTurns.slice(-60), llm, client, {
+      const r = await captureMemories(recentTurns.slice(-60), llm, client, {
         project: process.env.MEMNEST_PROJECT ?? "default",
         max: 12,
       });
+      await learnFromMemories(r.memories, llm);
     } catch {
       /* best-effort */
     }
@@ -221,16 +256,16 @@ export default function (pi: ExtensionAPI) {
 
   // tool: skill (procedural "how", stored in memnest's _skills project)
   const SkillParams = Type.Object({
-    action: Type.Union([Type.Literal("create"), Type.Literal("find")]),
+    action: Type.Union([Type.Literal("create"), Type.Literal("find"), Type.Literal("update")]),
     title: Type.Optional(Type.String()),
-    body: Type.Optional(Type.String({ description: "Step-by-step procedure (for create)" })),
-    query: Type.Optional(Type.String({ description: "Search text (for find)" })),
+    body: Type.Optional(Type.String({ description: "Step-by-step procedure (create) or the step/caveat to append (update)" })),
+    query: Type.Optional(Type.String({ description: "Search text (find) or which skill to refine (update)" })),
   });
   pi.registerTool({
     name: "skill",
     label: "Skill",
     description:
-      "Save or recall a reusable procedure (how to do something). create: save a how-to; find: search saved skills.",
+      "Save, recall, or refine a reusable procedure. create: save a how-to; find: search saved skills; update: append a learned step/caveat to the closest existing skill (self-improvement).",
     parameters: SkillParams,
     async execute(_id, params, _signal, _onUpdate, _ctx) {
       if (params.action === "create") {
@@ -243,6 +278,16 @@ export default function (pi: ExtensionAPI) {
           chunkType: "manual",
         });
         return toolText(`Saved skill "${params.title}" (id=${res.id}).`);
+      }
+      if (params.action === "update") {
+        const needle = params.query ?? params.title ?? "";
+        if (!needle || !params.body) return toolText("query (which skill) and body (what to add) are required");
+        const hits = await client.search(needle, { project: SKILL_PROJECT, nResults: 1 });
+        if (hits.length === 0) return toolText("No matching skill to update — use create instead.");
+        const target = hits[0]!;
+        const merged = `${target.document.trimEnd()}\n${params.body.trim()}`;
+        await client.update(target.id, { text: merged, chunkType: "consolidated" });
+        return toolText(`Refined skill (id=${target.id}).`);
       }
       const hits = await client.search(params.query ?? params.title ?? "", {
         project: SKILL_PROJECT,
