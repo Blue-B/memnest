@@ -23,8 +23,9 @@ import { Type } from "@sinclair/typebox";
 
 import { MemnestClient } from "./memnest-client.js";
 import { MemorySnapshot } from "./kv-snapshot.js";
-import { captureCorrection, captureMemories, looksLikeCorrection } from "./capture.js";
+import { captureCorrection, captureMemories, extractMessageText, looksLikeCorrection } from "./capture.js";
 import { consolidateByEmbedding } from "./consolidate.js";
+import { LlmBudget } from "./budget.js";
 import { detectOutcomeSignal, reinforce } from "./reinforce.js";
 import { improveSkills } from "./skills.js";
 import { updateUserModel, userModelContext } from "./user-model.js";
@@ -46,12 +47,19 @@ const SCRATCHPAD_FILE = path.join(LEARN_DIR, "SCRATCHPAD.md");
 const DAILY_DIR = path.join(LEARN_DIR, "daily");
 const CAPTURE_EVERY_TURNS = Number(process.env.MEMNEST_CAPTURE_TURNS ?? 10);
 const SKILL_PROJECT = "_skills";
+// Background LLM budget: cap automatic capture/skill/user-model calls so they
+// can't compete with the user's real work. Manual tools are NOT gated.
+const LLM_MAX_CALLS = Number(process.env.MEMNEST_LLM_MAX_CALLS ?? 24);
+const LLM_WINDOW_MS = Number(process.env.MEMNEST_LLM_WINDOW_MS ?? 5 * 60 * 1000);
 
 const client = new MemnestClient(MEMNEST_URL, fetch as any);
 const snapshot = new MemorySnapshot();
+const budget = new LlmBudget(LLM_MAX_CALLS, LLM_WINDOW_MS);
 
 let turnCounter = 0;
 let recentTurns: TranscriptTurn[] = [];
+let bgInFlight = false; // one background learn pass at a time
+const MAX_RECENT_TURNS = 120;
 
 // ── small fs helpers ───────────────────────────────────────────────────────
 function ensureDirs() {
@@ -84,6 +92,18 @@ function makeLlm(ctx: ExtensionContext): LlmComplete | null {
       .join("\n")
       .trim();
   };
+}
+
+/**
+ * Budget-gated LLM for BACKGROUND work. When the window is exhausted it returns
+ * "" instead of calling the model; every downstream step (extraction, skill
+ * draft/refine, user-model refine, consolidation) already treats an empty reply
+ * as "nothing", so throttling degrades gracefully to a no-op.
+ */
+function backgroundLlm(ctx: ExtensionContext): LlmComplete | null {
+  const llm = makeLlm(ctx);
+  if (!llm) return null;
+  return async (input) => (budget.allow() ? llm(input) : "");
 }
 
 // ── learning fan-out: route freshly-captured memories into the loops ─────────
@@ -144,14 +164,28 @@ export default function (pi: ExtensionAPI) {
     return { systemPrompt: event.systemPrompt + header };
   });
 
+  // agent_end: also capture what the ASSISTANT said, so failures/insights the
+  // model discovered (but the user never restated) are visible to extraction.
+  pi.on("agent_end", async (event: { messages?: unknown[]; willRetry?: boolean }) => {
+    if (event?.willRetry) return; // partial turn that will be retried
+    const msgs = Array.isArray(event?.messages) ? event.messages : [];
+    for (const m of msgs) {
+      if (!m || typeof m !== "object" || (m as any).role !== "assistant") continue;
+      const text = extractMessageText((m as any).content);
+      if (text.trim()) recentTurns.push({ role: "assistant", text: text.slice(0, 4000) });
+    }
+    if (recentTurns.length > MAX_RECENT_TURNS) recentTurns = recentTurns.slice(-MAX_RECENT_TURNS);
+  });
+
   // input: track turns, correction fast-path, periodic background capture
   pi.on("input", async (event: { source?: string; text: string }, ctx: ExtensionContext) => {
     if (event.source === "extension") return { action: "continue" };
     const text = event.text ?? "";
     recentTurns.push({ role: "user", text });
+    if (recentTurns.length > MAX_RECENT_TURNS) recentTurns = recentTurns.slice(-MAX_RECENT_TURNS);
     turnCounter++;
 
-    const llm = makeLlm(ctx);
+    const llm = backgroundLlm(ctx);
     const project = process.env.MEMNEST_PROJECT ?? "default";
 
     if (looksLikeCorrection(text)) {
@@ -172,14 +206,18 @@ export default function (pi: ExtensionAPI) {
         .catch(() => {});
     }
 
-    if (llm && turnCounter % CAPTURE_EVERY_TURNS === 0 && recentTurns.length > 0) {
+    if (llm && turnCounter % CAPTURE_EVERY_TURNS === 0 && recentTurns.length > 0 && !bgInFlight) {
+      bgInFlight = true;
       const slice = recentTurns.slice(-40);
       captureMemories(slice, llm, client, { project, max: 8 })
         .then(async (r) => {
           if (r.written.length > 0) snapshot.markDirty();
           await learnFromMemories(r.memories, llm);
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          bgInFlight = false;
+        });
     }
     return { action: "continue" };
   });
@@ -200,7 +238,7 @@ export default function (pi: ExtensionAPI) {
 
   // session_shutdown: final capture flush
   pi.on("session_shutdown", async (_event: unknown, ctx: ExtensionContext) => {
-    const llm = makeLlm(ctx);
+    const llm = backgroundLlm(ctx);
     if (!llm || recentTurns.length === 0) return;
     try {
       const r = await captureMemories(recentTurns.slice(-60), llm, client, {

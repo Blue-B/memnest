@@ -9,6 +9,8 @@ import {
   withRecurrenceMarker,
 } from "../src/reinforce.js";
 import { improveSkills, isSkillCandidate } from "../src/skills.js";
+import { LlmBudget } from "../src/budget.js";
+import { extractMessageText } from "../src/capture.js";
 import { isUserFacet, updateUserModel, userModelContext } from "../src/user-model.js";
 import type { MemnestClient, NeighborItem } from "../src/memnest-client.js";
 import type { LearnedMemory } from "../src/types.js";
@@ -96,6 +98,38 @@ test("reinforce(success) validates by one step; no-op when nothing close", async
   const none = { neighbors: async () => [], update: async () => {} } as unknown as MemnestClient;
   expect(await reinforce(none, "recurrence", "still broken")).toEqual({ matched: false });
   expect(await reinforce(none, null, "anything")).toEqual({ matched: false });
+});
+
+// ── background budget / throttle ──────────────────────────────────────────────
+test("LlmBudget caps calls per window and refills as the window slides", () => {
+  let t = 1000;
+  const b = new LlmBudget(3, 100, () => t);
+  expect(b.allow()).toBe(true);
+  expect(b.allow()).toBe(true);
+  expect(b.allow()).toBe(true);
+  expect(b.allow()).toBe(false); // 3/3 used within the window
+  t += 101; // window slides past the first three
+  expect(b.allow()).toBe(true);
+  expect(b.state()).toMatchObject({ used: 1, max: 3 });
+});
+
+test("LlmBudget with maxCalls<=0 never allows", () => {
+  const b = new LlmBudget(0, 1000);
+  expect(b.allow()).toBe(false);
+});
+
+// ── assistant-text extraction (agent_end capture) ─────────────────────────────
+test("extractMessageText handles string, content blocks, skips non-text", () => {
+  expect(extractMessageText("plain")).toBe("plain");
+  expect(
+    extractMessageText([
+      { type: "text", text: "first" },
+      { type: "tool_use", id: "x" },
+      { type: "text", text: "second" },
+    ]),
+  ).toBe("first\nsecond");
+  expect(extractMessageText([{ type: "image", source: {} }])).toBe("");
+  expect(extractMessageText(null)).toBe("");
 });
 
 // ── skill self-improvement (fake client) ──────────────────────────────────────

@@ -34,6 +34,7 @@ test("extension registers the expected hooks and tools", () => {
   for (const h of [
     "session_start",
     "before_agent_start",
+    "agent_end", // assistant-turn capture
     "input",
     "session_before_compact",
     "session_shutdown",
@@ -51,6 +52,22 @@ test("extension registers the expected hooks and tools", () => {
     // TypeBox object schema marker (would be undefined for a plain JSON object)
     expect(t.parameters?.type).toBe("object");
   }
+});
+
+test("agent_end hook ingests assistant text without an engine or model", async () => {
+  const f = makeFakePi();
+  (mod.default as any)(f.api);
+  // willRetry turns are skipped; a normal turn's assistant text is ingested.
+  // No throw == the handler tolerates arbitrary message shapes defensively.
+  const agentEnd = f.hooks["agent_end"]!;
+  await agentEnd({ willRetry: true, messages: [{ role: "assistant", content: "ignored" }] });
+  await agentEnd({
+    messages: [
+      { role: "assistant", content: [{ type: "text", text: "the bug was a stale lock" }] },
+      { role: "tool", content: [{ type: "text", text: "tool noise" }] },
+      "garbage",
+    ],
+  });
 });
 
 test("scratchpad tool executes without an engine (working memory is local)", async () => {
