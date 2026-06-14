@@ -77,6 +77,30 @@ export async function captureCorrection(
   return res?.id ?? null;
 }
 
+/**
+ * Extract plain text from a message's content, which the runtime may give as a
+ * string or an array of content blocks ({type:"text", text}). Non-text blocks
+ * (tool calls, images, thinking) are skipped. Used by the agent_end hook so the
+ * learning layer also sees what the ASSISTANT said, not just user turns.
+ */
+export function extractMessageText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const block of content) {
+    if (typeof block === "string") parts.push(block);
+    else if (
+      block &&
+      typeof block === "object" &&
+      (block as any).type === "text" &&
+      typeof (block as any).text === "string"
+    ) {
+      parts.push((block as any).text);
+    }
+  }
+  return parts.join("\n").trim();
+}
+
 /** Heuristic: does this user message look like a correction of the agent? */
 const CORRECTION_PATTERNS: RegExp[] = [
   /\bno,? (use|don't|do not|that's wrong|not)\b/i,
