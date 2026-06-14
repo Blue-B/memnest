@@ -107,9 +107,16 @@ const CORRECTION_PATTERNS: RegExp[] = [
   /\bactually,?\b/i,
   /\bthat'?s (wrong|incorrect|not right)\b/i,
   /\b(use|prefer) .* not\b/i,
-  /아니(야|요|라|\s|$)/, // Korean: "no / that's not it" (\b is ASCII-only, useless for Hangul)
-  /틀렸/, // Korean: "wrong"
-  /잘못/, // Korean: "mistaken/wrong"
+  // -- Korean correction patterns --
+  /아니(야|요|라|\s|$)/, // "no / that's not it"
+  /틀렸/, // "wrong"
+  /잘못/, // "mistaken/wrong"
+  /추정/, // "추정했잖아" = you assumed (guessed instead of verifying)
+  /말고/, // "추정말고 직접확인해" = don't guess, verify directly
+  /없는데/, // "F32그런거없는데?" = that doesn't exist
+  /했잖아/, // "추정했잖아" = I already told you / you did it again
+  /잖아(요)?/, // general "as you should know" or "as I said" correction tone
+  /(해야|말아|하면).*(잖|는데)/, // "해야하잖아" = you should have… (correction)
 ];
 
 export function looksLikeCorrection(userText: string): boolean {
