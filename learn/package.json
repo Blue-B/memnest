@@ -3,7 +3,12 @@
   "version": "0.1.0",
   "description": "Client-side learning + working-memory + KV-cache-stable injection layer on top of the memnest engine. Keeps memnest's Rust core LLM-free; borrows the host agent's model for extraction/consolidation.",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
+  "pi": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
   "scripts": {
     "test": "bun test test/",
     "typecheck": "tsc --noEmit"
