@@ -8,6 +8,29 @@ use std::path::Path;
 use std::sync::RwLock;
 
 static CIPHER: RwLock<Option<Aes256Gcm>> = RwLock::new(None);
+// Fallback cipher keyed with the pre-rename ("palimpsest") salt. Used ONLY on
+// decrypt, so a vault migrated from an old palimpsest install keeps working.
+static LEGACY_CIPHER: RwLock<Option<Aes256Gcm>> = RwLock::new(None);
+
+/// Current KDF salt. New secrets are encrypted under this.
+const SALT: &[u8] = b"memnest-fixed-salt-v1";
+/// Legacy KDF salt from the pre-rename builds (decrypt-only back-compat).
+const LEGACY_SALT: &[u8] = b"palimpsest-fixed-salt-v1";
+
+/// Derive an AES-256-GCM cipher from a master key + salt (Argon2id).
+fn derive_cipher(key: &str, salt: &[u8]) -> Result<Aes256Gcm> {
+    let argon2 = Argon2::new(
+        argon2::Algorithm::Argon2id,
+        argon2::Version::V0x13,
+        Params::new(64 * 1024, 3, 1, Some(32))
+            .map_err(|e| anyhow!("argon2 params failed: {:?}", e))?,
+    );
+    let mut output = [0u8; 32];
+    argon2
+        .hash_password_into(key.as_bytes(), salt, &mut output)
+        .map_err(|e| anyhow!("argon2 key derivation failed: {}", e))?;
+    Aes256Gcm::new_from_slice(&output).map_err(|e| anyhow!("aes key init failed: {}", e))
+}
 
 /// Locate or generate a master key for at-rest encryption.
 ///
@@ -54,30 +77,14 @@ pub fn resolve_master_key(data_dir: &Path) -> Result<String> {
 }
 
 pub fn init_crypto(master_key: Option<&str>) -> Result<()> {
-    let cipher = match master_key {
+    let (cipher, legacy) = match master_key {
         Some(key) if !key.is_empty() => {
-            let salt = b"memnest-fixed-salt-v1"; // deterministic for same key
-            let argon2 = Argon2::new(
-                argon2::Algorithm::Argon2id,
-                argon2::Version::V0x13,
-                Params::new(64 * 1024, 3, 1, Some(32))
-                    .map_err(|e| anyhow!("argon2 params failed: {:?}", e))?,
-            );
-            let mut output = [0u8; 32];
-            argon2
-                .hash_password_into(key.as_bytes(), salt, &mut output)
-                .map_err(|e| anyhow!("argon2 key derivation failed: {}", e))?;
-            Some(
-                Aes256Gcm::new_from_slice(&output)
-                    .map_err(|e| anyhow!("aes key init failed: {}", e))?,
-            )
+            (Some(derive_cipher(key, SALT)?), Some(derive_cipher(key, LEGACY_SALT)?))
         }
-        _ => None,
+        _ => (None, None),
     };
-    let mut guard = CIPHER
-        .write()
-        .map_err(|_| anyhow!("crypto lock poisoned"))?;
-    *guard = cipher;
+    *CIPHER.write().map_err(|_| anyhow!("crypto lock poisoned"))? = cipher;
+    *LEGACY_CIPHER.write().map_err(|_| anyhow!("crypto lock poisoned"))? = legacy;
     Ok(())
 }
 
@@ -118,10 +125,18 @@ pub fn decrypt(ciphertext: &str) -> Result<String> {
     }
     let (nonce_bytes, encrypted) = decoded.split_at(12);
     let nonce = Nonce::from_slice(nonce_bytes);
-    let plaintext = cipher
-        .decrypt(nonce, encrypted)
-        .map_err(|e| anyhow!("decryption failed: {}", e))?;
-    String::from_utf8(plaintext).context("invalid utf8 after decryption")
+    if let Ok(plaintext) = cipher.decrypt(nonce, encrypted) {
+        return String::from_utf8(plaintext).context("invalid utf8 after decryption");
+    }
+    // Fall back to the legacy (pre-rename) salt so migrated vaults decrypt.
+    if let Ok(lguard) = LEGACY_CIPHER.read() {
+        if let Some(legacy) = lguard.as_ref() {
+            if let Ok(plaintext) = legacy.decrypt(nonce, encrypted) {
+                return String::from_utf8(plaintext).context("invalid utf8 after decryption");
+            }
+        }
+    }
+    Err(anyhow!("decryption failed (primary and legacy keys both rejected)"))
 }
 
 #[cfg(test)]
@@ -137,6 +152,18 @@ mod tests {
         assert_ne!(encrypted, original);
         let decrypted = decrypt(&encrypted).unwrap();
         assert_eq!(decrypted, original);
+
+        // Back-compat: a secret encrypted by an old palimpsest build (legacy
+        // salt) must still decrypt via the fallback path.
+        let legacy = derive_cipher("test-master-key-123", LEGACY_SALT).unwrap();
+        let nonce_bytes: [u8; 12] = [7u8; 12];
+        let ct = legacy
+            .encrypt(Nonce::from_slice(&nonce_bytes), "old-vault-secret".as_bytes())
+            .unwrap();
+        let mut combined = nonce_bytes.to_vec();
+        combined.extend_from_slice(&ct);
+        let blob = format!("$enc${}", BASE64.encode(&combined));
+        assert_eq!(decrypt(&blob).unwrap(), "old-vault-secret");
     }
 
     #[test]
