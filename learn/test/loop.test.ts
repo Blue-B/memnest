@@ -54,6 +54,11 @@ test("detectOutcomeSignal classifies recurrence / success (EN + KO), else null",
   expect(detectOutcomeSignal("same error again")).toBe("recurrence");
   expect(detectOutcomeSignal("아직도 안 고쳐졌어")).toBe("recurrence");
   expect(detectOutcomeSignal("여전히 똑같네")).toBe("recurrence");
+  expect(detectOutcomeSignal("the dev server is still dying")).toBe("recurrence");
+  expect(detectOutcomeSignal("that port 5173 thing is back again")).toBe("recurrence");
+  expect(detectOutcomeSignal("it keeps crashing")).toBe("recurrence");
+  expect(detectOutcomeSignal("또 죽었어")).toBe("recurrence");
+  expect(detectOutcomeSignal("let's go back to the old approach")).toBeNull(); // 'back' must not over-fire
   expect(detectOutcomeSignal("works now, thanks")).toBe("success");
   expect(detectOutcomeSignal("오 이제 잘 돼")).toBe("success");
   expect(detectOutcomeSignal("해결됐다")).toBe("success");
@@ -145,9 +150,9 @@ test("improveSkills drops a non-procedural draft (LLM returns NONE)", async () =
 });
 
 // ── user model (fake client) ──────────────────────────────────────────────────
-test("isUserFacet gates on preference/correction", () => {
+test("isUserFacet accepts only preference (correction was too polluting)", () => {
   expect(isUserFacet({ category: "preference", text: "x" })).toBe(true);
-  expect(isUserFacet({ category: "correction", text: "x" })).toBe(true);
+  expect(isUserFacet({ category: "correction", text: "x" })).toBe(false); // technical fixes leaked in
   expect(isUserFacet({ category: "failure", text: "x" })).toBe(false);
 });
 
@@ -164,9 +169,10 @@ test("updateUserModel refines an existing facet, adds a new one", async () => {
   } as unknown as MemnestClient;
 
   const facts: LearnedMemory[] = [
-    { category: "correction", text: "Use bun, not the npm package manager" }, // refine u1
+    { category: "preference", text: "Use bun, not the npm package manager" }, // refine u1 (matches "package manager")
     { category: "preference", text: "Writes commit messages in Korean" }, // add
     { category: "failure", text: "ignored, not a facet" },
+    { category: "correction", text: "ignored now — corrections no longer feed the user model" },
   ];
   const llm = async () => "User prefers Bun over npm as the package manager";
   const res = await updateUserModel(client, facts, llm);

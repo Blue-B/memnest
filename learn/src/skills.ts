@@ -64,7 +64,11 @@ export async function improveSkills(
   llm: LlmComplete,
   opts: SkillImproveOpts = {},
 ): Promise<SkillImproveResult> {
-  const maxDistance = opts.maxDistance ?? 0.25;
+  // 0.25 was too strict: a related learning ("free the port with a predev
+  // script") spawned a near-duplicate skill instead of refining the existing
+  // port-cleanup one. 0.32 lets genuinely-adjacent procedures merge while still
+  // keeping unrelated skills apart.
+  const maxDistance = opts.maxDistance ?? 0.32;
   const apply = opts.apply ?? true;
   const pool = candidates.filter(isSkillCandidate).slice(0, opts.max ?? 6);
 

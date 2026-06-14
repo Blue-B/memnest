@@ -104,7 +104,7 @@ async function main() {
   const umLlm: LlmComplete = async () => "User prefers Bun over npm/pnpm as the package manager for all projects.";
   const facts: LearnedMemory[] = [
     { category: "preference", text: "User wants explanations written in Korean." },
-    { category: "correction", text: "Use Bun, not npm." },
+    { category: "preference", text: "User prefers Bun over npm." },
   ];
   const u1 = await updateUserModel(client, facts, umLlm, { maxDistance: 0.6 });
   check("user-model added new facets", u1.added === 2, JSON.stringify(u1));
@@ -114,7 +114,7 @@ async function main() {
 
   const u2 = await updateUserModel(
     client,
-    [{ category: "correction", text: "Actually prefer bun for the package manager everywhere." }],
+    [{ category: "preference", text: "Actually prefer bun for the package manager everywhere." }],
     umLlm,
     { maxDistance: 0.7 },
   );

@@ -45,13 +45,19 @@ export function withRecurrenceMarker(text: string, n: number): string {
 
 // ── outcome detection (EN + KO, ASCII-\b-free for Hangul) ────────────────────
 const RECURRENCE_PATTERNS: RegExp[] = [
-  /still (broken|not working|fails|failing|happening|the same)/i,
-  /same (error|issue|problem|bug)( again)?/i,
+  /still\b[^.!?]*\b(broken|not working|fails?|failing|happening|the same|dying|crashing|crashes|down|there|here|wrong|bad)/i,
+  /same (error|issue|problem|bug|thing)( again)?/i,
   /(did|does|doesn'?t|didn'?t) ?n'?t? (work|fix)/i,
   /not fixed/i,
+  /\b(is|it'?s|it is|are|they'?re|thing'?s|that'?s) back\b/i,
+  /\bback again\b/i,
+  /\b(happening|crashing|dying|failing|broke|broken|error) again\b/i,
+  /keeps? (happening|coming back|dying|crashing|failing|breaking)/i,
   /여전히/,
   /아직(도| 안|$)/,
-  /또 (안|같은|터)/,
+  /또 (안|같은|터|죽|에러|발생|그)/,
+  /다시[^.!?]*(죽|안|에러|터|발생)/,
+  /재발/,
   /안 ?(고쳐|됐|돼|되|풀렸)/,
   /그대로(네|야|다|임|\s|$)/,
   /똑같(이|은|네|아)/,
