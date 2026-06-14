@@ -562,7 +562,11 @@ pub async fn neighbors(
             out.push(NeighborItem {
                 id: c.id,
                 project: c.project,
-                document: redact_text(&c.document).chars().take(400).collect(),
+                // Generous limit: the learning layer rewrites/refines memories
+                // and skills from this field, so truncating here would silently
+                // drop content on write-back. 8000 chars covers single-sentence
+                // memories and multi-step skills with headroom.
+                document: redact_text(&c.document).chars().take(8000).collect(),
                 distance,
                 category: format!("{:?}", c.metadata.category),
                 importance: format!("{:?}", c.metadata.importance),

@@ -67,7 +67,8 @@ const SUCCESS_PATTERNS: RegExp[] = [
   /(works|working|fine) now/i,
   /(that|it) (works|worked|fixed it|did it)/i,
   /\bfixed( it)?\b/i,
-  /\bperfect\b/i,
+  // NOTE: bare "perfect" was removed — "that's a perfect example" etc. are not
+  // outcome signals and were causing false success reinforcements.
   /됐(어|다|네|음)/,
   /(잘|이제) ?(돼|된다|됨|작동)/,
   /고쳐졌/,
@@ -98,6 +99,10 @@ export interface ReinforceOpts {
   k?: number;
   maxDistance?: number; // cosine cap — must genuinely be the same memory
 }
+
+/** Engine `/neighbors` caps `document` at this many chars (api.rs). Past it the
+ *  returned text may be truncated, so we must not write it back blindly. */
+const NEIGHBOR_DOC_LIMIT = 8000;
 
 const RECUR_CATS = new Set(["failure", "correction", "tool_quirk"]);
 const SUCCESS_CATS = new Set(["failure", "correction", "insight", "tool_quirk", "convention"]);
@@ -132,8 +137,15 @@ export async function reinforce(
   if (!hit) return { matched: false };
 
   if (signal === "recurrence") {
-    const n = recurrenceCount(hit.document) + 1;
     const newImportance = bumpImportance(hit.importance, "decision");
+    // The engine returns at most NEIGHBOR_DOC_LIMIT chars of the document. If
+    // the hit is at/over that bound it may be truncated, so rewriting `text`
+    // would drop the tail — in that case bump importance only (no marker).
+    if (hit.document.length >= NEIGHBOR_DOC_LIMIT) {
+      await client.update(hit.id, { importance: newImportance });
+      return { matched: true, id: hit.id, action: "reinforced", newImportance };
+    }
+    const n = recurrenceCount(hit.document) + 1;
     await client.update(hit.id, {
       text: withRecurrenceMarker(hit.document, n),
       importance: newImportance,

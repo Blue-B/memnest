@@ -27,7 +27,7 @@ import { captureCorrection, captureMemories, extractMessageText, looksLikeCorrec
 import { consolidateByEmbedding } from "./consolidate.js";
 import { LlmBudget } from "./budget.js";
 import { detectOutcomeSignal, reinforce } from "./reinforce.js";
-import { improveSkills } from "./skills.js";
+import { improveSkills, SKILL_PROJECT } from "./skills.js";
 import { updateUserModel, userModelContext } from "./user-model.js";
 import type { LearnedMemory } from "./types.js";
 import {
@@ -46,7 +46,6 @@ const LEARN_DIR =
 const SCRATCHPAD_FILE = path.join(LEARN_DIR, "SCRATCHPAD.md");
 const DAILY_DIR = path.join(LEARN_DIR, "daily");
 const CAPTURE_EVERY_TURNS = Number(process.env.MEMNEST_CAPTURE_TURNS ?? 10);
-const SKILL_PROJECT = "_skills";
 // Background LLM budget: cap automatic capture/skill/user-model calls so they
 // can't compete with the user's real work. Manual tools are NOT gated.
 const LLM_MAX_CALLS = Number(process.env.MEMNEST_LLM_MAX_CALLS ?? 24);
@@ -74,6 +73,18 @@ function readSafe(p: string): string {
 }
 const today = () => new Date().toISOString().slice(0, 10);
 const isoNow = () => new Date().toISOString();
+// Project bucket for captured memories. Explicit env wins; otherwise derive a
+// stable name from the working directory so a multi-project terminal session
+// doesn't dump everything into one "default" bucket. (_skills/_user_model stay
+// global on purpose — skills and the user model are cross-project.)
+function currentProject(): string {
+  const env = process.env.MEMNEST_PROJECT?.trim();
+  if (env) return env;
+  const base = path.basename(process.cwd());
+  return base && base !== "/" ? base : "default";
+}
+const warn = (e: unknown) =>
+  console.warn("[memnest-learn]", e instanceof Error ? e.message : String(e));
 const dailyPath = (d: string) => path.join(DAILY_DIR, `${d}.md`);
 const shortSid = (ctx: ExtensionContext) => ctx.sessionManager.getSessionId().slice(0, 8);
 
@@ -124,8 +135,8 @@ async function buildInjection(prompt: string): Promise<string> {
   try {
     const profile = await userModelContext(client, prompt || "user preferences working style");
     if (profile.trim()) parts.push(profile);
-  } catch {
-    /* user model unavailable — skip */
+  } catch (e) {
+    warn(e); /* user model unavailable — degrade */
   }
   // 2) open scratchpad items (working memory)
   const open = parseScratchpad(readSafe(SCRATCHPAD_FILE)).filter((i) => !i.done);
@@ -137,16 +148,20 @@ async function buildInjection(prompt: string): Promise<string> {
   try {
     const { prompt: pack } = await client.context(prompt || "recent work", { maxChars: 4000 });
     if (pack.trim()) parts.push(pack);
-  } catch {
-    /* memnest unreachable — degrade to working memory only */
+  } catch (e) {
+    warn(e); /* memnest unreachable — degrade to working memory only */
   }
   return parts.join("\n");
 }
 
 export default function (pi: ExtensionAPI) {
-  // session_start: prime the snapshot
+  // session_start: reset per-session transcript state (avoid cross-session
+  // contamination — a new session must not re-extract the previous one's turns)
+  // and prime the snapshot.
   pi.on("session_start", async () => {
     ensureDirs();
+    recentTurns = [];
+    turnCounter = 0;
     await snapshot.refresh("session_start", () => buildInjection(""));
   });
 
@@ -186,24 +201,27 @@ export default function (pi: ExtensionAPI) {
     turnCounter++;
 
     const llm = backgroundLlm(ctx);
-    const project = process.env.MEMNEST_PROJECT ?? "default";
+    const project = currentProject();
 
     if (looksLikeCorrection(text)) {
       // store the correction immediately; mark snapshot dirty so it surfaces
       captureCorrection(text, client, project)
         .then(() => snapshot.markDirty())
-        .catch(() => {});
+        .catch(warn);
     }
 
     // outcome reinforcement (#1): the closed loop. "still broken" raises the
-    // matching failure memory; "works now" validates the one that helped.
+    // matching failure memory; "works now" validates the one that helped. Give
+    // the neighbour search a few turns of context, not just this short line, so
+    // "still broken" matches the right failure instead of any nearest memory.
     const signal = detectOutcomeSignal(text);
     if (signal) {
-      reinforce(client, signal, text)
+      const contextText = [...recentTurns.slice(-3).map((t) => t.text), text].join("\n");
+      reinforce(client, signal, contextText)
         .then((r) => {
           if (r.matched) snapshot.markDirty();
         })
-        .catch(() => {});
+        .catch(warn);
     }
 
     if (llm && turnCounter % CAPTURE_EVERY_TURNS === 0 && recentTurns.length > 0 && !bgInFlight) {
@@ -214,7 +232,7 @@ export default function (pi: ExtensionAPI) {
           if (r.written.length > 0) snapshot.markDirty();
           await learnFromMemories(r.memories, llm);
         })
-        .catch(() => {})
+        .catch(warn)
         .finally(() => {
           bgInFlight = false;
         });
@@ -230,7 +248,7 @@ export default function (pi: ExtensionAPI) {
     if (handoff) {
       const fp = dailyPath(today());
       fs.writeFileSync(fp, appendDaily(readSafe(fp), handoff), "utf-8");
-      client.summary(process.env.MEMNEST_PROJECT ?? "default", ctx.sessionManager.getSessionId(), handoff).catch(() => {});
+      client.summary(currentProject(), ctx.sessionManager.getSessionId(), handoff).catch(warn);
     }
     // compaction is the one intentional cache boundary — refresh the snapshot
     await snapshot.refresh("before_compact", () => buildInjection(""));
@@ -242,12 +260,12 @@ export default function (pi: ExtensionAPI) {
     if (!llm || recentTurns.length === 0) return;
     try {
       const r = await captureMemories(recentTurns.slice(-60), llm, client, {
-        project: process.env.MEMNEST_PROJECT ?? "default",
+        project: currentProject(),
         max: 12,
       });
       await learnFromMemories(r.memories, llm);
-    } catch {
-      /* best-effort */
+    } catch (e) {
+      warn(e); /* best-effort */
     }
   });
 

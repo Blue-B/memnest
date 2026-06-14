@@ -64,9 +64,13 @@ export async function updateUserModel(
   // Facets added in THIS pass aren't indexed yet, so the engine's /neighbors
   // can't dedup against them. Guard the intra-batch case locally so two
   // restated preferences in one capture don't both get inserted.
-  const addedThisBatch: string[] = [];
+  // Track EVERY facet handled this pass (refine + add). The engine can't dedup
+  // against facets we just wrote (HNSW lag), and a refine-then-add of two
+  // similar facts would otherwise slip through.
+  const seenThisBatch: string[] = [];
   for (const f of pool) {
-    if (addedThisBatch.some((t) => trigramSimilarity(t, f.text) >= 0.5)) continue;
+    if (seenThisBatch.some((t) => trigramSimilarity(t, f.text) >= 0.5)) continue;
+    seenThisBatch.push(f.text);
     const ns = await client.neighbors({
       text: f.text,
       project: USER_MODEL_PROJECT,
@@ -94,7 +98,6 @@ export async function updateUserModel(
           importance: "preference",
           chunkType: "manual",
         });
-      addedThisBatch.push(f.text);
       added++;
     }
   }
