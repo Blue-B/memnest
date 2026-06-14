@@ -70,8 +70,9 @@ fn tools() -> Vec<Value> {
     vec![
         json!({"name": "memory_add", "description": "Save a memory chunk", "inputSchema": {"type":"object","properties":{"text":{"type":"string"},"project":{"type":"string"}},"required":["text"]}}),
         json!({"name": "memory_update", "description": "Update an existing memory chunk by id and refresh indexes", "inputSchema": {"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"project":{"type":"string"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"]},"chunk_type":{"type":"string","enum":["auto_log","manual","filtered","consolidated"]}},"required":["id"]}}),
-        json!({"name": "memory_search", "description": "Search memory with hybrid BM25/vector retrieval", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":10},"recent_first":{"type":"boolean","default":false}},"required":["query"]}}),
-        json!({"name": "memory_context", "description": "Return a compact context pack: core notes + matching facts + retrieved memories", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":6},"max_notes":{"type":"integer","default":12},"max_facts":{"type":"integer","default":8},"max_chars":{"type":"integer","default":6000,"description":"hard character budget for the rendered prompt"}},"required":["query"]}}),
+        json!({"name": "memory_search", "description": "Search memory with hybrid BM25/vector retrieval", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":10},"recent_first":{"type":"boolean","default":false},"category":{"type":"string","description":"Filter to a specific memory category (e.g. failure, insight)"}},"required":["query"]}}),
+        json!({"name": "memory_context", "description": "Return a compact context pack: core notes + matching facts + retrieved memories", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":6},"max_notes":{"type":"integer","default":12},"max_facts":{"type":"integer","default":8},"max_chars":{"type":"integer","default":6000,"description":"hard character budget for the rendered prompt"},"category":{"type":"string","description":"Filter retrieved memories to a specific category"}},"required":["query"]}}),
+        json!({"name": "memory_neighbors", "description": "Cosine nearest neighbours from the vector index (for dedup/consolidation in learning layer)", "inputSchema": {"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"k":{"type":"integer","default":10},"max_distance":{"type":"number","default":0},"project":{"type":"string","default":"all"}},"required":[]}}),
         json!({"name": "memory_stats", "description": "Return memory system statistics", "inputSchema": {"type":"object","properties":{}}}),
         json!({"name": "memory_facts", "description": "Search structured facts (subject-predicate-object)", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"max_results":{"type":"integer","default":20}},"required":["query"]}}),
         json!({"name": "memory_sessions", "description": "List recent session summaries", "inputSchema": {"type":"object","properties":{"project":{"type":"string"},"n":{"type":"integer","default":5}},"required":[]}}),
@@ -100,6 +101,7 @@ async fn call_tool(system: Arc<RwLock<MemorySystem>>, params: &Value) -> Result<
         "memory_update" => memory_update(system, &args).await,
         "memory_search" => memory_search(system, &args).await,
         "memory_context" => memory_context(system, &args).await,
+        "memory_neighbors" => memory_neighbors(system, &args).await,
         "memory_stats" => memory_stats(system).await,
         "memory_facts" => memory_facts(system, &args).await,
         "memory_sessions" => memory_sessions(system, &args).await,
@@ -402,14 +404,28 @@ async fn memory_context(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Resu
     let max_notes = args.get("max_notes").and_then(Value::as_u64).unwrap_or(12) as usize;
     let max_facts = args.get("max_facts").and_then(Value::as_u64).unwrap_or(8) as usize;
     let max_chars = args.get("max_chars").and_then(Value::as_u64).unwrap_or(6000) as usize;
+    let category = args.get("category").and_then(Value::as_str).unwrap_or("");
+    let cat = if category.trim().is_empty() { None } else { Some(category.to_string()) };
 
     // Delegate to the shared context-pack core so the MCP tool and the HTTP
     // /context endpoint return an identical, budget-bounded prompt.
     let resp = crate::server::api::build_context(
-        system, query, project, n, max_notes, max_facts, max_chars,
+        system, query, project, n, max_notes, max_facts, max_chars, cat,
     )
     .await;
     Ok(resp.prompt)
+}
+
+async fn memory_neighbors(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
+    let req = crate::server::api::NeighborsRequest {
+        id: args.get("id").and_then(Value::as_str).unwrap_or("").to_string(),
+        text: args.get("text").and_then(Value::as_str).unwrap_or("").to_string(),
+        k: args.get("k").and_then(Value::as_u64).unwrap_or(10) as usize,
+        max_distance: args.get("max_distance").and_then(Value::as_f64).unwrap_or(0.0) as f32,
+        project: args.get("project").and_then(Value::as_str).unwrap_or("all").to_string(),
+    };
+    let items = crate::server::api::neighbors(axum::extract::State(system), axum::Json(req)).await.0;
+    Ok(serde_json::to_string(&items)?)
 }
 
 pub(crate) async fn memory_search(
@@ -424,14 +440,15 @@ pub(crate) async fn memory_search(
         .get("recent_first")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let category = args.get("category").and_then(Value::as_str).unwrap_or("");
+    let cat = if category.trim().is_empty() { None } else { Some(category.to_string()) };
 
     // Delegate to the shared HTTP ranking core so the MCP tool and the HTTP
     // /search endpoint return identically-ranked results (composite scoring +
-    // MMR diversity + config-driven weights). Previously this path had its own
-    // weaker scoring — RRF order plus a keyword bonus, with no composite
-    // re-rank and no diversification.
+    // MMR diversity + config-driven weights). Now also supports category filter
+    // for the learning layer.
     let items =
-        crate::server::api::run_hybrid_search(system, query, project, n, recent_first, false).await;
+        crate::server::api::run_hybrid_search(system, query, project, n, recent_first, false, cat).await;
 
     let mut lines = vec![format!("=== memory search results ({}) ===", query)];
     if items.is_empty() {

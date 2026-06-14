@@ -22,6 +22,9 @@ pub struct SearchRequest {
     n_results: usize,
     #[serde(default)]
     recent_first: bool,
+    /// Optional category filter (e.g. "failure", "insight"). The learning layer uses this.
+    #[serde(default)]
+    category: String,
 }
 
 fn default_project() -> String {
@@ -128,6 +131,9 @@ pub struct ContextRequest {
     max_facts: usize,
     #[serde(default = "default_context_chars")]
     max_chars: usize,
+    /// Optional category filter for the retrieved memories part.
+    #[serde(default)]
+    category: String,
 }
 
 fn default_context_results() -> usize {
@@ -312,6 +318,7 @@ pub async fn search(
     Json(req): Json<SearchRequest>,
 ) -> Json<SearchResponse> {
     let started = std::time::Instant::now();
+    let cat = if req.category.trim().is_empty() { None } else { Some(req.category.clone()) };
     let items = run_hybrid_search(
         system,
         &req.query,
@@ -319,6 +326,7 @@ pub async fn search(
         req.n_results,
         req.recent_first,
         false,
+        cat,
     )
     .await;
     let total = items.len();
@@ -336,6 +344,7 @@ pub(crate) async fn run_hybrid_search(
     n: usize,
     recent_first: bool,
     require_visible_match: bool,
+    category: Option<String>,
 ) -> Vec<SearchResultItem> {
     let n_results = n.clamp(1, 50);
     let project = if project.trim().is_empty() {
@@ -388,10 +397,23 @@ pub(crate) async fn run_hybrid_search(
     };
     let mut vector_only_used = 0usize;
     let mut items: Vec<(SearchResultItem, Vec<f32>)> = Vec::new();
+    let cat_filter = category.as_ref().map(|c| c.trim().to_lowercase()).filter(|c| !c.is_empty());
     for (id, score) in fused {
         if let Ok(Some(c)) = db.get_chunk(&id) {
             if project != "all" && c.project != project {
                 continue;
+            }
+            if let Some(cf) = &cat_filter {
+                // Compare against the serde (snake_case) name so multi-word
+                // categories match what the learning layer sends, e.g.
+                // ToolQuirk -> "tool_quirk" (NOT the CamelCase Debug form).
+                let actual = serde_json::to_value(&c.metadata.category)
+                    .ok()
+                    .and_then(|v| v.as_str().map(str::to_string))
+                    .unwrap_or_default();
+                if actual != *cf {
+                    continue;
+                }
             }
             let keyword_ratio = keyword_match_ratio(&c.document, &keywords);
             if require_visible_match && keyword_ratio <= 0.0 {
@@ -466,16 +488,16 @@ pub(crate) async fn run_hybrid_search(
 #[derive(Deserialize)]
 pub struct NeighborsRequest {
     #[serde(default)]
-    text: String,
+    pub text: String,
     #[serde(default)]
-    id: String,
+    pub id: String,
     #[serde(default = "default_neighbors_k")]
-    k: usize,
+    pub k: usize,
     /// Cosine-distance cap; 0 means no cap. Lower = stricter near-duplicate.
     #[serde(default)]
-    max_distance: f32,
+    pub max_distance: f32,
     #[serde(default = "default_project")]
-    project: String,
+    pub project: String,
 }
 fn default_neighbors_k() -> usize {
     10
@@ -896,6 +918,7 @@ pub async fn context_pack(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<ContextRequest>,
 ) -> Json<ContextResponse> {
+    let cat = if req.category.trim().is_empty() { None } else { Some(req.category.clone()) };
     Json(
         build_context(
             system,
@@ -905,6 +928,7 @@ pub async fn context_pack(
             req.max_notes,
             req.max_facts,
             req.max_chars,
+            cat,
         )
         .await,
     )
@@ -922,6 +946,7 @@ pub(crate) async fn build_context(
     max_notes: usize,
     max_facts: usize,
     max_chars: usize,
+    category: Option<String>,
 ) -> ContextResponse {
     let query = query.trim().to_string();
     let project = if project.trim().is_empty() {
@@ -932,7 +957,7 @@ pub(crate) async fn build_context(
     let memories = if query.is_empty() {
         Vec::new()
     } else {
-        run_hybrid_search(system.clone(), &query, &project, n_results.clamp(1, 20), false, true).await
+        run_hybrid_search(system.clone(), &query, &project, n_results.clamp(1, 20), false, true, category).await
     };
 
     let sys = system.read().await;
@@ -3935,7 +3960,7 @@ pub async fn viewer_search(
     let results_html = if !q.is_empty() {
         let mut items = String::new();
         let started = std::time::Instant::now();
-        let results = run_hybrid_search(system.clone(), &q, &project, 20, false, true).await;
+        let results = run_hybrid_search(system.clone(), &q, &project, 20, false, true, None).await;
 
         for item in &results {
             let highlighted_document = highlight_query_html(&item.document, &q);
