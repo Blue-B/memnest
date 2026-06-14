@@ -105,12 +105,14 @@ export class MemnestClient {
   }
 
   async search(query: string, opts: SearchOpts = {}): Promise<SearchItem[]> {
-    const out = await this.post("/search", {
+    const body: any = {
       query,
       project: opts.project ?? "all",
       n_results: opts.nResults ?? 10,
       recent_first: opts.recentFirst ?? false,
-    });
+    };
+    if ((opts as any).category) body.category = (opts as any).category;
+    const out = await this.post("/search", body);
     return (out?.results ?? []) as SearchItem[];
   }
 
