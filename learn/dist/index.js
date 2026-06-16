@@ -282,18 +282,57 @@ async function captureMemories(turns, llm, client, opts = {}) {
   }
   return { extracted: memories.length, written, errors, memories: persisted };
 }
-async function captureCorrection(correctionText, client, project = "default") {
-  const text = correctionText.trim();
-  if (!text)
+var CORRECTION_SYSTEM_PROMPT = [
+  "You convert a user's in-the-moment correction of a coding assistant into ONE",
+  "durable lesson for FUTURE sessions. The user's words are a complaint; the",
+  "actual lesson lives in what the assistant just did wrong.",
+  "Output ONLY the lesson — one self-contained sentence, no quotes, no prose,",
+  "no markdown. Write it in the SAME language the user used.",
+  "It must state BOTH what the assistant did wrong AND what to do instead,",
+  "inferred from the conversation (e.g. 'don't assume the network is WiFi —",
+  "verify with Get-NetAdapter'). Make it a concrete rule, not a restatement of",
+  "the complaint. If you cannot infer a concrete lesson, output exactly: NONE"
+].join(`
+`);
+async function extractCorrectionLesson(correctionText, context, llm) {
+  const convo = context.filter((t) => t.role !== "system").slice(-8).map((t) => `${t.role.toUpperCase()}: ${t.text.slice(0, 1500)}`).join(`
+`);
+  const reply = (await llm({
+    system: CORRECTION_SYSTEM_PROMPT,
+    user: `Conversation:
+${convo}
+
+The user's correction: ${correctionText}
+
+Return the one-sentence lesson.`
+  })).trim().replace(/^["'`]+|["'`]+$/g, "").trim();
+  if (!reply || reply === "NONE" || /^none$/i.test(reply))
     return null;
+  return reply.slice(0, 500);
+}
+async function captureCorrection(correctionText, client, project = "default", opts = {}) {
+  const raw = correctionText.trim();
+  if (!raw)
+    return null;
+  let lesson = raw;
+  let distilled = false;
+  if (opts.llm && opts.context && opts.context.length > 0) {
+    try {
+      const extracted = await extractCorrectionLesson(raw, opts.context, opts.llm);
+      if (extracted) {
+        lesson = extracted;
+        distilled = true;
+      }
+    } catch {}
+  }
   const res = await client.add({
-    text,
+    text: lesson,
     project,
     category: "correction",
-    importance: "decision",
+    importance: distilled ? "preference" : "decision",
     chunkType: "manual"
   });
-  return res?.id ?? null;
+  return { id: res?.id ?? null, lesson, distilled };
 }
 function extractMessageText(content) {
   if (typeof content === "string")
@@ -903,7 +942,15 @@ function src_default(pi) {
     const llm = backgroundLlm(ctx);
     const project = currentProject();
     if (looksLikeCorrection(text)) {
-      captureCorrection(text, client, project).then(() => snapshot.markDirty()).catch(warn);
+      captureCorrection(text, client, project, { llm, context: recentTurns }).then((r) => {
+        if (!r)
+          return;
+        snapshot.markDirty();
+        const tag = r.distilled ? "\uD83E\uDDE0 교정 학습" : "\uD83D\uDCDD 교정 기록";
+        const short = r.lesson.length > 70 ? r.lesson.slice(0, 67) + "..." : r.lesson;
+        ctx.ui.notify(`${tag}: ${short}`, "info");
+        ctx.ui.setStatus("memnest-correction", `${tag}: ${short}`);
+      }).catch(warn);
     }
     const signal = detectOutcomeSignal(text);
     if (signal) {
