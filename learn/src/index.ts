@@ -204,9 +204,19 @@ export default function (pi: ExtensionAPI) {
     const project = currentProject();
 
     if (looksLikeCorrection(text)) {
-      // store the correction immediately; mark snapshot dirty so it surfaces
-      captureCorrection(text, client, project)
-        .then(() => snapshot.markDirty())
+      // Distil the complaint into an actionable lesson (not the raw words),
+      // store it immediately, surface it on the snapshot, and let the user SEE
+      // that learning happened — the fast-path bypasses the memory_remember tool
+      // so it must notify here itself.
+      captureCorrection(text, client, project, { llm, context: recentTurns })
+        .then((r) => {
+          if (!r) return;
+          snapshot.markDirty();
+          const tag = r.distilled ? "🧠 교정 학습" : "📝 교정 기록";
+          const short = r.lesson.length > 70 ? r.lesson.slice(0, 67) + "..." : r.lesson;
+          ctx.ui.notify(`${tag}: ${short}`, "info");
+          ctx.ui.setStatus("memnest-correction", `${tag}: ${short}`);
+        })
         .catch(warn);
     }
 

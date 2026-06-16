@@ -194,7 +194,7 @@ test("captureMemories writes extracted memories with category + default importan
   expect(added[1]).toMatchObject({ category: "failure", importance: "knowledge" });
 });
 
-test("captureCorrection stores a decision-level correction", async () => {
+test("captureCorrection stores the raw complaint as a decision when no LLM is given", async () => {
   let captured: any = null;
   const client = {
     add: async (i: any) => {
@@ -202,10 +202,49 @@ test("captureCorrection stores a decision-level correction", async () => {
       return { id: "c1" };
     },
   } as unknown as MemnestClient;
-  const id = await captureCorrection("Use pnpm, not npm", client, "proj");
-  expect(id).toBe("c1");
-  expect(captured).toMatchObject({ category: "correction", importance: "decision" });
+  const res = await captureCorrection("Use pnpm, not npm", client, "proj");
+  expect(res).toMatchObject({ id: "c1", distilled: false, lesson: "Use pnpm, not npm" });
+  expect(captured).toMatchObject({ category: "correction", importance: "decision", text: "Use pnpm, not npm" });
   expect(await captureCorrection("   ", client)).toBeNull();
+});
+
+test("captureCorrection distils a lesson from context into a preference when an LLM is given", async () => {
+  let captured: any = null;
+  const client = {
+    add: async (i: any) => {
+      captured = i;
+      return { id: "c2" };
+    },
+  } as unknown as MemnestClient;
+  const llm = async () => "네트워크를 추정하지 말고 Get-NetAdapter로 직접 확인할 것";
+  const res = await captureCorrection("너 왜 또 추정해?", client, "proj", {
+    llm,
+    context: [
+      { role: "user", text: "인터넷 속도 조회해줘" },
+      { role: "assistant", text: "WiFi 쓰시는 것 같아요" },
+    ],
+  });
+  expect(res).toMatchObject({ id: "c2", distilled: true });
+  expect(res!.lesson).toContain("Get-NetAdapter");
+  expect(captured).toMatchObject({ category: "correction", importance: "preference" });
+  expect(captured.text).toContain("Get-NetAdapter");
+});
+
+test("captureCorrection falls back to raw complaint when the LLM returns NONE", async () => {
+  let captured: any = null;
+  const client = {
+    add: async (i: any) => {
+      captured = i;
+      return { id: "c3" };
+    },
+  } as unknown as MemnestClient;
+  const llm = async () => "NONE";
+  const res = await captureCorrection("hmm", client, "proj", {
+    llm,
+    context: [{ role: "user", text: "x" }],
+  });
+  expect(res).toMatchObject({ id: "c3", distilled: false, lesson: "hmm" });
+  expect(captured).toMatchObject({ importance: "decision" });
 });
 
 // ── memnest client (fake fetch) ──────────────────────────────────────────────

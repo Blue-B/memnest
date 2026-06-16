@@ -55,26 +55,91 @@ export async function captureMemories(
   return { extracted: memories.length, written, errors, memories: persisted };
 }
 
+// Turn a raw in-the-moment complaint into a durable, self-contained lesson.
+// The user's correction ("너 왜 또 추정해?") has no actionable content on its
+// own; the real lesson lives in what the assistant just did. We hand the model
+// the recent turns + the complaint and ask for ONE forward-looking rule.
+export const CORRECTION_SYSTEM_PROMPT = [
+  "You convert a user's in-the-moment correction of a coding assistant into ONE",
+  "durable lesson for FUTURE sessions. The user's words are a complaint; the",
+  "actual lesson lives in what the assistant just did wrong.",
+  "Output ONLY the lesson — one self-contained sentence, no quotes, no prose,",
+  "no markdown. Write it in the SAME language the user used.",
+  "It must state BOTH what the assistant did wrong AND what to do instead,",
+  "inferred from the conversation (e.g. 'don't assume the network is WiFi —",
+  "verify with Get-NetAdapter'). Make it a concrete rule, not a restatement of",
+  "the complaint. If you cannot infer a concrete lesson, output exactly: NONE",
+].join("\n");
+
+export async function extractCorrectionLesson(
+  correctionText: string,
+  context: TranscriptTurn[],
+  llm: LlmComplete,
+): Promise<string | null> {
+  const convo = context
+    .filter((t) => t.role !== "system")
+    .slice(-8)
+    .map((t) => `${t.role.toUpperCase()}: ${t.text.slice(0, 1500)}`)
+    .join("\n");
+  const reply = (
+    await llm({
+      system: CORRECTION_SYSTEM_PROMPT,
+      user: `Conversation:\n${convo}\n\nThe user's correction: ${correctionText}\n\nReturn the one-sentence lesson.`,
+    })
+  )
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .trim();
+  if (!reply || reply === "NONE" || /^none$/i.test(reply)) return null;
+  return reply.slice(0, 500);
+}
+
+export interface CorrectionCapture {
+  id: string | null;
+  /** The text actually stored — the distilled lesson, or the raw complaint on fallback. */
+  lesson: string;
+  /** true when an LLM distilled an actionable lesson; false when we stored the raw complaint. */
+  distilled: boolean;
+}
+
 /**
- * Correction fast-path: when the user explicitly corrects the agent, store it
- * immediately as a high-signal `correction` memory without waiting for the
- * periodic capture pass.
+ * Correction fast-path: when the user explicitly corrects the agent, store a
+ * high-signal `correction` memory immediately without waiting for the periodic
+ * capture pass. When an LLM + recent context are supplied, distil the complaint
+ * into an actionable lesson first; otherwise fall back to storing the raw text.
  */
 export async function captureCorrection(
   correctionText: string,
   client: MemnestClient,
   project = "default",
-): Promise<string | null> {
-  const text = correctionText.trim();
-  if (!text) return null;
+  opts: { llm?: LlmComplete | null; context?: TranscriptTurn[] } = {},
+): Promise<CorrectionCapture | null> {
+  const raw = correctionText.trim();
+  if (!raw) return null;
+
+  let lesson = raw;
+  let distilled = false;
+  if (opts.llm && opts.context && opts.context.length > 0) {
+    try {
+      const extracted = await extractCorrectionLesson(raw, opts.context, opts.llm);
+      if (extracted) {
+        lesson = extracted;
+        distilled = true;
+      }
+    } catch {
+      /* LLM unavailable — fall back to raw complaint */
+    }
+  }
+
   const res = await client.add({
-    text,
+    text: lesson,
     project,
     category: "correction",
-    importance: "decision",
+    // a distilled rule is a durable preference; a raw complaint is a weaker signal
+    importance: distilled ? "preference" : "decision",
     chunkType: "manual",
   });
-  return res?.id ?? null;
+  return { id: res?.id ?? null, lesson, distilled };
 }
 
 /**
