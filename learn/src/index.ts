@@ -237,7 +237,7 @@ export default function (pi: ExtensionAPI) {
           snapshot.markDirty();
           const tag = r.distilled ? "🧠 교정 학습" : "📝 교정 기록";
           const short = r.lesson.length > 70 ? r.lesson.slice(0, 67) + "..." : r.lesson;
-          ctx.ui.notify(`${tag}: ${short}`, "info");
+          // notify 제거: 채팅 밀림 원인. setStatus만 유지.
           ctx.ui.setStatus("memnest-correction", `${tag}: ${short}`);
           // Fold a distilled correction into the evolving user model. Previously
           // captureCorrection was a dead-end: it stored the rule but never fed

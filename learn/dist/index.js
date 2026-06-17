@@ -962,7 +962,7 @@ function src_default(pi) {
         snapshot.markDirty();
         const tag = r.distilled ? "\uD83E\uDDE0 교정 학습" : "\uD83D\uDCDD 교정 기록";
         const short = r.lesson.length > 70 ? r.lesson.slice(0, 67) + "..." : r.lesson;
-        ctx.ui.notify(`${tag}: ${short}`, "info");
+        // notify 제거: 채팅 밀림 원인. setStatus만 유지.
         ctx.ui.setStatus("memnest-correction", `${tag}: ${short}`);
         if (r.distilled && llm) {
           await updateUserModel(client, [{ category: "preference", text: r.lesson }], llm, { max: 1 }).catch(warn);
