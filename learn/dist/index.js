@@ -885,7 +885,21 @@ async function buildInjection(prompt) {
       parts.push(`- [ ] ${i.text}`);
   }
   try {
-    const { prompt: pack } = await client.context(prompt || "recent work", { maxChars: 4000 });
+    const rules = await client.search(prompt || "user corrections and preferences", {
+      project: "playbook",
+      nResults: 6
+    });
+    if (rules.length > 0) {
+      parts.push("learned_rules (you were corrected on these before — follow them):");
+      for (const r of rules) {
+        parts.push(`- ${r.document.replace(/\s+/g, " ").trim().slice(0, 300)}`);
+      }
+    }
+  } catch (e) {
+    warn(e);
+  }
+  try {
+    const { prompt: pack } = await client.context(prompt || "recent work", { maxChars: 3000 });
     if (pack.trim())
       parts.push(pack);
   } catch (e) {
