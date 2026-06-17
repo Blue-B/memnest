@@ -144,9 +144,32 @@ async function buildInjection(prompt: string): Promise<string> {
     parts.push("open_tasks:");
     for (const i of open) parts.push(`- [ ] ${i.text}`);
   }
-  // 3) memnest budget-bounded context pack (notes + facts + retrieved memories)
+  // 3) learned rules — pull corrections/preferences straight from the curated
+  // `playbook` bucket and inject them as their own slot. The old code only ran
+  // the project:"all" /context search below, so these few high-signal rules had
+  // to compete against tens of thousands of `root` autolog chunks; when the
+  // prompt wording didn't lexically overlap a rule it dropped out of the top-k
+  // entirely, the agent never saw it, and the same mistake repeated (the user
+  // kept re-correcting the same thing). Searching playbook directly guarantees
+  // the rules are always injected, isolated from autolog noise.
   try {
-    const { prompt: pack } = await client.context(prompt || "recent work", { maxChars: 4000 });
+    const rules = await client.search(prompt || "user corrections and preferences", {
+      project: "playbook",
+      nResults: 6,
+    });
+    if (rules.length > 0) {
+      parts.push("learned_rules (you were corrected on these before — follow them):");
+      for (const r of rules) {
+        parts.push(`- ${r.document.replace(/\s+/g, " ").trim().slice(0, 300)}`);
+      }
+    }
+  } catch (e) {
+    warn(e); /* playbook unreachable — degrade to context pack */
+  }
+  // 4) memnest budget-bounded context pack (notes + facts + retrieved memories).
+  // Trimmed to 3000 chars now that the curated rules have their own slot above.
+  try {
+    const { prompt: pack } = await client.context(prompt || "recent work", { maxChars: 3000 });
     if (pack.trim()) parts.push(pack);
   } catch (e) {
     warn(e); /* memnest unreachable — degrade to working memory only */
