@@ -232,13 +232,30 @@ export default function (pi: ExtensionAPI) {
       // that learning happened — the fast-path bypasses the memory_remember tool
       // so it must notify here itself.
       captureCorrection(text, client, project, { llm, context: recentTurns })
-        .then((r) => {
+        .then(async (r) => {
           if (!r) return;
           snapshot.markDirty();
           const tag = r.distilled ? "🧠 교정 학습" : "📝 교정 기록";
           const short = r.lesson.length > 70 ? r.lesson.slice(0, 67) + "..." : r.lesson;
           ctx.ui.notify(`${tag}: ${short}`, "info");
           ctx.ui.setStatus("memnest-correction", `${tag}: ${short}`);
+          // Fold a distilled correction into the evolving user model. Previously
+          // captureCorrection was a dead-end: it stored the rule but never fed
+          // the higher loops, so the _user_model bucket stayed empty and the
+          // SAME lesson piled up as new rows every time (never consolidated).
+          // updateUserModel refines the nearest existing facet (or adds a new
+          // one), so repeating a correction now SHARPENS one facet instead of
+          // duplicating it, and finally fills the bucket that buildInjection
+          // injects first, every turn. Raw (non-distilled) complaints are too
+          // noisy for the who-you-are model, so only distilled lessons fold.
+          if (r.distilled && llm) {
+            await updateUserModel(
+              client,
+              [{ category: "preference", text: r.lesson }],
+              llm,
+              { max: 1 },
+            ).catch(warn);
+          }
         })
         .catch(warn);
     }

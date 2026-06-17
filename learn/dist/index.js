@@ -956,7 +956,7 @@ function src_default(pi) {
     const llm = backgroundLlm(ctx);
     const project = currentProject();
     if (looksLikeCorrection(text)) {
-      captureCorrection(text, client, project, { llm, context: recentTurns }).then((r) => {
+      captureCorrection(text, client, project, { llm, context: recentTurns }).then(async (r) => {
         if (!r)
           return;
         snapshot.markDirty();
@@ -964,6 +964,9 @@ function src_default(pi) {
         const short = r.lesson.length > 70 ? r.lesson.slice(0, 67) + "..." : r.lesson;
         ctx.ui.notify(`${tag}: ${short}`, "info");
         ctx.ui.setStatus("memnest-correction", `${tag}: ${short}`);
+        if (r.distilled && llm) {
+          await updateUserModel(client, [{ category: "preference", text: r.lesson }], llm, { max: 1 }).catch(warn);
+        }
       }).catch(warn);
     }
     const signal = detectOutcomeSignal(text);
