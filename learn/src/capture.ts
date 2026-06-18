@@ -182,6 +182,15 @@ const CORRECTION_PATTERNS: RegExp[] = [
   /했잖아/, // "추정했잖아" = I already told you / you did it again
   /잖아(요)?/, // general "as you should know" or "as I said" correction tone
   /(해야|말아|하면).*(잖|는데)/, // "해야하잖아" = you should have… (correction)
+  // -- Korean skepticism / failure-prediction. A doubt that the agent will
+  // repeat a past mistake is itself a correction signal: it means "last time's
+  // lesson is not being applied — raise its priority". Kept narrow so a positive
+  // "~ㄹ 것 같아" (e.g. "맞는 것 같아") is NOT matched: a negative pointer
+  // ("그럴" / "안 될" / "또 실패") must be present.
+  /그럴\s*(것|거|꺼)?\s*같/, // "이번에도 그럴 것 같아" = it'll go the same (bad) way again
+  /(안 ?될|안 ?돼)\s*(것|거|꺼)?\s*같/, // "이것도 안될것같아" = this won't work either
+  /또\s*(실패|안돼|망|똑같)/, // "또 실패할 것 같아" = going to fail again
+  /의미\s*없/, // "해도 의미없어" = pointless even if we do it
 ];
 
 export function looksLikeCorrection(userText: string): boolean {
