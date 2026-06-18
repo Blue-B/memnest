@@ -173,6 +173,24 @@ test("looksLikeCorrection detects EN + KO corrections, ignores neutral", () => {
   expect(looksLikeCorrection("please add a test for this")).toBe(false);
 });
 
+test("looksLikeCorrection detects KO skepticism / failure-prediction", () => {
+  // A doubt that the agent will repeat a past mistake = a correction signal.
+  expect(looksLikeCorrection("이번에도 그럴 것 같아")).toBe(true);
+  expect(looksLikeCorrection("이번에도그럴꺼같아")).toBe(true);
+  expect(looksLikeCorrection("또 실패할 것 같아")).toBe(true);
+  expect(looksLikeCorrection("이것도 안될것같아")).toBe(true);
+  expect(looksLikeCorrection("해도 의미없을것같은데")).toBe(true);
+});
+
+test("looksLikeCorrection does NOT match positive '~ㄹ 것 같아' (no false positives)", () => {
+  // The narrow negative-pointer design must leave optimistic agreement alone,
+  // otherwise every approving turn would spuriously fire correction capture.
+  expect(looksLikeCorrection("이거 맞는 것 같아 진행해줘")).toBe(false);
+  expect(looksLikeCorrection("이렇게 하면 될 것 같아")).toBe(false);
+  expect(looksLikeCorrection("지금 잘 되고 있는 것 같아")).toBe(false);
+  expect(looksLikeCorrection("다음 단계로 가도 될 것 같아")).toBe(false);
+});
+
 test("captureMemories writes extracted memories with category + default importance", async () => {
   const llm = async () =>
     JSON.stringify([

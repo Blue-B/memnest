@@ -363,7 +363,11 @@ var CORRECTION_PATTERNS = [
   /없는데/,
   /했잖아/,
   /잖아(요)?/,
-  /(해야|말아|하면).*(잖|는데)/
+  /(해야|말아|하면).*(잖|는데)/,
+  /그럴\s*(것|거|꺼)?\s*같/,
+  /(안 ?될|안 ?돼)\s*(것|거|꺼)?\s*같/,
+  /또\s*(실패|안돼|망|똑같)/,
+  /의미\s*없/
 ];
 function looksLikeCorrection(userText) {
   const t = userText.trim();
