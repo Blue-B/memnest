@@ -283,15 +283,20 @@ async function captureMemories(turns, llm, client, opts = {}) {
   return { extracted: memories.length, written, errors, memories: persisted };
 }
 var CORRECTION_SYSTEM_PROMPT = [
-  "You convert a user's in-the-moment correction of a coding assistant into ONE",
-  "durable lesson for FUTURE sessions. The user's words are a complaint; the",
-  "actual lesson lives in what the assistant just did wrong.",
-  "Output ONLY the lesson — one self-contained sentence, no quotes, no prose,",
-  "no markdown. Write it in the SAME language the user used.",
-  "It must state BOTH what the assistant did wrong AND what to do instead,",
-  "inferred from the conversation (e.g. 'don't assume the network is WiFi —",
-  "verify with Get-NetAdapter'). Make it a concrete rule, not a restatement of",
-  "the complaint. If you cannot infer a concrete lesson, output exactly: NONE"
+  "Classify whether the user's latest message is a TRUE correction of a coding",
+  "assistant, then convert it into ONE durable lesson for FUTURE sessions.",
+  "A TRUE correction means the user says the assistant was wrong, guessed, ignored",
+  "an instruction, missed visible evidence, repeated a known failure, or should",
+  "have verified something instead of asserting it.",
+  "Output NONE for ordinary questions, task requests, product/planning discussion,",
+  "A-not-B preference changes, neutral skepticism, or meta-discussion about the",
+  "memory/autolog system unless the message clearly corrects assistant behavior.",
+  "If it IS a true correction, output ONLY the lesson — one self-contained sentence,",
+  "no quotes, no prose, no markdown. Write it in the SAME language the user used.",
+  "It must state BOTH what the assistant did wrong AND what to do instead, inferred",
+  "from the conversation (e.g. 'don't assume the network is WiFi; verify with",
+  "Get-NetAdapter'). Make it a concrete rule, not a restatement of the complaint.",
+  "If you cannot infer a concrete lesson, output exactly: NONE"
 ].join(`
 `);
 async function extractCorrectionLesson(correctionText, context, llm) {
@@ -314,17 +319,26 @@ async function captureCorrection(correctionText, client, project = "default", op
   const raw = correctionText.trim();
   if (!raw)
     return null;
-  let lesson = raw;
+  let lesson = null;
   let distilled = false;
-  if (opts.llm && opts.context && opts.context.length > 0) {
+  const highConfidence = looksLikeDefiniteCorrection(raw);
+  const hasSemanticJudge = !!(opts.llm && opts.context && opts.context.length > 0);
+  let semanticJudgeUnavailable = !hasSemanticJudge;
+  if (hasSemanticJudge) {
     try {
       const extracted = await extractCorrectionLesson(raw, opts.context, opts.llm);
       if (extracted) {
         lesson = extracted;
         distilled = true;
       }
-    } catch {}
+    } catch {
+      semanticJudgeUnavailable = true;
+    }
   }
+  if (!lesson && semanticJudgeUnavailable && highConfidence)
+    lesson = raw;
+  if (!lesson)
+    return null;
   const res = await client.add({
     text: lesson,
     project,
@@ -350,30 +364,39 @@ function extractMessageText(content) {
   return parts.join(`
 `).trim();
 }
-var CORRECTION_PATTERNS = [
+var DEFINITE_CORRECTION_PATTERNS = [
   /\bno,? (use|don't|do not|that's wrong|not)\b/i,
-  /\bactually,?\b/i,
   /\bthat'?s (wrong|incorrect|not right)\b/i,
   /\b(use|prefer) .* not\b/i,
-  /아니(야|요|라|\s|$)/,
   /틀렸/,
   /잘못/,
-  /추정/,
-  /말고/,
-  /없는데/,
-  /했잖아/,
-  /잖아(요)?/,
-  /(해야|말아|하면).*(잖|는데)/,
-  /그럴\s*(것|거|꺼)?\s*같/,
-  /(안 ?될|안 ?돼)\s*(것|거|꺼)?\s*같/,
+  /추정|넘겨짚|단정|사실처럼/,
+  /확인(을)?\s*(했어야|해야|하고)|직접\s*확인/,
+  /내\s*말\s*무시|말\s*무시/,
+  /(말했|하라\s*했|보라\s*했|확인하라\s*했|했)잖아/,
   /또\s*(실패|안돼|망|똑같)/,
   /의미\s*없/
 ];
+var CANDIDATE_CORRECTION_PATTERNS = [
+  ...DEFINITE_CORRECTION_PATTERNS,
+  /\bactually,?\b/i,
+  /^아니(야|요|라|라고)?(\s|[.!?]|$)/,
+  /그런\s*(거|것)\s*없|존재하지\s*않|없는\s*(파일|함수|메서드|옵션|설정|경로|API)/,
+  /(해야|말아|하면).*(잖|는데)/,
+  /그럴\s*(것|거|꺼)?\s*같/,
+  /(안 ?될|안 ?돼)\s*(것|거|꺼)?\s*같/
+];
+function looksLikeDefiniteCorrection(userText) {
+  const t = userText.trim();
+  if (!t)
+    return false;
+  return DEFINITE_CORRECTION_PATTERNS.some((re) => re.test(t));
+}
 function looksLikeCorrection(userText) {
   const t = userText.trim();
   if (!t)
     return false;
-  return CORRECTION_PATTERNS.some((re) => re.test(t));
+  return CANDIDATE_CORRECTION_PATTERNS.some((re) => re.test(t));
 }
 
 // src/consolidate.ts
@@ -966,7 +989,6 @@ function src_default(pi) {
         snapshot.markDirty();
         const tag = r.distilled ? "\uD83E\uDDE0 교정 학습" : "\uD83D\uDCDD 교정 기록";
         const short = r.lesson.length > 70 ? r.lesson.slice(0, 67) + "..." : r.lesson;
-        // notify 제거: 채팅 밀림 원인. setStatus만 유지.
         ctx.ui.setStatus("memnest-correction", `${tag}: ${short}`);
         if (r.distilled && llm) {
           await updateUserModel(client, [{ category: "preference", text: r.lesson }], llm, { max: 1 }).catch(warn);

@@ -167,10 +167,18 @@ test("consolidateByEmbedding clusters via engine cosine neighbors", async () => 
 });
 
 // ── capture ──────────────────────────────────────────────────────────────────
-test("looksLikeCorrection detects EN + KO corrections, ignores neutral", () => {
+test("looksLikeCorrection detects EN + KO correction candidates, ignores neutral", () => {
   expect(looksLikeCorrection("No, use pnpm not npm")).toBe(true);
   expect(looksLikeCorrection("아니 그거 틀렸어")).toBe(true);
+  expect(looksLikeCorrection("추측하지말고 직접 확인했어야지")).toBe(true);
   expect(looksLikeCorrection("please add a test for this")).toBe(false);
+});
+
+test("looksLikeCorrection avoids broad Korean false positives", () => {
+  expect(looksLikeCorrection("자동로그말고 교정기록이 너무 자주 작동하는데? ")).toBe(false);
+  expect(looksLikeCorrection("그러면 그냥 지금 기존 pi랑 똑같은 거 아니야?")).toBe(false);
+  expect(looksLikeCorrection("이미 스마트발송은 다 되어있잖아 근데 뭘 해야 한단 거야?")).toBe(false);
+  expect(looksLikeCorrection("응 진행해 근데 룰베이스말고 더 효율적인 설계는 없어?")).toBe(false);
 });
 
 test("looksLikeCorrection detects KO skepticism / failure-prediction", () => {
@@ -248,7 +256,7 @@ test("captureCorrection distils a lesson from context into a preference when an 
   expect(captured.text).toContain("Get-NetAdapter");
 });
 
-test("captureCorrection falls back to raw complaint when the LLM returns NONE", async () => {
+test("captureCorrection drops ambiguous candidates when the LLM returns NONE", async () => {
   let captured: any = null;
   const client = {
     add: async (i: any) => {
@@ -257,12 +265,51 @@ test("captureCorrection falls back to raw complaint when the LLM returns NONE", 
     },
   } as unknown as MemnestClient;
   const llm = async () => "NONE";
-  const res = await captureCorrection("hmm", client, "proj", {
+  const res = await captureCorrection("아니 지금은 수정전 상태 세션인 거 아니야?", client, "proj", {
     llm,
     context: [{ role: "user", text: "x" }],
   });
-  expect(res).toMatchObject({ id: "c3", distilled: false, lesson: "hmm" });
-  expect(captured).toMatchObject({ importance: "decision" });
+  expect(res).toBeNull();
+  expect(captured).toBeNull();
+});
+
+test("captureCorrection trusts semantic NONE even for high-confidence candidates", async () => {
+  let captured: any = null;
+  const client = {
+    add: async (i: any) => {
+      captured = i;
+      return { id: "c4" };
+    },
+  } as unknown as MemnestClient;
+  const llm = async () => "NONE";
+  const res = await captureCorrection("추측하지말고 직접 확인했어야지", client, "proj", {
+    llm,
+    context: [{ role: "assistant", text: "아마 WiFi 문제 같습니다" }],
+  });
+  expect(res).toBeNull();
+  expect(captured).toBeNull();
+});
+
+// If the classifier is unavailable, only high-confidence signals may fall back
+// to raw storage. This preserves urgent corrections without letting particles
+// like "잖아" / "말고" flood the playbook.
+test("captureCorrection keeps high-confidence raw fallback when the LLM fails", async () => {
+  let captured: any = null;
+  const client = {
+    add: async (i: any) => {
+      captured = i;
+      return { id: "c5" };
+    },
+  } as unknown as MemnestClient;
+  const llm = async () => {
+    throw new Error("LLM unavailable");
+  };
+  const res = await captureCorrection("추측하지말고 직접 확인했어야지", client, "proj", {
+    llm,
+    context: [{ role: "assistant", text: "아마 WiFi 문제 같습니다" }],
+  });
+  expect(res).toMatchObject({ id: "c5", distilled: false });
+  expect(captured).toMatchObject({ category: "correction", importance: "decision" });
 });
 
 // ── memnest client (fake fetch) ──────────────────────────────────────────────

@@ -60,15 +60,20 @@ export async function captureMemories(
 // own; the real lesson lives in what the assistant just did. We hand the model
 // the recent turns + the complaint and ask for ONE forward-looking rule.
 export const CORRECTION_SYSTEM_PROMPT = [
-  "You convert a user's in-the-moment correction of a coding assistant into ONE",
-  "durable lesson for FUTURE sessions. The user's words are a complaint; the",
-  "actual lesson lives in what the assistant just did wrong.",
-  "Output ONLY the lesson — one self-contained sentence, no quotes, no prose,",
-  "no markdown. Write it in the SAME language the user used.",
-  "It must state BOTH what the assistant did wrong AND what to do instead,",
-  "inferred from the conversation (e.g. 'don't assume the network is WiFi —",
-  "verify with Get-NetAdapter'). Make it a concrete rule, not a restatement of",
-  "the complaint. If you cannot infer a concrete lesson, output exactly: NONE",
+  "Classify whether the user's latest message is a TRUE correction of a coding",
+  "assistant, then convert it into ONE durable lesson for FUTURE sessions.",
+  "A TRUE correction means the user says the assistant was wrong, guessed, ignored",
+  "an instruction, missed visible evidence, repeated a known failure, or should",
+  "have verified something instead of asserting it.",
+  "Output NONE for ordinary questions, task requests, product/planning discussion,",
+  "A-not-B preference changes, neutral skepticism, or meta-discussion about the",
+  "memory/autolog system unless the message clearly corrects assistant behavior.",
+  "If it IS a true correction, output ONLY the lesson — one self-contained sentence,",
+  "no quotes, no prose, no markdown. Write it in the SAME language the user used.",
+  "It must state BOTH what the assistant did wrong AND what to do instead, inferred",
+  "from the conversation (e.g. 'don't assume the network is WiFi; verify with",
+  "Get-NetAdapter'). Make it a concrete rule, not a restatement of the complaint.",
+  "If you cannot infer a concrete lesson, output exactly: NONE",
 ].join("\n");
 
 export async function extractCorrectionLesson(
@@ -96,17 +101,21 @@ export async function extractCorrectionLesson(
 
 export interface CorrectionCapture {
   id: string | null;
-  /** The text actually stored — the distilled lesson, or the raw complaint on fallback. */
+  /** The text actually stored — usually the distilled lesson; raw only for high-confidence fallback. */
   lesson: string;
-  /** true when an LLM distilled an actionable lesson; false when we stored the raw complaint. */
+  /** true when an LLM distilled an actionable lesson; false for high-confidence raw fallback. */
   distilled: boolean;
 }
 
 /**
- * Correction fast-path: when the user explicitly corrects the agent, store a
- * high-signal `correction` memory immediately without waiting for the periodic
- * capture pass. When an LLM + recent context are supplied, distil the complaint
- * into an actionable lesson first; otherwise fall back to storing the raw text.
+ * Correction fast-path: cheap regexes only select CANDIDATES. The final decision
+ * is semantic: with an LLM + recent context, store only when the classifier can
+ * infer an actionable future lesson. This prevents everyday Korean particles
+ * ("잖아", "말고", "아니") from becoming durable correction memories.
+ *
+ * If the LLM is unavailable (missing or throws), store raw text only for very
+ * high-confidence correction signals (e.g. "틀렸", "잘못", "추정", "내말무시").
+ * If the LLM explicitly returns NONE, trust that semantic judgment and store nothing.
  */
 export async function captureCorrection(
   correctionText: string,
@@ -117,19 +126,28 @@ export async function captureCorrection(
   const raw = correctionText.trim();
   if (!raw) return null;
 
-  let lesson = raw;
+  let lesson: string | null = null;
   let distilled = false;
-  if (opts.llm && opts.context && opts.context.length > 0) {
+  const highConfidence = looksLikeDefiniteCorrection(raw);
+  const hasSemanticJudge = !!(opts.llm && opts.context && opts.context.length > 0);
+  let semanticJudgeUnavailable = !hasSemanticJudge;
+
+  if (hasSemanticJudge) {
     try {
-      const extracted = await extractCorrectionLesson(raw, opts.context, opts.llm);
+      const extracted = await extractCorrectionLesson(raw, opts.context!, opts.llm!);
       if (extracted) {
         lesson = extracted;
         distilled = true;
       }
     } catch {
-      /* LLM unavailable — fall back to raw complaint */
+      semanticJudgeUnavailable = true;
     }
   }
+
+  // If the semantic judge explicitly returned NONE/null, respect it and do NOT
+  // store raw text. Raw fallback is only for no judge or judge failure.
+  if (!lesson && semanticJudgeUnavailable && highConfidence) lesson = raw;
+  if (!lesson) return null;
 
   const res = await client.add({
     text: lesson,
@@ -166,35 +184,44 @@ export function extractMessageText(content: unknown): string {
   return parts.join("\n").trim();
 }
 
-/** Heuristic: does this user message look like a correction of the agent? */
-const CORRECTION_PATTERNS: RegExp[] = [
+/** High-confidence signals that are safe to store raw when semantic judging is unavailable. */
+const DEFINITE_CORRECTION_PATTERNS: RegExp[] = [
   /\bno,? (use|don't|do not|that's wrong|not)\b/i,
-  /\bactually,?\b/i,
   /\bthat'?s (wrong|incorrect|not right)\b/i,
   /\b(use|prefer) .* not\b/i,
-  // -- Korean correction patterns --
-  /아니(야|요|라|\s|$)/, // "no / that's not it"
   /틀렸/, // "wrong"
   /잘못/, // "mistaken/wrong"
-  /추정/, // "추정했잖아" = you assumed (guessed instead of verifying)
-  /말고/, // "추정말고 직접확인해" = don't guess, verify directly
-  /없는데/, // "F32그런거없는데?" = that doesn't exist
-  /했잖아/, // "추정했잖아" = I already told you / you did it again
-  /잖아(요)?/, // general "as you should know" or "as I said" correction tone
-  /(해야|말아|하면).*(잖|는데)/, // "해야하잖아" = you should have… (correction)
-  // -- Korean skepticism / failure-prediction. A doubt that the agent will
-  // repeat a past mistake is itself a correction signal: it means "last time's
-  // lesson is not being applied — raise its priority". Kept narrow so a positive
-  // "~ㄹ 것 같아" (e.g. "맞는 것 같아") is NOT matched: a negative pointer
-  // ("그럴" / "안 될" / "또 실패") must be present.
-  /그럴\s*(것|거|꺼)?\s*같/, // "이번에도 그럴 것 같아" = it'll go the same (bad) way again
-  /(안 ?될|안 ?돼)\s*(것|거|꺼)?\s*같/, // "이것도 안될것같아" = this won't work either
-  /또\s*(실패|안돼|망|똑같)/, // "또 실패할 것 같아" = going to fail again
-  /의미\s*없/, // "해도 의미없어" = pointless even if we do it
+  /추정|넘겨짚|단정|사실처럼/, // guessed / asserted as fact
+  /확인(을)?\s*(했어야|해야|하고)|직접\s*확인/, // should have verified
+  /내\s*말\s*무시|말\s*무시/, // ignored the user's words
+  /(말했|하라\s*했|보라\s*했|확인하라\s*했|했)잖아/, // explicit "I told you / you did"
+  /또\s*(실패|안돼|망|똑같)/, // repeating a past failure
+  /의미\s*없/, // pointless / not useful
 ];
 
+/**
+ * Lower-confidence candidate signals. These only decide whether to ask the
+ * semantic classifier. They are NOT stored raw on fallback.
+ */
+const CANDIDATE_CORRECTION_PATTERNS: RegExp[] = [
+  ...DEFINITE_CORRECTION_PATTERNS,
+  /\bactually,?\b/i,
+  /^아니(야|요|라|라고)?(\s|[.!?]|$)/, // direct "no / that's not it", not mid-sentence "...아니야?"
+  /그런\s*(거|것)\s*없|존재하지\s*않|없는\s*(파일|함수|메서드|옵션|설정|경로|API)/,
+  /(해야|말아|하면).*(잖|는데)/, // "해야 했잖아"-style reproach, semantic judge filters ambiguity
+  /그럴\s*(것|거|꺼)?\s*같/, // "이번에도 그럴 것 같아" = likely repeat of a prior bad pattern
+  /(안 ?될|안 ?돼)\s*(것|거|꺼)?\s*같/, // failure prediction
+];
+
+export function looksLikeDefiniteCorrection(userText: string): boolean {
+  const t = userText.trim();
+  if (!t) return false;
+  return DEFINITE_CORRECTION_PATTERNS.some((re) => re.test(t));
+}
+
+/** Candidate heuristic: true means "worth semantic judging", not "store it". */
 export function looksLikeCorrection(userText: string): boolean {
   const t = userText.trim();
   if (!t) return false;
-  return CORRECTION_PATTERNS.some((re) => re.test(t));
+  return CANDIDATE_CORRECTION_PATTERNS.some((re) => re.test(t));
 }
