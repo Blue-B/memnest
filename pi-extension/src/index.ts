@@ -22,6 +22,15 @@ const AUTOLOG_ENABLED = (process.env.MEMNEST_AUTOLOG ?? "1") !== "0";
 const AUTOLOG_MIN_USER_LEN = Number(process.env.MEMNEST_AUTOLOG_MIN_USER_LEN ?? "3");
 // Tool result bodies can be huge — cap them before sending to memnest.
 const AUTOLOG_MAX_CHARS = Number(process.env.MEMNEST_AUTOLOG_MAX_CHARS ?? "8000");
+// Tool-result autolog is the firehose: this agent fires many tool calls per
+// turn, each one POSTing /add → memnest re-embeds (CPU) + tantivy commit/fsync.
+// That burst starves the single-threaded TUI render loop on WSL2 and shows up
+// as keystroke lag (chars buffer then flush at once). Tool results are also the
+// lowest-signal, highest-volume autolog (53% of the `root` bucket here) and
+// drown the curated rules in search. Default OFF; user+assistant messages are
+// still logged, so "every response is saved & searchable" still holds. Set
+// MEMNEST_AUTOLOG_TOOLS=1 to restore the old per-tool-result logging.
+const AUTOLOG_TOOLS = (process.env.MEMNEST_AUTOLOG_TOOLS ?? "0") !== "0";
 
 async function call(
   path: string,
@@ -211,6 +220,7 @@ function installAutoLog(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_execution_end", (event) => {
+    if (!AUTOLOG_TOOLS) return; // firehose disabled — see AUTOLOG_TOOLS note
     try {
       const e = event as any;
       const toolName: string = e.toolName ?? "unknown";

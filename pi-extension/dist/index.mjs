@@ -4226,6 +4226,7 @@ var MEMNEST_URL = process.env.MEMNEST_URL ?? "http://127.0.0.1:3111";
 var AUTOLOG_ENABLED = (process.env.MEMNEST_AUTOLOG ?? "1") !== "0";
 var AUTOLOG_MIN_USER_LEN = Number(process.env.MEMNEST_AUTOLOG_MIN_USER_LEN ?? "3");
 var AUTOLOG_MAX_CHARS = Number(process.env.MEMNEST_AUTOLOG_MAX_CHARS ?? "8000");
+var AUTOLOG_TOOLS = (process.env.MEMNEST_AUTOLOG_TOOLS ?? "0") !== "0";
 async function call(path, body, method = "POST") {
   try {
     const init = { method, headers: { "Content-Type": "application/json" } };
@@ -4367,6 +4368,7 @@ function installAutoLog(pi) {
     }
   });
   pi.on("tool_execution_end", (event) => {
+    if (!AUTOLOG_TOOLS) return;
     try {
       const e = event;
       const toolName = e.toolName ?? "unknown";
