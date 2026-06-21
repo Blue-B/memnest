@@ -149,9 +149,18 @@ export async function captureCorrection(
   if (!lesson && semanticJudgeUnavailable && highConfidence) lesson = raw;
   if (!lesson) return null;
 
+  // Route by signal strength. A distilled rule is a durable, cross-project lesson
+  // → store it in the curated `playbook` bucket, because buildInjection's
+  // learned_rules slot reads ONLY playbook. The old code stored every correction
+  // in the per-project bucket (shell/_superseded/...), so that injection slot
+  // never saw them: the agent never got the rule re-surfaced and repeated the
+  // same mistake the user kept re-correcting. A raw (non-distilled) complaint is
+  // a weaker, noisier signal → keep it project-local so it can't pollute the
+  // curated rules that get injected every turn.
+  const targetProject = distilled ? "playbook" : project;
   const res = await client.add({
     text: lesson,
-    project,
+    project: targetProject,
     category: "correction",
     // a distilled rule is a durable preference; a raw complaint is a weaker signal
     importance: distilled ? "preference" : "decision",

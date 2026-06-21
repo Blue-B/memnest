@@ -230,7 +230,8 @@ test("captureCorrection stores the raw complaint as a decision when no LLM is gi
   } as unknown as MemnestClient;
   const res = await captureCorrection("Use pnpm, not npm", client, "proj");
   expect(res).toMatchObject({ id: "c1", distilled: false, lesson: "Use pnpm, not npm" });
-  expect(captured).toMatchObject({ category: "correction", importance: "decision", text: "Use pnpm, not npm" });
+  // raw (non-distilled) complaint stays project-local so it can't pollute playbook
+  expect(captured).toMatchObject({ category: "correction", importance: "decision", text: "Use pnpm, not npm", project: "proj" });
   expect(await captureCorrection("   ", client)).toBeNull();
 });
 
@@ -252,7 +253,9 @@ test("captureCorrection distils a lesson from context into a preference when an 
   });
   expect(res).toMatchObject({ id: "c2", distilled: true });
   expect(res!.lesson).toContain("Get-NetAdapter");
-  expect(captured).toMatchObject({ category: "correction", importance: "preference" });
+  // a distilled rule is a durable cross-project lesson -> curated playbook bucket,
+  // which is the ONLY bucket buildInjection's learned_rules slot reads
+  expect(captured).toMatchObject({ category: "correction", importance: "preference", project: "playbook" });
   expect(captured.text).toContain("Get-NetAdapter");
 });
 
@@ -309,7 +312,7 @@ test("captureCorrection keeps high-confidence raw fallback when the LLM fails", 
     context: [{ role: "assistant", text: "아마 WiFi 문제 같습니다" }],
   });
   expect(res).toMatchObject({ id: "c5", distilled: false });
-  expect(captured).toMatchObject({ category: "correction", importance: "decision" });
+  expect(captured).toMatchObject({ category: "correction", importance: "decision", project: "proj" });
 });
 
 // ── memnest client (fake fetch) ──────────────────────────────────────────────
