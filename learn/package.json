@@ -10,6 +10,9 @@
     ]
   },
   "scripts": {
+    "build": "bun build src/index.ts --outfile dist/index.js --target node --format esm --packages external",
+    "prepublishOnly": "bun run build",
+    "prepare": "bun run build",
     "test": "bun test test/",
     "typecheck": "tsc --noEmit"
   },

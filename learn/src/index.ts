@@ -117,6 +117,24 @@ function backgroundLlm(ctx: ExtensionContext): LlmComplete | null {
   return async (input) => (budget.allow() ? llm(input) : "");
 }
 
+/**
+ * Correction-path LLM. Still budget-gated (a frustrated user must not be able to
+ * spam the model), but on exhaustion it THROWS instead of returning "". That
+ * difference matters: captureCorrection treats a thrown judge as "unavailable"
+ * and stores the raw complaint for high-confidence signals, so a strong
+ * correction is never silently dropped just because periodic capture spent the
+ * window's budget. A genuine semantic NONE (the model returns "NONE") still
+ * vetoes, so everyday particles stay filtered.
+ */
+function correctionLlm(ctx: ExtensionContext): LlmComplete | null {
+  const llm = makeLlm(ctx);
+  if (!llm) return null;
+  return async (input) => {
+    if (!budget.allow()) throw new Error("correction llm budget exhausted");
+    return llm(input);
+  };
+}
+
 // ── learning fan-out: route freshly-captured memories into the loops ─────────
 // skill self-improvement (#2) + user-model deepening (#4). Best-effort; the
 // outcome-reinforcement loop (#1) runs separately off the input signal.
@@ -224,6 +242,7 @@ export default function (pi: ExtensionAPI) {
     turnCounter++;
 
     const llm = backgroundLlm(ctx);
+    const corrLlm = correctionLlm(ctx);
     const project = currentProject();
 
     if (looksLikeCorrection(text)) {
@@ -231,7 +250,7 @@ export default function (pi: ExtensionAPI) {
       // store it immediately, surface it on the snapshot, and let the user SEE
       // that learning happened — the fast-path bypasses the memory_remember tool
       // so it must notify here itself.
-      captureCorrection(text, client, project, { llm, context: recentTurns })
+      captureCorrection(text, client, project, { llm: corrLlm, context: recentTurns })
         .then(async (r) => {
           if (!r) return;
           snapshot.markDirty();
@@ -248,11 +267,11 @@ export default function (pi: ExtensionAPI) {
           // duplicating it, and finally fills the bucket that buildInjection
           // injects first, every turn. Raw (non-distilled) complaints are too
           // noisy for the who-you-are model, so only distilled lessons fold.
-          if (r.distilled && llm) {
+          if (r.distilled && corrLlm) {
             await updateUserModel(
               client,
               [{ category: "preference", text: r.lesson }],
-              llm,
+              corrLlm,
               { max: 1 },
             ).catch(warn);
           }
