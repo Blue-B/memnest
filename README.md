@@ -52,7 +52,7 @@ searchable in every other.
 | ------ | -------------- |
 | Claude Desktop, Cursor, Cline, Continue, Zed, opencode | Register the `memnest --mcp` command — see [`pi-extension/INSTALL-CLIENTS.md`](./pi-extension/INSTALL-CLIENTS.md). |
 | Claude Code, Codex CLI, Kilo Code, Windsurf, … | Any other MCP-capable client uses the same `memnest --mcp` registration. |
-| pi | One-command install: `pi install npm:pi-memnest` (adds tools plus AutoLog). |
+| pi | One-command install: `pi install npm:pi-memnest` (adds memory tools, AutoLog, and risk-triggered Autocontext). |
 | Scripts / anything | Call the HTTP API directly at `http://127.0.0.1:3111`. |
 
 The MCP registration is identical everywhere:

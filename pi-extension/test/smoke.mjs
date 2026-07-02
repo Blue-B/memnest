@@ -63,6 +63,7 @@ const EXPECTED = [
   "secret_delete",
   "collections_list",
   "memory_health",
+  "memnest_autocontext_status",
 ];
 
 assert(`registered ${EXPECTED.length} tools (got ${tools.size})`, tools.size === EXPECTED.length);
@@ -71,6 +72,11 @@ for (const name of EXPECTED) {
   assert(`tool '${name}' present`, !!t);
   if (t) assert(`tool '${name}'.execute is a function`, typeof t.execute === "function");
 }
+
+const autocontext = tools.get("memnest_autocontext_status");
+const ac = await autocontext.execute("id", {}, undefined, noop, { cwd: process.cwd() });
+const acText = ac.content?.[0]?.text ?? "";
+assert("memnest_autocontext_status reports mode", /mode\s+:/.test(acText), acText.slice(0, 200));
 
 // Live server round-trip (skipped gracefully if 3111 is down).
 const URL = process.env.MEMNEST_URL ?? "http://127.0.0.1:3111";

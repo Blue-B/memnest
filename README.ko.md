@@ -52,7 +52,7 @@ Claude Desktop, Cursor, Cline, Codex CLI, pi, `curl` — 같은 메모리를 읽
 | ------ | -------------- |
 | Claude Desktop, Cursor, Cline, Continue, Zed, opencode | `memnest --mcp` 명령 등록 — [`pi-extension/INSTALL-CLIENTS.md`](./pi-extension/INSTALL-CLIENTS.md) 참고. |
 | Claude Code, Codex CLI, Kilo Code, Windsurf 등 | MCP를 지원하는 다른 클라이언트도 동일한 `memnest --mcp` 등록 사용. |
-| pi | 한 줄 설치: `pi install npm:pi-memnest` (도구 + AutoLog 추가). |
+| pi | 한 줄 설치: `pi install npm:pi-memnest` (메모리 도구 + AutoLog + 위험 트리거 Autocontext 추가). |
 | 스크립트 / 기타 | `http://127.0.0.1:3111` HTTP API 직접 호출. |
 
 MCP 등록 방식은 어디서나 동일합니다:
@@ -68,7 +68,7 @@ MCP 등록 방식은 어디서나 동일합니다:
 | 디렉터리 | 패키지 | 언어 | 역할 |
 | --------- | ------- | ---- | ---- |
 | [`core/`](./core) | `memnest` | Rust | 엔진: HTTP API + stdio MCP 서버, 하이브리드 검색, 비밀 보관소, 대시보드. 필수. |
-| [`pi-extension/`](./pi-extension) | `pi-memnest` | TypeScript | [pi](https://github.com/badlogic/pi-mono)용 편의 브리지(도구 + AutoLog). 다른 클라이언트는 코어에 MCP로 직접 붙으므로 선택 사항입니다. |
+| [`pi-extension/`](./pi-extension) | `pi-memnest` | TypeScript | [pi](https://github.com/badlogic/pi-mono)용 편의 브리지(도구 + AutoLog + Autocontext). 다른 클라이언트는 코어에 MCP로 직접 붙으므로 선택 사항입니다. |
 | [`journal/`](./journal) | `memnest-journal` | TypeScript | 데이터베이스를 git 마크다운 저장소로 미러링하여, 에이전트가 학습한 내용을 diff·revert·검토할 수 있게 하는 감사 레이어. 선택. |
 
 ## 빠른 시작
