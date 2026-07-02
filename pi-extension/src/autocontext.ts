@@ -64,8 +64,8 @@ const TRIVIAL = new Set([
 const RISK_RULES: Array<{ label: string; re: RegExp }> = [
   { label: "memory", re: /전에|이전|기억|까먹|잊어|잊었|했었|시도|말했잖|또\s*(말|까먹)|맥락|찾아봤/i },
   { label: "credential", re: /계정|로그인|비밀키|시크릿|secret|api\s*key|토큰|token|인증|oauth|구독|플랜|plan/i },
-  { label: "absence", re: /없[다어]?|안\s*되|안됨|불가능|못\s*하|지원\s*안|처음|모르겠/i },
-  { label: "money", re: /돈|수익|크몽|외주|앱|토스|홍보|광고|매출|iap|과금|유저|사용자/i },
+  { label: "absence", re: /없다|없어|없음|없는|없나요|안\s*되|안됨|불가능|못\s*하|지원\s*안|처음|모르겠/i },
+  { label: "money", re: /돈|수익|크몽|외주|토스|홍보|광고|매출|iap|과금|프로모션|promotion|monetization|유저\s*(획득|유입)|사용자\s*(확보|유입)/i },
 ];
 
 interface MemResult {
@@ -216,11 +216,13 @@ export function installAutocontext(pi: ExtensionAPI): void {
       let reason = "";
       let query = prompt;
       let strong = false;
+      let tokensForSuccess: Set<string> | null = null;
 
       if (labels.length > 0) {
         reason = `risk:${labels.join(",")}`;
         query = riskSearchQuery(prompt, labels);
         strong = true;
+        tokensForSuccess = topicTokens(prompt);
       } else if (shouldRunGeneralLane()) {
         const tokens = topicTokens(prompt);
         reason = "first-substantive-turn";
@@ -232,7 +234,7 @@ export function installAutocontext(pi: ExtensionAPI): void {
           }
           reason = `topic-shift overlap=${sim.toFixed(2)}`;
         }
-        lastInjectedTokens = tokens;
+        tokensForSuccess = tokens;
       } else {
         lastSkipReason = "no-risk-trigger";
         return;
@@ -245,7 +247,7 @@ export function installAutocontext(pi: ExtensionAPI): void {
         return;
       }
 
-      if (labels.length > 0) lastInjectedTokens = topicTokens(prompt);
+      if (tokensForSuccess) lastInjectedTokens = tokensForSuccess;
       lastInjectedAt = Date.now();
       lastInjectedCount = Math.min(results.length, TOP_INJECT);
       lastInjectReason = reason;
