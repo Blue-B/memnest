@@ -8,20 +8,22 @@
  */
 
 import { Type } from "typebox";
-import type {
-  AgentToolResult,
-  ExtensionAPI,
-  ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import { installAutocontext } from "./autocontext.js";
 
-const MEMNEST_URL = process.env.MEMNEST_URL ?? "http://127.0.0.1:3111";
+type AgentToolResult<T = undefined> = { content: Array<{ type: "text"; text: string }>; details: T };
+type ExtensionAPI = any;
+type ExtensionContext = { cwd?: string };
+
+const ENV: Record<string, string | undefined> = (globalThis as any).process?.env ?? {};
+const cwd = () => (globalThis as any).process?.cwd?.() ?? "";
+const MEMNEST_URL = ENV.MEMNEST_URL ?? "http://127.0.0.1:3111";
 
 // AutoLog can be disabled via env var if user wants tool-only mode.
-const AUTOLOG_ENABLED = (process.env.MEMNEST_AUTOLOG ?? "1") !== "0";
+const AUTOLOG_ENABLED = (ENV.MEMNEST_AUTOLOG ?? "1") !== "0";
 // Skip extremely short user messages (likely noise: "y", "ok", "\n").
-const AUTOLOG_MIN_USER_LEN = Number(process.env.MEMNEST_AUTOLOG_MIN_USER_LEN ?? "3");
+const AUTOLOG_MIN_USER_LEN = Number(ENV.MEMNEST_AUTOLOG_MIN_USER_LEN ?? "3");
 // Tool result bodies can be huge — cap them before sending to memnest.
-const AUTOLOG_MAX_CHARS = Number(process.env.MEMNEST_AUTOLOG_MAX_CHARS ?? "8000");
+const AUTOLOG_MAX_CHARS = Number(ENV.MEMNEST_AUTOLOG_MAX_CHARS ?? "8000");
 // Tool-result autolog is the firehose: this agent fires many tool calls per
 // turn, each one POSTing /add → memnest re-embeds (CPU) + tantivy commit/fsync.
 // That burst starves the single-threaded TUI render loop on WSL2 and shows up
@@ -30,7 +32,7 @@ const AUTOLOG_MAX_CHARS = Number(process.env.MEMNEST_AUTOLOG_MAX_CHARS ?? "8000"
 // drown the curated rules in search. Default OFF; user+assistant messages are
 // still logged, so "every response is saved & searchable" still holds. Set
 // MEMNEST_AUTOLOG_TOOLS=1 to restore the old per-tool-result logging.
-const AUTOLOG_TOOLS = (process.env.MEMNEST_AUTOLOG_TOOLS ?? "0") !== "0";
+const AUTOLOG_TOOLS = (ENV.MEMNEST_AUTOLOG_TOOLS ?? "0") !== "0";
 
 async function call(
   path: string,
@@ -100,6 +102,16 @@ async function drainInFlight(timeoutMs = 3000): Promise<void> {
  * Extract a flat text representation from an AgentMessage content array.
  * Handles user (string | content[]), assistant (text/thinking/toolCall), and toolResult.
  */
+function toolCallText(c: any): string {
+  try {
+    const args = c.arguments ?? c.input ?? {};
+    const argStr = typeof args === "string" ? args : JSON.stringify(args).slice(0, 400);
+    return `[toolCall ${c.name ?? "?"}(${argStr})]`;
+  } catch {
+    return `[toolCall ${c.name ?? "?"}]`;
+  }
+}
+
 function messageToText(message: any): string {
   if (!message) return "";
   const content = message.content;
@@ -119,13 +131,7 @@ function messageToText(message: any): string {
         parts.push(`[image ${c.mimeType ?? ""}]`);
         break;
       case "toolCall":
-        try {
-          const args = c.arguments ?? c.input ?? {};
-          const argStr = typeof args === "string" ? args : JSON.stringify(args).slice(0, 400);
-          parts.push(`[toolCall ${c.name ?? "?"}(${argStr})]`);
-        } catch {
-          parts.push(`[toolCall ${c.name ?? "?"}]`);
-        }
+        parts.push(toolCallText(c));
         break;
       default:
         break;
@@ -153,18 +159,18 @@ function installAutoLog(pi: ExtensionAPI): void {
 
   // We need cwd → project mapping. ExtensionContext is passed to tool execute()
   // but NOT to event handlers, so we capture it at session_start.
-  let cwd: string = process.cwd();
+  let currentCwd: string = cwd();
   let sessionId: string = `pi-${Date.now().toString(36)}`;
 
   pi.on("session_start", () => {
     // process.cwd() at session_start is the right project root for pi sessions.
-    cwd = process.cwd();
+    currentCwd = cwd();
     sessionId = `pi-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   });
 
   // User input — use `input` event because `message_end` does not fire for the
   // initial CLI prompt in `pi -p "..."` print mode.
-  pi.on("input", (event) => {
+  pi.on("input", (event: any) => {
     try {
       const e = event as any;
       const text: string = typeof e.text === "string" ? e.text : "";
@@ -181,7 +187,7 @@ function installAutoLog(pi: ExtensionAPI): void {
           role: "user",
           input_source: e.source ?? "unknown",
           truncated,
-          cwd,
+          cwd: currentCwd,
         },
       });
     } catch {
@@ -190,7 +196,7 @@ function installAutoLog(pi: ExtensionAPI): void {
   });
 
   // Assistant final message only — user side is covered by the `input` hook.
-  pi.on("message_end", (event) => {
+  pi.on("message_end", (event: any) => {
     try {
       const msg = (event as any).message;
       if (!msg || msg.role !== "assistant") return;
@@ -211,7 +217,7 @@ function installAutoLog(pi: ExtensionAPI): void {
           model: msg.model,
           stop_reason: msg.stopReason,
           truncated,
-          cwd,
+          cwd: currentCwd,
         },
       });
     } catch {
@@ -219,7 +225,7 @@ function installAutoLog(pi: ExtensionAPI): void {
     }
   });
 
-  pi.on("tool_execution_end", (event) => {
+  pi.on("tool_execution_end", (event: any) => {
     if (!AUTOLOG_TOOLS) return; // firehose disabled — see AUTOLOG_TOOLS note
     try {
       const e = event as any;
@@ -262,7 +268,7 @@ function installAutoLog(pi: ExtensionAPI): void {
           tool: toolName,
           is_error: !!e.isError,
           truncated,
-          cwd,
+          cwd: currentCwd,
         },
       });
     } catch {
@@ -279,7 +285,7 @@ function installAutoLog(pi: ExtensionAPI): void {
     await drainInFlight(2000);
   });
 
-  pi.on("session_compact", (event) => {
+  pi.on("session_compact", (event: any) => {
     try {
       const e = event as any;
       const summary: string | undefined = e?.compaction?.summary ?? e?.summary;
@@ -293,7 +299,7 @@ function installAutoLog(pi: ExtensionAPI): void {
           importance: "knowledge",
           session_id: sessionId,
           source: "pi.session.compact",
-          cwd,
+          cwd: currentCwd,
         },
       });
     } catch {
@@ -330,8 +336,9 @@ function resolveProject(args: any, ctx: any): string {
 const EmptyParams = Type.Object({});
 
 export default function register(pi: ExtensionAPI): void {
-  // Install AutoLog event hooks first so they apply for the whole session.
+  // Install event hooks first so they apply for the whole session.
   installAutoLog(pi);
+  installAutocontext(pi);
 
   // ─── memory_remember (POST /add) ─────────────────────────────────────────
   pi.registerTool({
@@ -611,7 +618,7 @@ export default function register(pi: ExtensionAPI): void {
     parameters: Type.Object({
       key: Type.String({ description: "Exact key returned by secret_list." }),
     }),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId: string, params: any) {
       const r = await call(`/secrets/${encodeURIComponent(params.key)}`, undefined, "DELETE");
       return textResult(r.text, r.isError);
     },

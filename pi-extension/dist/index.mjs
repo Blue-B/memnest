@@ -4221,23 +4221,260 @@ __export(typebox_exports, {
   Void: () => Void
 });
 
+// src/autocontext.ts
+var CUSTOM_TYPE = "memnest-autocontext";
+var DISABLE_ENV = "MEMNEST_AUTOCONTEXT_DISABLE";
+var env = globalThis.process?.env ?? {};
+var MEMNEST_URL = env.MEMNEST_URL ?? "http://127.0.0.1:3111";
+var MODE = String(env.MEMNEST_AUTOCONTEXT_MODE ?? "balanced").toLowerCase();
+var N_RESULTS = Math.max(1, parseInt(env.MEMNEST_AUTOCONTEXT_N || "20", 10) || 20);
+var TOP_INJECT = Math.max(1, parseInt(env.MEMNEST_AUTOCONTEXT_TOP || "2", 10) || 2);
+var MAX_INJECTIONS = Math.max(1, parseInt(env.MEMNEST_AUTOCONTEXT_MAX_INJECTIONS || "6", 10) || 6);
+var TOPIC_OVERLAP = Math.max(0, Math.min(1, Number(env.MEMNEST_AUTOCONTEXT_TOPIC_OVERLAP ?? "0.35")));
+var MIN_SCORE = Number(env.MEMNEST_AUTOCONTEXT_MIN_SCORE ?? "0.12");
+var MIN_LEN = Math.max(1, parseInt(env.MEMNEST_AUTOCONTEXT_MIN_LEN || "16", 10) || 16);
+var TIMEOUT_MS = Math.max(200, parseInt(env.MEMNEST_AUTOCONTEXT_TIMEOUT_MS || "1500", 10) || 1500);
+var DOC_CHARS = Math.max(80, parseInt(env.MEMNEST_AUTOCONTEXT_DOC_CHARS || "240", 10) || 240);
+var EXCLUDE_PROJECTS = new Set(
+  (env.MEMNEST_AUTOCONTEXT_EXCLUDE ?? "_superseded,default,root").split(",").map((s) => s.trim()).filter(Boolean)
+);
+var TRIVIAL = /* @__PURE__ */ new Set([
+  "ok",
+  "okay",
+  "\uC751",
+  "\u3147\u3147",
+  "\uB124",
+  "\uB135",
+  "yes",
+  "no",
+  "\uC544\uB2C8",
+  "\uACE0\uB9C8\uC6CC",
+  "thanks",
+  "\uACC4\uC18D",
+  "continue",
+  "go",
+  "next",
+  "stop",
+  "\uADF8\uB9CC",
+  "\u3131\u3131",
+  "\uB3D9\uC758",
+  "\uB9DE\uC544",
+  "\uC88B\uC544"
+]);
+var RISK_RULES = [
+  { label: "memory", re: /전에|이전|기억|까먹|잊어|잊었|했었|시도|말했잖|또\s*(말|까먹)|맥락|찾아봤/i },
+  { label: "credential", re: /계정|로그인|비밀키|시크릿|secret|api\s*key|토큰|token|인증|oauth|구독|플랜|plan/i },
+  { label: "absence", re: /없[다어]?|안\s*되|안됨|불가능|못\s*하|지원\s*안|처음|모르겠/i },
+  { label: "money", re: /돈|수익|크몽|외주|앱|토스|홍보|광고|매출|iap|과금|유저|사용자/i }
+];
+function isSubstantive(prompt) {
+  const t = (prompt || "").trim();
+  if (t.length < MIN_LEN) return false;
+  if (t.startsWith("/")) return false;
+  if (TRIVIAL.has(t.toLowerCase())) return false;
+  return true;
+}
+function normQuery(prompt) {
+  return prompt.trim().replace(/\s+/g, " ").toLowerCase().slice(0, 240);
+}
+function topicTokens(prompt) {
+  const raw = prompt.toLowerCase().match(/[a-z0-9가-힣_]{2,}/g) ?? [];
+  const stop = /* @__PURE__ */ new Set(["the", "and", "for", "with", "this", "that", "\uADF8\uAC70", "\uC774\uAC70", "\uC880", "\uD574\uC918", "\uD558\uBA74", "\uADF8\uB9AC\uACE0", "\uADFC\uB370"]);
+  return new Set(raw.filter((t) => !stop.has(t)).slice(0, 80));
+}
+function overlap(a, b) {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter++;
+  return inter / Math.min(a.size, b.size);
+}
+function riskLabels(prompt) {
+  const labels = [];
+  for (const rule of RISK_RULES) if (rule.re.test(prompt)) labels.push(rule.label);
+  return labels;
+}
+function shouldRunGeneralLane() {
+  return MODE === "aggressive" || env.MEMNEST_AUTOCONTEXT_GENERAL === "1";
+}
+function isMemResult(value) {
+  if (!value || typeof value !== "object") return false;
+  const r = value;
+  return r.document === void 0 || typeof r.document === "string";
+}
+async function searchMemnest(query) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(`${MEMNEST_URL}/search`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query, n_results: N_RESULTS }),
+      signal: ctrl.signal
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return Array.isArray(json.results) ? json.results.filter(isMemResult) : [];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function formatBlock(results, reason, options) {
+  const kept = results.filter((r) => typeof r.document === "string" && r.document.trim().length > 0).filter((r) => !(r.project && EXCLUDE_PROJECTS.has(r.project))).filter((r) => (typeof r.score === "number" ? r.score : 1) >= MIN_SCORE).slice(0, TOP_INJECT);
+  if (kept.length === 0) return null;
+  const lines = kept.map((r, i) => {
+    const proj = r.project ? `[${r.project}]` : "";
+    const score = typeof r.score === "number" ? ` (${r.score.toFixed(2)})` : "";
+    let doc = (r.document || "").replace(/\s+/g, " ").trim();
+    if (doc.length > DOC_CHARS) doc = `${doc.slice(0, DOC_CHARS)}\u2026`;
+    return `${i + 1}. ${proj}${score} ${doc}`;
+  });
+  const instruction = options.strong ? "This was retrieved by a high-risk memory trigger. Apply it if relevant. If you ignore it, explicitly say why." : "This is background context. Verify named files and flags before acting. Ignore it if irrelevant.";
+  return `<system-reminder>
+[memnest-autocontext] Durable memory auto-retrieved (${reason}), ranked by relevance. ${instruction}
+
+` + lines.join("\n") + `
+</system-reminder>`;
+}
+function riskSearchQuery(prompt, labels) {
+  const hints = ["prior decisions", "user preferences", "corrections", "previous attempts"];
+  if (labels.includes("credential")) hints.push("accounts", "credentials", "secret keys");
+  if (labels.includes("money")) hints.push("profit", "promotion", "failed launches", "monetization");
+  return `${prompt}
+${hints.join(" ")}`;
+}
+function installAutocontext(pi) {
+  const disabled = env[DISABLE_ENV] === "1" || MODE === "off" || MODE === "none";
+  let lastSeenQuery = null;
+  let lastInjectedTokens = null;
+  let lastInjectedAt = 0;
+  let lastInjectedCount = 0;
+  let lastSkipReason = disabled ? "disabled" : "none";
+  let lastInjectReason = "none";
+  let injections = 0;
+  pi.on("session_start", () => {
+    lastSeenQuery = null;
+    lastInjectedTokens = null;
+    lastInjectedAt = 0;
+    lastInjectedCount = 0;
+    lastSkipReason = disabled ? "disabled" : "none";
+    lastInjectReason = "none";
+    injections = 0;
+  });
+  if (!disabled) {
+    pi.on("before_agent_start", async (event) => {
+      const e = event && typeof event === "object" ? event : {};
+      const prompt = typeof e.prompt === "string" ? e.prompt : "";
+      if (!isSubstantive(prompt)) {
+        lastSkipReason = "not-substantive";
+        return;
+      }
+      const q = normQuery(prompt);
+      if (q === lastSeenQuery) {
+        lastSkipReason = "duplicate-prompt";
+        return;
+      }
+      lastSeenQuery = q;
+      if (injections >= MAX_INJECTIONS) {
+        lastSkipReason = "session-cap";
+        return;
+      }
+      const labels = riskLabels(prompt);
+      let reason = "";
+      let query = prompt;
+      let strong = false;
+      if (labels.length > 0) {
+        reason = `risk:${labels.join(",")}`;
+        query = riskSearchQuery(prompt, labels);
+        strong = true;
+      } else if (shouldRunGeneralLane()) {
+        const tokens = topicTokens(prompt);
+        reason = "first-substantive-turn";
+        if (lastInjectedTokens) {
+          const sim = overlap(tokens, lastInjectedTokens);
+          if (sim >= TOPIC_OVERLAP) {
+            lastSkipReason = `same-topic overlap=${sim.toFixed(2)}`;
+            return;
+          }
+          reason = `topic-shift overlap=${sim.toFixed(2)}`;
+        }
+        lastInjectedTokens = tokens;
+      } else {
+        lastSkipReason = "no-risk-trigger";
+        return;
+      }
+      const results = await searchMemnest(query);
+      const block = formatBlock(results, reason, { strong });
+      if (!block) {
+        lastSkipReason = "no-results";
+        return;
+      }
+      if (labels.length > 0) lastInjectedTokens = topicTokens(prompt);
+      lastInjectedAt = Date.now();
+      lastInjectedCount = Math.min(results.length, TOP_INJECT);
+      lastInjectReason = reason;
+      lastSkipReason = "none";
+      injections++;
+      return {
+        message: { customType: CUSTOM_TYPE, content: block, display: false }
+      };
+    });
+  }
+  pi.registerTool({
+    name: "memnest_autocontext_status",
+    label: "Memnest Autocontext Status",
+    description: "Inspect pi-memnest autocontext: profile, live retrieval, risk-trigger state, and injection counters.",
+    parameters: typebox_exports.Object({
+      query: typebox_exports.Optional(typebox_exports.String({ description: "Optional: run a live retrieval and preview the block." }))
+    }),
+    execute: async (_id, params) => {
+      const lines = [];
+      lines.push(`memnest URL          : ${MEMNEST_URL}`);
+      lines.push(`disabled             : ${disabled}`);
+      lines.push(`mode                 : ${MODE}`);
+      lines.push(`n_results / top      : ${N_RESULTS} / ${TOP_INJECT}`);
+      lines.push(`max injections       : ${MAX_INJECTIONS}`);
+      lines.push(`topic overlap gate   : ${TOPIC_OVERLAP}`);
+      lines.push(`min_score            : ${MIN_SCORE}`);
+      lines.push(`min_len / timeout    : ${MIN_LEN} / ${TIMEOUT_MS}ms`);
+      lines.push(`excluded projects    : ${[...EXCLUDE_PROJECTS].join(", ") || "(none)"}`);
+      lines.push(`injections so far    : ${injections}`);
+      lines.push(`last injection       : ${lastInjectedAt ? new Date(lastInjectedAt).toISOString() : "(never)"} (${lastInjectedCount} items, ${lastInjectReason})`);
+      lines.push(`last skip reason     : ${lastSkipReason}`);
+      if (params?.query) {
+        const query = String(params.query);
+        const labels = riskLabels(query);
+        const results = await searchMemnest(labels.length ? riskSearchQuery(query, labels) : query);
+        const block = formatBlock(results, labels.length ? `manual-risk-preview:${labels.join(",")}` : "manual-status-preview", { strong: labels.length > 0 });
+        lines.push("");
+        lines.push(`--- live retrieval for: ${query} ---`);
+        lines.push(block ?? "(no results above min_score)");
+      }
+      return { content: [{ type: "text", text: lines.join("\n") }] };
+    }
+  });
+}
+
 // src/index.ts
-var MEMNEST_URL = process.env.MEMNEST_URL ?? "http://127.0.0.1:3111";
-var AUTOLOG_ENABLED = (process.env.MEMNEST_AUTOLOG ?? "1") !== "0";
-var AUTOLOG_MIN_USER_LEN = Number(process.env.MEMNEST_AUTOLOG_MIN_USER_LEN ?? "3");
-var AUTOLOG_MAX_CHARS = Number(process.env.MEMNEST_AUTOLOG_MAX_CHARS ?? "8000");
-var AUTOLOG_TOOLS = (process.env.MEMNEST_AUTOLOG_TOOLS ?? "0") !== "0";
+var ENV = globalThis.process?.env ?? {};
+var cwd = () => globalThis.process?.cwd?.() ?? "";
+var MEMNEST_URL2 = ENV.MEMNEST_URL ?? "http://127.0.0.1:3111";
+var AUTOLOG_ENABLED = (ENV.MEMNEST_AUTOLOG ?? "1") !== "0";
+var AUTOLOG_MIN_USER_LEN = Number(ENV.MEMNEST_AUTOLOG_MIN_USER_LEN ?? "3");
+var AUTOLOG_MAX_CHARS = Number(ENV.MEMNEST_AUTOLOG_MAX_CHARS ?? "8000");
+var AUTOLOG_TOOLS = (ENV.MEMNEST_AUTOLOG_TOOLS ?? "0") !== "0";
 async function call(path, body, method = "POST") {
   try {
     const init = { method, headers: { "Content-Type": "application/json" } };
     if (body !== void 0 && method !== "GET") init.body = JSON.stringify(body);
-    const res = await fetch(`${MEMNEST_URL}${path}`, init);
+    const res = await fetch(`${MEMNEST_URL2}${path}`, init);
     const text = await res.text();
     if (!res.ok) return { text: `memnest error ${res.status}: ${text}`, isError: true };
     return { text, isError: false };
   } catch (e) {
     return {
-      text: `memnest unreachable at ${MEMNEST_URL}: ${e?.message ?? e}. Check: systemctl --user status memnest`,
+      text: `memnest unreachable at ${MEMNEST_URL2}: ${e?.message ?? e}. Check: systemctl --user status memnest`,
       isError: true
     };
   }
@@ -4248,15 +4485,15 @@ function textResult(text, isError = false) {
     details: void 0
   };
 }
-function inferProject(cwd) {
-  if (!cwd) return "default";
-  const parts = cwd.split(/[\\/]/).filter(Boolean);
+function inferProject(cwd2) {
+  if (!cwd2) return "default";
+  const parts = cwd2.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] || "default";
 }
 var inFlight = /* @__PURE__ */ new Set();
 function fireAndForget(path, body) {
   try {
-    const p = fetch(`${MEMNEST_URL}${path}`, {
+    const p = fetch(`${MEMNEST_URL2}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
@@ -4273,6 +4510,15 @@ async function drainInFlight(timeoutMs = 3e3) {
     Promise.allSettled([...inFlight]),
     new Promise((resolve) => setTimeout(resolve, timeoutMs))
   ]);
+}
+function toolCallText(c) {
+  try {
+    const args = c.arguments ?? c.input ?? {};
+    const argStr = typeof args === "string" ? args : JSON.stringify(args).slice(0, 400);
+    return `[toolCall ${c.name ?? "?"}(${argStr})]`;
+  } catch {
+    return `[toolCall ${c.name ?? "?"}]`;
+  }
 }
 function messageToText(message) {
   if (!message) return "";
@@ -4292,13 +4538,7 @@ function messageToText(message) {
         parts.push(`[image ${c.mimeType ?? ""}]`);
         break;
       case "toolCall":
-        try {
-          const args = c.arguments ?? c.input ?? {};
-          const argStr = typeof args === "string" ? args : JSON.stringify(args).slice(0, 400);
-          parts.push(`[toolCall ${c.name ?? "?"}(${argStr})]`);
-        } catch {
-          parts.push(`[toolCall ${c.name ?? "?"}]`);
-        }
+        parts.push(toolCallText(c));
         break;
       default:
         break;
@@ -4313,10 +4553,10 @@ function truncate(s, max) {
 }
 function installAutoLog(pi) {
   if (!AUTOLOG_ENABLED) return;
-  let cwd = process.cwd();
+  let currentCwd = cwd();
   let sessionId = `pi-${Date.now().toString(36)}`;
   pi.on("session_start", () => {
-    cwd = process.cwd();
+    currentCwd = cwd();
     sessionId = `pi-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   });
   pi.on("input", (event) => {
@@ -4336,7 +4576,7 @@ function installAutoLog(pi) {
           role: "user",
           input_source: e.source ?? "unknown",
           truncated,
-          cwd
+          cwd: currentCwd
         }
       });
     } catch {
@@ -4361,7 +4601,7 @@ function installAutoLog(pi) {
           model: msg.model,
           stop_reason: msg.stopReason,
           truncated,
-          cwd
+          cwd: currentCwd
         }
       });
     } catch {
@@ -4402,7 +4642,7 @@ function installAutoLog(pi) {
           tool: toolName,
           is_error: !!e.isError,
           truncated,
-          cwd
+          cwd: currentCwd
         }
       });
     } catch {
@@ -4428,7 +4668,7 @@ function installAutoLog(pi) {
           importance: "knowledge",
           session_id: sessionId,
           source: "pi.session.compact",
-          cwd
+          cwd: currentCwd
         }
       });
     } catch {
@@ -4448,6 +4688,7 @@ function resolveProject(args, ctx) {
 var EmptyParams = typebox_exports.Object({});
 function register(pi) {
   installAutoLog(pi);
+  installAutocontext(pi);
   pi.registerTool({
     name: "memory_remember",
     label: "Memory: remember",

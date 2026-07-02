@@ -7,7 +7,7 @@
 <p align="center">
   <strong>One persistent memory layer for every AI tool you use — local, encrypted, free.</strong>
   <br/>
-  <em>17 pi tools • context packs • AES-GCM secret vault • BM25 + vector hybrid search • no cloud.</em>
+  <em>18 pi tools • risk-triggered autocontext • AES-GCM secret vault • BM25 + vector hybrid search • no cloud.</em>
 </p>
 
 <p align="center">
@@ -37,7 +37,7 @@ memory_update   id=manual_... text="Project X uses port 8320"
 secret_set      key=github_pat value=ghp_...   # AES-256-GCM encrypted on disk
 ```
 
-## Tools registered on the pi side (17)
+## Tools registered on the pi side (18)
 
 All backed by the memnest HTTP API at `http://127.0.0.1:3111`:
 
@@ -54,11 +54,29 @@ All backed by the memnest HTTP API at `http://127.0.0.1:3111`:
 | `secret_set` / `secret_get` / `secret_list` / `secret_delete` | AES-GCM encrypted credentials |
 | `collections_list`  | enumerate project buckets |
 | `memory_health`     | server liveness probe |
+| `memnest_autocontext_status` | inspect automatic memory retrieval and test a live query |
 
 The core memnest server's stdio MCP mode (`memnest --mcp`) exposes the same
 memory correction/context tools plus graph, lifecycle, note, server, fact, and
 secret tools. Register `memnest --mcp` in Claude Desktop / Cursor / Cline /
 Continue / Zed alongside pi — see [INSTALL-CLIENTS.md](./INSTALL-CLIENTS.md).
+
+## Autocontext — tiny memory cards when they matter
+
+`pi-memnest` also installs **Autocontext**. This is not a large startup
+memory dump. The default `balanced` mode only runs on high-risk prompts where
+missing durable memory usually causes a bad answer: previous attempts,
+credentials, account status, impossibility claims, and money or project
+strategy.
+
+- Default profile: `MEMNEST_AUTOCONTEXT_MODE=balanced`, risk-triggered only.
+- `aggressive` also enables the older first-turn/topic-shift lane.
+- `off` or `MEMNEST_AUTOCONTEXT_DISABLE=1` disables it.
+- Tunables: `MEMNEST_AUTOCONTEXT_N`, `MEMNEST_AUTOCONTEXT_TOP`,
+  `MEMNEST_AUTOCONTEXT_MAX_INJECTIONS`, `MEMNEST_AUTOCONTEXT_MIN_SCORE`,
+  `MEMNEST_AUTOCONTEXT_EXCLUDE`.
+- Status: call `memnest_autocontext_status` to inspect counters or preview a
+  retrieval.
 
 ## AutoLog — passive memory capture
 
@@ -71,7 +89,7 @@ accrues without you calling `memory_remember` by hand.
 - Routes each write to a project derived from the session `cwd`.
 - Fire-and-forget: never blocks or throws into the agent loop; pending writes
   are drained on session end (so `pi -p "…"` print mode still records).
-- Disable it via environment variable if you prefer tool-only logging.
+- Disable it via `MEMNEST_AUTOLOG=0` if you prefer tool-only logging.
 
 ## Why this exists vs other memory layers
 
