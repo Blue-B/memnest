@@ -12,17 +12,14 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/pi-memnest"><img src="https://img.shields.io/npm/v/pi-memnest.svg?style=flat&color=blue" alt="npm version" /></a>
-  <a href="https://www.npmjs.com/package/pi-memnest"><img src="https://img.shields.io/npm/dm/pi-memnest.svg?style=flat&color=blue" alt="downloads" /></a>
   <a href="https://github.com/Blue-B/memnest/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/pi-memnest.svg?style=flat&color=green" alt="license" /></a>
-  <a href="https://github.com/Blue-B/memnest/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Blue-B/memnest/ci.yml?branch=main&style=flat&label=CI" alt="CI" /></a>
   <a href="https://github.com/sponsors/Blue-B"><img src="https://img.shields.io/badge/sponsor-❤-ea4aaa.svg?style=flat" alt="sponsor" /></a>
 </p>
 
 ---
 
-**pi-memnest** bridges [pi](https://github.com/badlogic/pi-mono) (and any
-other MCP client) to a locally running
-[memnest](https://github.com/Blue-B/memnest) memory server. Memories
+**pi-memnest** bridges [pi](https://github.com/badlogic/pi-mono) to a locally
+running [memnest](https://github.com/Blue-B/memnest) memory server. Memories
 you write from Claude Desktop, Cursor, Cline, pi, or curl all land in the
 **same SQLite database** at `~/.memnest/memory.db` — and stay searchable
 across every session of every tool, forever, for $0.
@@ -37,9 +34,19 @@ memory_update   id=manual_... text="Project X uses port 8320"
 secret_set      key=github_pat value=ghp_...   # AES-256-GCM encrypted on disk
 ```
 
-## Tools registered on the pi side (18)
+## Install
 
-All backed by the memnest HTTP API at `http://127.0.0.1:3111`:
+Memnest must be running (default endpoint `http://127.0.0.1:3111`, override
+with `MEMNEST_URL`). Then:
+
+```bash
+pi install npm:pi-memnest        # from npm
+pi install /path/to/pi-memnest   # or from a local checkout (auto-builds)
+```
+
+## Tools (18)
+
+All backed by the memnest HTTP API:
 
 | Tool | Purpose |
 | ---- | ------- |
@@ -56,98 +63,26 @@ All backed by the memnest HTTP API at `http://127.0.0.1:3111`:
 | `memory_health`     | server liveness probe |
 | `memnest_autocontext_status` | inspect automatic memory retrieval and test a live query |
 
-The core memnest server's stdio MCP mode (`memnest --mcp`) exposes the same
-memory correction/context tools plus graph, lifecycle, note, server, fact, and
-secret tools. Register `memnest --mcp` in Claude Desktop / Cursor / Cline /
-Continue / Zed alongside pi — see the [root README](../README.md#connect-your-client).
+Other MCP clients (Claude Desktop, Cursor, Cline, …) don't need this
+extension — they register `memnest --mcp` directly, see the
+[root README](../README.md#connect-your-client).
 
 ## Autocontext — tiny memory cards when they matter
 
-`pi-memnest` also installs **Autocontext**. This is not a large startup
-memory dump. The default `balanced` mode only runs on high-risk prompts where
-missing durable memory usually causes a bad answer: previous attempts,
-credentials, account status, impossibility claims, and money or project
-strategy.
+Not a large startup memory dump: the default `balanced` mode only retrieves
+memory on high-risk prompts (previous attempts, credentials, impossibility
+claims, money or project strategy).
 
-- Default profile: `MEMNEST_AUTOCONTEXT_MODE=balanced`, risk-triggered only.
-- `aggressive` also enables the older first-turn/topic-shift lane.
-- `off` or `MEMNEST_AUTOCONTEXT_DISABLE=1` disables it.
-- Tunables: `MEMNEST_AUTOCONTEXT_N`, `MEMNEST_AUTOCONTEXT_TOP`,
-  `MEMNEST_AUTOCONTEXT_MAX_INJECTIONS`, `MEMNEST_AUTOCONTEXT_MIN_SCORE`,
-  `MEMNEST_AUTOCONTEXT_EXCLUDE`.
-- Status: call `memnest_autocontext_status` to inspect counters or preview a
-  retrieval.
+- `MEMNEST_AUTOCONTEXT_MODE`: `balanced` (default) · `aggressive` (adds first-turn/topic-shift lane) · `off`.
+- Tunables: `MEMNEST_AUTOCONTEXT_N`, `_TOP`, `_MAX_INJECTIONS`, `_MIN_SCORE`, `_EXCLUDE`.
+- Inspect counters or preview a retrieval with `memnest_autocontext_status`.
 
 ## AutoLog — passive memory capture
 
-Beyond the explicit tools, `pi-memnest` installs **AutoLog**: event hooks
-that automatically send your conversation to memnest as you work, so memory
-accrues without you calling `memory_remember` by hand.
-
-- Captures user inputs and the assistant's final messages (skips `thinking`
-  content, very short noise, and memnest's own tool calls).
-- Routes each write to a project derived from the session `cwd`.
-- Fire-and-forget: never blocks or throws into the agent loop; pending writes
-  are drained on session end (so `pi -p "…"` print mode still records).
-- Disable it via `MEMNEST_AUTOLOG=0` if you prefer tool-only logging.
-
-## Why this exists vs other memory layers
-
-| | pi-memnest + memnest | mem0 | agentmemory (rohitg00) | Letta | Zep |
-|---|:--:|:--:|:--:|:--:|:--:|
-| Local-first, no cloud account required           | ✅ | ⚠️ (hosted preferred) | ✅ | ✅ | ⚠️ (cloud) |
-| Single Rust binary, no Docker required           | ✅ | ❌ | ❌ (Rust engine + Python ext)    | ❌ | ❌ |
-| BM25 + vector hybrid search                      | ✅ | ✅ | ✅ | ✅ | ✅ |
-| AES-GCM encrypted secret store                   | ✅ | ❌ | ❌ | ❌ | ❌ |
-| MCP stdio out of the box (no adapter)            | ✅ | partial | partial | partial | partial |
-| Cross-client shared memory (Claude + Cursor + pi over one DB) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Memory is auditable as plain files (git diff/revert/PR) via [memnest-journal](https://github.com/Blue-B/memnest) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Knowledge graph + lifecycle decay                | ✅ | ✅ | ✅ | ✅ | ✅ |
-| SSH server credential vault built in             | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Per-call cost                                    | $0 | $$ (token + cloud) | $0 | $0 | $$ |
-
-## Prerequisites
-
-Memnest must be running. Default endpoint: `http://127.0.0.1:3111`.
-Override with `MEMNEST_URL` env var.
-
-## Install
-
-```bash
-# from npm
-pi install npm:pi-memnest
-
-# or from a local checkout (auto-builds via `prepare` hook)
-pi install /path/to/pi-memnest
-```
-
-Then enable in pi `settings.json` (or it will be auto-discovered if installed via `pi install`):
-
-```json
-{
-  "packages": ["npm:pi-memnest"]
-}
-```
-
-## How it works
-
-The extension entry point loaded by pi is the **pre-built bundle** at
-`./dist/index.mjs`, not `src/index.ts`. The bundle is produced by `esbuild` and
-includes all dependencies that pi does not provide (notably `typebox`), with
-only `@earendil-works/pi-coding-agent` left external (provided by the host).
-
-This shape avoids two failure modes observed when shipping `src/index.ts` as
-the entry point:
-
-1. `jiti` (pi's TS loader) occasionally fails to preserve method-shorthand
-   bodies when re-transpiling under the Bun-compiled pi binary, surfacing as
-   `TypeError: definition.execute is not a function` at tool-call time.
-2. Peer-resolution of `typebox` is unreliable across `pnpm` / `npm` /
-   `bun` installs and across direct vs. transitive installs of the host.
-
-Shipping a pre-built ESM bundle removes both. The bundle is platform-agnostic
-ESM targeting Node 20+; it works under Node, Bun, and the Bun-compiled `pi`
-binary on Linux, macOS, and Windows (including WSL).
+Event hooks automatically send user inputs and the assistant's final messages
+to memnest as you work (skips thinking content, short noise, and memnest's own
+tool calls). Fire-and-forget: never blocks the agent loop; pending writes are
+drained on session end. Disable with `MEMNEST_AUTOLOG=0`.
 
 ## Development
 
@@ -156,31 +91,19 @@ npm install     # runs `prepare` -> `npm run build`
 npm run build   # esbuild src/index.ts -> dist/index.mjs
 ```
 
-The published tarball includes both `src/` and `dist/` so consumers can either
-re-bundle or use the shipped bundle directly.
+pi loads the pre-built ESM bundle `dist/index.mjs` (not `src/index.ts`): the
+bundle inlines everything except the host-provided
+`@earendil-works/pi-coding-agent`, which avoids jiti/typebox resolution
+failures under the Bun-compiled pi binary.
 
-## Files
+## Links
 
-- `src/index.ts` — source (TypeScript, ESM)
-- `dist/index.mjs` — built bundle (entry point, declared in `pi.extensions`)
-- `package.json` `pi.extensions` — `./dist/index.mjs`
-
-## Related projects
-
-- [**memnest**](https://github.com/Blue-B/memnest) — the Rust memory server itself (HTTP + stdio MCP, 17 tools).
-- [**memnest-journal**](https://github.com/Blue-B/memnest) — mirror your memory DB to a **git-backed markdown repo** so you can `git diff`, `git revert`, and PR-review what the AI learned.
-- [**pi-mono**](https://github.com/badlogic/pi-mono) — the pi coding agent that hosts this extension.
-
-## Documentation
-
-- [Root README](https://github.com/Blue-B/memnest#readme) — client registration, deployment, security, troubleshooting.
+- [Root README](https://github.com/Blue-B/memnest#readme) — engine install, client registration, deployment, security, troubleshooting.
 - [CHANGELOG.md](./CHANGELOG.md) — release notes.
-
-## Contributing & support
+- [memnest-journal](https://github.com/Blue-B/memnest) — mirror the memory DB to a git-backed markdown repo (diff, revert, PR-review).
 
 Issues and PRs welcome at [github.com/Blue-B/memnest](https://github.com/Blue-B/memnest/issues).
-
-If this saves you cloud-memory bills, consider [sponsoring](https://github.com/sponsors/Blue-B) to fund maintenance.
+If this saves you cloud-memory bills, consider [sponsoring](https://github.com/sponsors/Blue-B).
 
 ## License
 
