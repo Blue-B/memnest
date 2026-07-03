@@ -2,7 +2,7 @@
 
 All notable changes to `pi-memnest`.
 
-## [Unreleased]
+## [0.5.0] — 2026-07-03
 
 ### Added
 
@@ -24,6 +24,11 @@ All notable changes to `pi-memnest`.
     `agent_end` / `session_shutdown` (important for `pi -p` print mode).
   - Does not log memnest's own tool calls (avoids feedback chatter).
   - Can be disabled via environment variable for tool-only mode.
+- `memnest_autocontext_status` — inspect Autocontext counters and preview a retrieval.
+
+### Changed
+
+- Total exposed tools: 12 → 18.
 
 ## [0.4.0] — 2026-05-17
 
