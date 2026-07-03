@@ -22,13 +22,10 @@
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
-    "SECURITY.md",
-    "INSTALL-CLIENTS.md",
     "dist",
     "src",
     "test",
     "contrib",
-    "CONTRIBUTING.md",
     "docs"
   ],
   "license": "MIT",

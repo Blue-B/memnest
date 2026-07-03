@@ -10,8 +10,6 @@ One Rust engine, an MCP bridge, and a git-backed audit layer. No cloud, no per-c
 ![Rust](https://img.shields.io/badge/core-Rust-orange.svg)
 ![Protocol](https://img.shields.io/badge/interface-MCP%20%2B%20HTTP-blue.svg)
 
-[English](./README.md) · [한국어](./README.ko.md)
-
 <br/>
 
 <img src="docs/dashboard.png" alt="memnest dashboard" width="820" />
@@ -42,60 +40,40 @@ It is client-agnostic by design: the engine exposes a **stdio MCP** server and a
 - **Two interfaces, one store** — an HTTP API and a stdio MCP server read the same database.
 - **Hardened defaults** — binds to `127.0.0.1` only, refuses non-local binds without a token, and sets CSP, `nosniff`, and `no-store` headers.
 
-## Supported clients
-
-Because the engine speaks stdio MCP, it works with any MCP-compatible client. They
-all share the one `~/.memnest/memory.db`, so a memory written in one client is
-searchable in every other.
-
-| Client | How to connect |
-| ------ | -------------- |
-| Claude Desktop, Cursor, Cline, Continue, Zed, opencode | Register the `memnest --mcp` command — see [`pi-extension/INSTALL-CLIENTS.md`](./pi-extension/INSTALL-CLIENTS.md). |
-| Claude Code, Codex CLI, Kilo Code, Windsurf, … | Any other MCP-capable client uses the same `memnest --mcp` registration. |
-| pi | One-command install: `pi install npm:pi-memnest` (adds memory tools, AutoLog, and risk-triggered Autocontext). |
-| Scripts / anything | Call the HTTP API directly at `http://127.0.0.1:3111`. |
-
-The MCP registration is identical everywhere:
-
-```json
-{ "command": "memnest", "args": ["--mcp"] }
-```
-
 ## Repository layout
 
-This is a monorepo for the three layers of the system.
+This is a monorepo for the layers of the system.
 
 | Directory | Package | Language | Role |
 | --------- | ------- | -------- | ---- |
 | [`core/`](./core) | `memnest` | Rust | The engine: HTTP API + stdio MCP server, hybrid search, secret vault, dashboard. Required. |
-| [`pi-extension/`](./pi-extension) | `pi-memnest` | TypeScript | A convenience bridge for [pi](https://github.com/badlogic/pi-mono) (tools + AutoLog). Other clients connect to the core directly over MCP, so this is optional. |
+| [`pi-extension/`](./pi-extension) | `pi-memnest` | TypeScript | A convenience bridge for [pi](https://github.com/badlogic/pi-mono) (tools + AutoLog + Autocontext). Other clients connect to the core directly over MCP, so this is optional. |
 | [`journal/`](./journal) | `memnest-journal` | TypeScript | Audit layer that mirrors the database to a git-backed markdown repo, so you can diff, revert, and review what the agent learned. Optional. |
+| [`learn/`](./learn) | `memnest-learn` | TypeScript | Learning + working-memory layer: failure/correction learning and KV-cache-stable injection, borrowing the host agent's own model (no extra API key). Optional. |
 
 ## Quick start
 
 ```bash
-# 1. Build and run the engine
-cd core
+# 1. Build the engine (or grab a release binary)
+git clone https://github.com/Blue-B/memnest
+cd memnest/core
 cargo build --release
-./target/release/memnest          # HTTP on 127.0.0.1:3111 + dashboard
+cp target/release/memnest ~/.local/bin/
 
-# 2. Connect a client (any MCP client uses the same command)
-#    Register:  command "memnest", args ["--mcp"]
+# 2. Run it
+memnest                     # HTTP + dashboard on http://127.0.0.1:3111
+
+# 3. Connect a client — the MCP registration is identical everywhere:
+#    { "command": "memnest", "args": ["--mcp"] }
 #    For pi:
 pi install npm:pi-memnest
-memory_remember text="Project X uses port 8317"
-memory_search   query="port 8317"
-memory_context  query="Project X deployment"
-memory_update   id="manual_..." text="Project X now uses port 8320"
 
-# 3. (optional) Mirror memory to git
+# 4. (optional) Mirror memory to git
 npm install -g memnest-journal
 pjournal init ~/memory-journal && pjournal sync --push
 ```
 
-The dashboard is served at `http://127.0.0.1:3111/`.
-
-## Running the engine
+Engine flags:
 
 ```bash
 memnest                      # HTTP server + dashboard (127.0.0.1:3111)
@@ -106,6 +84,81 @@ memnest --warmup-embedding   # preload the embedding model
 
 Common flags: `--port`, `--host`, `--data-dir`, `--backup-dir`, `--restore-dir`,
 `--import-jsonl`. Run `memnest --help` for the full list.
+
+## Connect your client
+
+Every MCP client registers the same command — `memnest --mcp` — and they all
+share the one `~/.memnest/memory.db`, so a memory written in one client is
+searchable in every other. You do **not** need a running service for `--mcp`
+mode; each client spawns its own short-lived stdio server.
+
+```json
+{
+  "mcpServers": {
+    "memnest": { "command": "memnest", "args": ["--mcp"] }
+  }
+}
+```
+
+| Client | Config location |
+| ------ | --------------- |
+| Claude Desktop | macOS `~/Library/Application Support/Claude/claude_desktop_config.json` · Windows `%APPDATA%\Claude\claude_desktop_config.json` (WSL binary: `"command": "wsl.exe", "args": ["-e", "memnest", "--mcp"]`) |
+| Cursor | `~/.cursor/mcp.json` (global) or `<project>/.cursor/mcp.json` |
+| Cline | `.../globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` |
+| Continue.dev | `~/.continue/config.json` → `experimental.modelContextProtocolServers` |
+| Zed | `~/.config/zed/settings.json` → `context_servers` |
+| Claude Code, Codex CLI, Windsurf, opencode, … | Any MCP-capable client: register command `memnest`, args `["--mcp"]`. |
+| pi | `pi install npm:pi-memnest` — HTTP bridge with memory tools, AutoLog, and risk-triggered Autocontext. |
+| Scripts / anything | Call the HTTP API directly at `http://127.0.0.1:3111`. |
+
+Optional `args` additions: `--data-dir <path>` to override `~/.memnest`;
+`--warmup-embedding` for a slower start but faster first query.
+
+If a client shows 0 tools, `memnest` is probably not in its PATH — use an
+absolute path like `/home/you/.local/bin/memnest`. If two clients fight over
+the same store's write lock, run the shared service below and keep `--mcp`
+only in the primary client.
+
+## Run as a service
+
+For pi + curl + the dashboard to work alongside MCP clients, run the engine as
+a long-lived local service. Installers live in [`core/scripts/`](./core/scripts).
+
+**Linux (systemd user service, data in `~/.memnest`):**
+
+```bash
+cd core && cargo build --release
+scripts/preflight-linux.sh --user --bin target/release/memnest
+scripts/install-linux.sh   --user --bin target/release/memnest
+# server:  scripts/install-linux.sh --system  (data in /var/lib/memnest)
+# verify:  curl -fsS http://127.0.0.1:3111/health
+# remove:  scripts/uninstall-linux.sh --user
+```
+
+**WSL (service inside the distro + Windows logon task that wakes it):**
+
+```powershell
+.\scripts\install-wsl.ps1 -Distro Ubuntu-24.04 -RepoPath /home/<user>/memnest
+# verify: wsl -d Ubuntu-24.04 -- systemctl --user status memnest.service
+# remove: .\scripts\uninstall-wsl.ps1 -Distro Ubuntu-24.04 -RepoPath /home/<user>/memnest
+```
+
+**Windows native (`memnest.exe` wrapped by WinSW, data in `%ProgramData%\Memnest\data`):**
+
+```powershell
+.\scripts\preflight-windows.ps1
+.\scripts\install-windows.ps1          # options: -Port 3211, -BinPath, -WinSWPath + -WinSWSha256
+```
+
+**Updating** is installer-managed: back up, then install the new release over
+the existing service — data stays in the configured data directory.
+
+```bash
+systemctl --user stop memnest.service
+memnest --data-dir ~/.memnest --backup-dir ~/memnest-backup      # backup
+scripts/install-linux.sh --user --bin <new-binary>               # upgrade
+# rollback: memnest --data-dir ~/.memnest --restore-dir ~/memnest-backup --force
+```
 
 ## Usage examples
 
@@ -138,11 +191,6 @@ curl -s http://127.0.0.1:3111/update \
 curl -s http://127.0.0.1:3111/context \
   -H 'content-type: application/json' \
   -d '{"query":"deploy port","project":"acme"}'
-
-# core note block
-curl -s http://127.0.0.1:3111/notes \
-  -H 'content-type: application/json' \
-  -d '{"key":"persona","value":"Local-first coding memory assistant"}'
 
 # store statistics
 curl -s http://127.0.0.1:3111/stats
@@ -179,15 +227,22 @@ git -C ~/memory-journal revert <bad-commit>
 | core | `cd core && cargo build --release && cargo test` |
 | pi-extension | `cd pi-extension && npm install && npm run build && npm run smoke` |
 | journal | `cd journal && npm install && npm run smoke` |
+| learn | `cd learn && npm install && npm run build && npm test` |
 
-Each subdirectory keeps its own `README`, `LICENSE`, and `CHANGELOG`. The two npm
-packages are published independently from their own folders.
+## Troubleshooting
+
+- **Dashboard does not open** — check the service: `systemctl --user status memnest.service`, then `curl -fsS http://127.0.0.1:3111/health`.
+- **Port 3111 in use** — start with `--port <other>` or free the port.
+- **WSL service dead after reboot** — `Start-ScheduledTask -TaskName "Memnest WSL"`, then check `systemctl --user status memnest.service` inside the distro.
+- **First search/save fails offline** — the embedding model downloads on first use; run `memnest --warmup-embedding` once while online.
+- **Remote bind refused** — non-localhost binds require `MEMNEST_TOKEN`; clients must then send `Authorization: Bearer <token>`.
 
 ## Security
 
-- The default bind is `127.0.0.1`. Non-local binds are refused unless `MEMNEST_TOKEN` is set, in which case a `Bearer` token is required.
-- Secrets are encrypted with AES-256-GCM; the master key never leaves the local disk and is never exported.
-- See [`core/docs/SECURITY.md`](./core/docs/SECURITY.md) for the threat model.
+- The default bind is `127.0.0.1`. Non-local binds are refused unless `MEMNEST_TOKEN` is set, in which case a `Bearer` token is required. Never expose the port to the public internet without a reviewed reverse proxy and TLS in front.
+- Secrets are encrypted with AES-256-GCM (Argon2-derived key); the master key never leaves the local disk. Incoming text is scanned and credential-shaped strings are redacted before storage.
+- Data directories: `~/.memnest` (Linux user service), `/var/lib/memnest` (system service), `%ProgramData%\Memnest\data` (Windows service). Stop the service before backing up or restoring.
+- Third-party license attributions for the engine: [`core/THIRD_PARTY_NOTICES.md`](./core/THIRD_PARTY_NOTICES.md).
 
 ## License
 

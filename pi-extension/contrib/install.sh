@@ -69,5 +69,5 @@ sleep 1
 curl -fsS http://127.0.0.1:3111/health || echo "  (server may need a few more seconds)"
 echo
 echo "Next steps:"
-echo "  - Register memnest --mcp in your AI client: see INSTALL-CLIENTS.md"
+echo "  - Register memnest --mcp in your AI client: see https://github.com/Blue-B/memnest#connect-your-client"
 echo "  - Mirror to a git repo: npm i -g memnest-journal && pjournal init ~/memory-journal"
