@@ -59,7 +59,7 @@ All backed by the memnest HTTP API at `http://127.0.0.1:3111`:
 The core memnest server's stdio MCP mode (`memnest --mcp`) exposes the same
 memory correction/context tools plus graph, lifecycle, note, server, fact, and
 secret tools. Register `memnest --mcp` in Claude Desktop / Cursor / Cline /
-Continue / Zed alongside pi — see [INSTALL-CLIENTS.md](./INSTALL-CLIENTS.md).
+Continue / Zed alongside pi — see the [root README](../README.md#connect-your-client).
 
 ## Autocontext — tiny memory cards when they matter
 
@@ -173,8 +173,7 @@ re-bundle or use the shipped bundle directly.
 
 ## Documentation
 
-- [INSTALL-CLIENTS.md](./INSTALL-CLIENTS.md) — register `memnest --mcp` in Claude Desktop, Cursor, Cline, Continue, Zed, opencode, pi.
-- [SECURITY.md](./SECURITY.md) — threat model, audit checklist, secret rotation.
+- [Root README](https://github.com/Blue-B/memnest#readme) — client registration, deployment, security, troubleshooting.
 - [CHANGELOG.md](./CHANGELOG.md) — release notes.
 
 ## Contributing & support
