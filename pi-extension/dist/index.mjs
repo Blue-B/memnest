@@ -4227,16 +4227,38 @@ var DISABLE_ENV = "MEMNEST_AUTOCONTEXT_DISABLE";
 var env = globalThis.process?.env ?? {};
 var MEMNEST_URL = env.MEMNEST_URL ?? "http://127.0.0.1:3111";
 var MODE = String(env.MEMNEST_AUTOCONTEXT_MODE ?? "balanced").toLowerCase();
-var N_RESULTS = Math.max(1, parseInt(env.MEMNEST_AUTOCONTEXT_N || "20", 10) || 20);
-var TOP_INJECT = Math.max(1, parseInt(env.MEMNEST_AUTOCONTEXT_TOP || "2", 10) || 2);
-var MAX_INJECTIONS = Math.max(1, parseInt(env.MEMNEST_AUTOCONTEXT_MAX_INJECTIONS || "6", 10) || 6);
-var TOPIC_OVERLAP = Math.max(0, Math.min(1, Number(env.MEMNEST_AUTOCONTEXT_TOPIC_OVERLAP ?? "0.35")));
+var N_RESULTS = Math.max(
+  1,
+  parseInt(env.MEMNEST_AUTOCONTEXT_N || "20", 10) || 20
+);
+var TOP_INJECT = Math.max(
+  1,
+  parseInt(env.MEMNEST_AUTOCONTEXT_TOP || "2", 10) || 2
+);
+var MAX_INJECTIONS = Math.max(
+  1,
+  parseInt(env.MEMNEST_AUTOCONTEXT_MAX_INJECTIONS || "6", 10) || 6
+);
+var TOPIC_OVERLAP = Math.max(
+  0,
+  Math.min(1, Number(env.MEMNEST_AUTOCONTEXT_TOPIC_OVERLAP ?? "0.35"))
+);
 var MIN_SCORE = Number(env.MEMNEST_AUTOCONTEXT_MIN_SCORE ?? "0.12");
-var MIN_LEN = Math.max(1, parseInt(env.MEMNEST_AUTOCONTEXT_MIN_LEN || "16", 10) || 16);
-var TIMEOUT_MS = Math.max(200, parseInt(env.MEMNEST_AUTOCONTEXT_TIMEOUT_MS || "1500", 10) || 1500);
-var DOC_CHARS = Math.max(80, parseInt(env.MEMNEST_AUTOCONTEXT_DOC_CHARS || "240", 10) || 240);
+var RISK_MIN_SCORE = Number(env.MEMNEST_AUTOCONTEXT_RISK_MIN_SCORE ?? "0.12");
+var MIN_LEN = Math.max(
+  1,
+  parseInt(env.MEMNEST_AUTOCONTEXT_MIN_LEN || "16", 10) || 16
+);
+var TIMEOUT_MS = Math.max(
+  200,
+  parseInt(env.MEMNEST_AUTOCONTEXT_TIMEOUT_MS || "1500", 10) || 1500
+);
+var DOC_CHARS = Math.max(
+  80,
+  parseInt(env.MEMNEST_AUTOCONTEXT_DOC_CHARS || "240", 10) || 240
+);
 var EXCLUDE_PROJECTS = new Set(
-  (env.MEMNEST_AUTOCONTEXT_EXCLUDE ?? "_superseded,default,root").split(",").map((s) => s.trim()).filter(Boolean)
+  (env.MEMNEST_AUTOCONTEXT_EXCLUDE ?? "_superseded,default,root,global").split(",").map((s) => s.trim()).filter(Boolean)
 );
 var TRIVIAL = /* @__PURE__ */ new Set([
   "ok",
@@ -4262,10 +4284,22 @@ var TRIVIAL = /* @__PURE__ */ new Set([
   "\uC88B\uC544"
 ]);
 var RISK_RULES = [
-  { label: "memory", re: /전에|이전|기억|까먹|잊어|잊었|했었|시도|말했잖|또\s*(말|까먹)|맥락|찾아봤/i },
-  { label: "credential", re: /계정|로그인|비밀키|시크릿|secret|api\s*key|토큰|token|인증|oauth|구독|플랜|plan/i },
-  { label: "absence", re: /없다|없어|없음|없는|없나요|안\s*되|안됨|불가능|못\s*하|지원\s*안|처음|모르겠/i },
-  { label: "money", re: /돈|수익|크몽|외주|토스|홍보|광고|매출|iap|과금|프로모션|promotion|monetization|유저\s*(획득|유입)|사용자\s*(확보|유입)/i }
+  {
+    label: "memory",
+    re: /전에|이전|기억|까먹|잊어|잊었|했었|시도|말했잖|또\s*(말|까먹)|맥락|찾아봤/i
+  },
+  {
+    label: "credential",
+    re: /계정|로그인|비밀키|시크릿|secret|api\s*key|토큰|token|인증|oauth|구독|플랜|plan/i
+  },
+  {
+    label: "absence",
+    re: /없다|없어|없음|없는|없나요|안\s*되|안됨|불가능|못\s*하|지원\s*안|처음|모르겠/i
+  },
+  {
+    label: "money",
+    re: /돈|수익|크몽|외주|토스|홍보|광고|매출|iap|과금|프로모션|promotion|monetization|유저\s*(획득|유입)|사용자\s*(확보|유입)/i
+  }
 ];
 function isSubstantive(prompt) {
   const t = (prompt || "").trim();
@@ -4279,7 +4313,21 @@ function normQuery(prompt) {
 }
 function topicTokens(prompt) {
   const raw = prompt.toLowerCase().match(/[a-z0-9가-힣_]{2,}/g) ?? [];
-  const stop = /* @__PURE__ */ new Set(["the", "and", "for", "with", "this", "that", "\uADF8\uAC70", "\uC774\uAC70", "\uC880", "\uD574\uC918", "\uD558\uBA74", "\uADF8\uB9AC\uACE0", "\uADFC\uB370"]);
+  const stop = /* @__PURE__ */ new Set([
+    "the",
+    "and",
+    "for",
+    "with",
+    "this",
+    "that",
+    "\uADF8\uAC70",
+    "\uC774\uAC70",
+    "\uC880",
+    "\uD574\uC918",
+    "\uD558\uBA74",
+    "\uADF8\uB9AC\uACE0",
+    "\uADFC\uB370"
+  ]);
   return new Set(raw.filter((t) => !stop.has(t)).slice(0, 80));
 }
 function overlap(a, b) {
@@ -4290,7 +4338,8 @@ function overlap(a, b) {
 }
 function riskLabels(prompt) {
   const labels = [];
-  for (const rule of RISK_RULES) if (rule.re.test(prompt)) labels.push(rule.label);
+  for (const rule of RISK_RULES)
+    if (rule.re.test(prompt)) labels.push(rule.label);
   return labels;
 }
 function shouldRunGeneralLane() {
@@ -4308,7 +4357,13 @@ async function searchMemnest(query) {
     const res = await fetch(`${MEMNEST_URL}/search`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query, n_results: N_RESULTS }),
+      // exclude_reserved: server-side drop of root/default/global/_superseded
+      // (memnest >= 0.5.1); EXCLUDE_PROJECTS below still covers custom lists.
+      body: JSON.stringify({
+        query,
+        n_results: N_RESULTS,
+        exclude_reserved: true
+      }),
       signal: ctrl.signal
     });
     if (!res.ok) return [];
@@ -4321,7 +4376,10 @@ async function searchMemnest(query) {
   }
 }
 function formatBlock(results, reason, options) {
-  const kept = results.filter((r) => typeof r.document === "string" && r.document.trim().length > 0).filter((r) => !(r.project && EXCLUDE_PROJECTS.has(r.project))).filter((r) => (typeof r.score === "number" ? r.score : 1) >= MIN_SCORE).slice(0, TOP_INJECT);
+  const threshold = options.strong ? RISK_MIN_SCORE : MIN_SCORE;
+  const kept = results.filter(
+    (r) => typeof r.document === "string" && r.document.trim().length > 0
+  ).filter((r) => !(r.project && EXCLUDE_PROJECTS.has(r.project))).filter((r) => (typeof r.score === "number" ? r.score : 1) >= threshold).slice(0, TOP_INJECT);
   if (kept.length === 0) return null;
   const lines = kept.map((r, i) => {
     const proj = r.project ? `[${r.project}]` : "";
@@ -4338,9 +4396,16 @@ function formatBlock(results, reason, options) {
 </system-reminder>`;
 }
 function riskSearchQuery(prompt, labels) {
-  const hints = ["prior decisions", "user preferences", "corrections", "previous attempts"];
-  if (labels.includes("credential")) hints.push("accounts", "credentials", "secret keys");
-  if (labels.includes("money")) hints.push("profit", "promotion", "failed launches", "monetization");
+  const hints = [
+    "prior decisions",
+    "user preferences",
+    "corrections",
+    "previous attempts"
+  ];
+  if (labels.includes("credential"))
+    hints.push("accounts", "credentials", "secret keys");
+  if (labels.includes("money"))
+    hints.push("profit", "promotion", "failed launches", "monetization");
   return `${prompt}
 ${hints.join(" ")}`;
 }
@@ -4428,7 +4493,11 @@ function installAutocontext(pi) {
     label: "Memnest Autocontext Status",
     description: "Inspect pi-memnest autocontext: profile, live retrieval, risk-trigger state, and injection counters.",
     parameters: typebox_exports.Object({
-      query: typebox_exports.Optional(typebox_exports.String({ description: "Optional: run a live retrieval and preview the block." }))
+      query: typebox_exports.Optional(
+        typebox_exports.String({
+          description: "Optional: run a live retrieval and preview the block."
+        })
+      )
     }),
     execute: async (_id, params) => {
       const lines = [];
@@ -4438,17 +4507,27 @@ function installAutocontext(pi) {
       lines.push(`n_results / top      : ${N_RESULTS} / ${TOP_INJECT}`);
       lines.push(`max injections       : ${MAX_INJECTIONS}`);
       lines.push(`topic overlap gate   : ${TOPIC_OVERLAP}`);
-      lines.push(`min_score            : ${MIN_SCORE}`);
+      lines.push(`min_score general/risk: ${MIN_SCORE} / ${RISK_MIN_SCORE}`);
       lines.push(`min_len / timeout    : ${MIN_LEN} / ${TIMEOUT_MS}ms`);
-      lines.push(`excluded projects    : ${[...EXCLUDE_PROJECTS].join(", ") || "(none)"}`);
+      lines.push(
+        `excluded projects    : ${[...EXCLUDE_PROJECTS].join(", ") || "(none)"}`
+      );
       lines.push(`injections so far    : ${injections}`);
-      lines.push(`last injection       : ${lastInjectedAt ? new Date(lastInjectedAt).toISOString() : "(never)"} (${lastInjectedCount} items, ${lastInjectReason})`);
+      lines.push(
+        `last injection       : ${lastInjectedAt ? new Date(lastInjectedAt).toISOString() : "(never)"} (${lastInjectedCount} items, ${lastInjectReason})`
+      );
       lines.push(`last skip reason     : ${lastSkipReason}`);
       if (params?.query) {
         const query = String(params.query);
         const labels = riskLabels(query);
-        const results = await searchMemnest(labels.length ? riskSearchQuery(query, labels) : query);
-        const block = formatBlock(results, labels.length ? `manual-risk-preview:${labels.join(",")}` : "manual-status-preview", { strong: labels.length > 0 });
+        const results = await searchMemnest(
+          labels.length ? riskSearchQuery(query, labels) : query
+        );
+        const block = formatBlock(
+          results,
+          labels.length ? `manual-risk-preview:${labels.join(",")}` : "manual-status-preview",
+          { strong: labels.length > 0 }
+        );
         lines.push("");
         lines.push(`--- live retrieval for: ${query} ---`);
         lines.push(block ?? "(no results above min_score)");
@@ -4468,11 +4547,16 @@ var AUTOLOG_MAX_CHARS = Number(ENV.MEMNEST_AUTOLOG_MAX_CHARS ?? "8000");
 var AUTOLOG_TOOLS = (ENV.MEMNEST_AUTOLOG_TOOLS ?? "0") !== "0";
 async function call(path, body, method = "POST") {
   try {
-    const init = { method, headers: { "Content-Type": "application/json" } };
-    if (body !== void 0 && method !== "GET") init.body = JSON.stringify(body);
+    const init = {
+      method,
+      headers: { "Content-Type": "application/json" }
+    };
+    if (body !== void 0 && method !== "GET")
+      init.body = JSON.stringify(body);
     const res = await fetch(`${MEMNEST_URL2}${path}`, init);
     const text = await res.text();
-    if (!res.ok) return { text: `memnest error ${res.status}: ${text}`, isError: true };
+    if (!res.ok)
+      return { text: `memnest error ${res.status}: ${text}`, isError: true };
     return { text, isError: false };
   } catch (e) {
     return {
@@ -4550,8 +4634,11 @@ function messageToText(message) {
 }
 function truncate(s, max) {
   if (s.length <= max) return { text: s, truncated: false };
-  return { text: s.slice(0, max) + `
-\u2026[truncated ${s.length - max} chars]`, truncated: true };
+  return {
+    text: s.slice(0, max) + `
+\u2026[truncated ${s.length - max} chars]`,
+    truncated: true
+  };
 }
 function installAutoLog(pi) {
   if (!AUTOLOG_ENABLED) return;
@@ -4631,7 +4718,10 @@ function installAutoLog(pi) {
         }
       }
       if (!resultText) return;
-      const { text: clipped, truncated } = truncate(resultText, AUTOLOG_MAX_CHARS);
+      const { text: clipped, truncated } = truncate(
+        resultText,
+        AUTOLOG_MAX_CHARS
+      );
       const label = e.isError ? "Tool error" : "Tool result";
       fireAndForget("/add", {
         project: "root",
@@ -4696,7 +4786,9 @@ function register(pi) {
     label: "Memory: remember",
     description: "Save a memory chunk to memnest. Call this proactively whenever you discover something reusable across future sessions: project ports/paths, configuration choices, fixes installed, user preferences, corrections, gotchas. Persists in ~/.memnest/ and is shared with any other client (opencode, Claude Code, etc.) pointing at the same memnest server. Auto-routing: importance=preference|decision -> 'playbook' collection (cross-project knowledge). Other importance values land in the current project bucket (cwd basename) or 'playbook' if none. Reserved buckets ('root','default','global') are rejected for manual writes.",
     parameters: typebox_exports.Object({
-      text: typebox_exports.String({ description: "Free-form memory content. Be specific and self-contained." }),
+      text: typebox_exports.String({
+        description: "Free-form memory content. Be specific and self-contained."
+      }),
       project: typebox_exports.Optional(
         typebox_exports.String({
           description: "Project bucket. Usually omit \u2014 auto-routed by importance + cwd. Pass explicitly only for project-scoped knowledge/log when cwd is wrong."
@@ -4721,7 +4813,10 @@ function register(pi) {
       const r = await call("/add", {
         project,
         text: params.text,
-        metadata: { chunk_type: "manual", importance: params.importance ?? "knowledge" }
+        metadata: {
+          chunk_type: "manual",
+          importance: params.importance ?? "knowledge"
+        }
       });
       return textResult(`[saved to '${project}'] ${r.text}`, r.isError);
     }
@@ -4731,9 +4826,19 @@ function register(pi) {
     label: "Memory: update",
     description: "Update an existing memnest memory by id and refresh search indexes. Use this to correct stale facts instead of adding contradictory memories. Supports text, project, importance, and chunk_type changes.",
     parameters: typebox_exports.Object({
-      id: typebox_exports.String({ description: "Memory chunk id returned by memory_search or memory_remember." }),
-      text: typebox_exports.Optional(typebox_exports.String({ description: "Replacement memory text. Omit to keep current text." })),
-      project: typebox_exports.Optional(typebox_exports.String({ description: "Move the memory to a different collection." })),
+      id: typebox_exports.String({
+        description: "Memory chunk id returned by memory_search or memory_remember."
+      }),
+      text: typebox_exports.Optional(
+        typebox_exports.String({
+          description: "Replacement memory text. Omit to keep current text."
+        })
+      ),
+      project: typebox_exports.Optional(
+        typebox_exports.String({
+          description: "Move the memory to a different collection."
+        })
+      ),
       importance: typebox_exports.Optional(
         typebox_exports.Union([
           typebox_exports.Literal("log"),
@@ -4759,40 +4864,95 @@ function register(pi) {
   pi.registerTool({
     name: "memory_search",
     label: "Memory: search",
-    description: "Hybrid BM25+vector search over memnest memory. Call at the START of any task touching a previously-discussed project, service, or tool \u2014 before guessing config paths or rerunning discovery commands.",
+    description: "Hybrid BM25+vector search over memnest memory. Call at the START of tasks touching previously-discussed work. Prefer the exact project, use project='playbook' for preferences, and keep n_results small unless broader recall is necessary.",
     parameters: typebox_exports.Object({
       query: typebox_exports.String({ description: "Natural language query." }),
-      project: typebox_exports.Optional(typebox_exports.String({ description: "Restrict to project bucket. Omit for all." })),
-      n_results: typebox_exports.Optional(typebox_exports.Integer({ default: 10, minimum: 1, maximum: 50 }))
+      project: typebox_exports.Optional(
+        typebox_exports.String({
+          description: "Restrict to the exact project bucket; omit for a compact cross-project search."
+        })
+      ),
+      n_results: typebox_exports.Optional(
+        typebox_exports.Integer({ default: 3, minimum: 1, maximum: 50 })
+      )
     }),
     async execute(_toolCallId, params) {
-      const body = { query: params.query, n_results: params.n_results ?? 10 };
+      const requested = params.n_results ?? 3;
+      const crossProject = !params.project || params.project === "all";
+      const body = {
+        query: params.query,
+        n_results: requested,
+        // Server-side candidate filter (memnest >= 0.5.1); the client-side
+        // filter below stays as a fallback for older running servers.
+        exclude_reserved: crossProject
+      };
       if (params.project) body.project = params.project;
       const r = await call("/search", body);
-      return textResult(r.text, r.isError);
+      if (r.isError) return textResult(r.text, true);
+      try {
+        const parsed = JSON.parse(r.text);
+        const excluded = /* @__PURE__ */ new Set(["root", "default", "global", "_superseded"]);
+        const results = (Array.isArray(parsed.results) ? parsed.results : []).filter((item) => !crossProject || !excluded.has(item.project)).slice(0, requested);
+        const lines = [`=== memory search results (${params.query}) ===`];
+        if (results.length === 0) lines.push("no results");
+        for (const [index, item] of results.entries()) {
+          lines.push(
+            `[${index + 1}] project=${item.project} score=${Number(item.score ?? 0).toFixed(4)} id=${item.id}`
+          );
+          lines.push(
+            `    ${String(item.document ?? "").replace(/\s+/g, " ").trim().slice(0, 350)}`
+          );
+        }
+        return textResult(lines.join("\n"));
+      } catch {
+        return textResult(r.text);
+      }
     }
   });
   pi.registerTool({
     name: "memory_context",
     label: "Memory: context",
-    description: "Build a compact context pack from memnest: core notes + matching facts + retrieved memories. Use when preparing an agent prompt or before answering a question that needs durable memory.",
+    description: "Build a token-bounded prompt from notes, facts, and retrieved memories. Returns only the ready-to-use prompt; prefer the exact project and raise limits only when necessary.",
     parameters: typebox_exports.Object({
-      query: typebox_exports.String({ description: "Question or topic to gather durable context for." }),
-      project: typebox_exports.Optional(typebox_exports.String({ description: "Restrict retrieved memories to a project bucket." })),
-      n_results: typebox_exports.Optional(typebox_exports.Integer({ default: 6, minimum: 1, maximum: 20 })),
-      max_notes: typebox_exports.Optional(typebox_exports.Integer({ default: 12, minimum: 0, maximum: 50 })),
-      max_facts: typebox_exports.Optional(typebox_exports.Integer({ default: 8, minimum: 0, maximum: 50 }))
+      query: typebox_exports.String({
+        description: "Question or topic to gather durable context for."
+      }),
+      project: typebox_exports.Optional(
+        typebox_exports.String({
+          description: "Restrict retrieved memories to a project bucket."
+        })
+      ),
+      n_results: typebox_exports.Optional(
+        typebox_exports.Integer({ default: 3, minimum: 1, maximum: 20 })
+      ),
+      max_notes: typebox_exports.Optional(
+        typebox_exports.Integer({ default: 4, minimum: 0, maximum: 50 })
+      ),
+      max_facts: typebox_exports.Optional(
+        typebox_exports.Integer({ default: 4, minimum: 0, maximum: 50 })
+      ),
+      max_chars: typebox_exports.Optional(
+        typebox_exports.Integer({ default: 2e3, minimum: 200, maximum: 12e3 })
+      )
     }),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const inferred = inferProject(ctx?.cwd);
       const body = {
         query: params.query,
-        project: params.project ?? "all",
-        n_results: params.n_results ?? 6,
-        max_notes: params.max_notes ?? 12,
-        max_facts: params.max_facts ?? 8
+        project: params.project ?? (inferred === "default" ? "all" : inferred),
+        n_results: params.n_results ?? 3,
+        max_notes: params.max_notes ?? 4,
+        max_facts: params.max_facts ?? 4,
+        max_chars: params.max_chars ?? 2e3
       };
       const r = await call("/context", body);
-      return textResult(r.text, r.isError);
+      if (r.isError) return textResult(r.text, true);
+      try {
+        const prompt = String(JSON.parse(r.text).prompt ?? "").trim();
+        return textResult(prompt || "(no matching context)");
+      } catch {
+        return textResult(r.text);
+      }
     }
   });
   pi.registerTool({
@@ -4844,7 +5004,11 @@ function register(pi) {
     description: "Get a single memnest key-value note by key.",
     parameters: typebox_exports.Object({ key: typebox_exports.String() }),
     async execute(_toolCallId, params) {
-      const r = await call(`/notes/${encodeURIComponent(params.key)}`, void 0, "GET");
+      const r = await call(
+        `/notes/${encodeURIComponent(params.key)}`,
+        void 0,
+        "GET"
+      );
       return textResult(r.text, r.isError);
     }
   });
@@ -4864,7 +5028,11 @@ function register(pi) {
     description: "Delete a memnest key-value note by key.",
     parameters: typebox_exports.Object({ key: typebox_exports.String() }),
     async execute(_toolCallId, params) {
-      const r = await call(`/notes/${encodeURIComponent(params.key)}`, void 0, "DELETE");
+      const r = await call(
+        `/notes/${encodeURIComponent(params.key)}`,
+        void 0,
+        "DELETE"
+      );
       return textResult(r.text, r.isError);
     }
   });
@@ -4876,7 +5044,9 @@ function register(pi) {
       key: typebox_exports.String(),
       value: typebox_exports.String(),
       kind: typebox_exports.Optional(
-        typebox_exports.String({ description: "free-form classifier e.g. github_pat, openai_key" })
+        typebox_exports.String({
+          description: "free-form classifier e.g. github_pat, openai_key"
+        })
       ),
       note: typebox_exports.Optional(typebox_exports.String())
     }),
@@ -4896,7 +5066,11 @@ function register(pi) {
     description: "Retrieve and decrypt a stored credential by key.",
     parameters: typebox_exports.Object({ key: typebox_exports.String() }),
     async execute(_toolCallId, params) {
-      const r = await call(`/secrets/${encodeURIComponent(params.key)}`, void 0, "GET");
+      const r = await call(
+        `/secrets/${encodeURIComponent(params.key)}`,
+        void 0,
+        "GET"
+      );
       return textResult(r.text, r.isError);
     }
   });
@@ -4918,7 +5092,11 @@ function register(pi) {
       key: typebox_exports.String({ description: "Exact key returned by secret_list." })
     }),
     async execute(_toolCallId, params) {
-      const r = await call(`/secrets/${encodeURIComponent(params.key)}`, void 0, "DELETE");
+      const r = await call(
+        `/secrets/${encodeURIComponent(params.key)}`,
+        void 0,
+        "DELETE"
+      );
       return textResult(r.text, r.isError);
     }
   });

@@ -70,8 +70,8 @@ fn tools() -> Vec<Value> {
     vec![
         json!({"name": "memory_add", "description": "Save a memory chunk", "inputSchema": {"type":"object","properties":{"text":{"type":"string"},"project":{"type":"string"}},"required":["text"]}}),
         json!({"name": "memory_update", "description": "Update an existing memory chunk by id and refresh indexes", "inputSchema": {"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"project":{"type":"string"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"]},"chunk_type":{"type":"string","enum":["auto_log","manual","filtered","consolidated"]}},"required":["id"]}}),
-        json!({"name": "memory_search", "description": "Search memory with hybrid BM25/vector retrieval", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":10},"recent_first":{"type":"boolean","default":false},"category":{"type":"string","description":"Filter to a specific memory category (e.g. failure, insight)"}},"required":["query"]}}),
-        json!({"name": "memory_context", "description": "Return a compact context pack: core notes + matching facts + retrieved memories", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":6},"max_notes":{"type":"integer","default":12},"max_facts":{"type":"integer","default":8},"max_chars":{"type":"integer","default":6000,"description":"hard character budget for the rendered prompt"},"category":{"type":"string","description":"Filter retrieved memories to a specific category"}},"required":["query"]}}),
+        json!({"name": "memory_search", "description": "Search memory with hybrid BM25/vector retrieval. Cross-project searches (project=all) skip the reserved autolog buckets root/default/global/_superseded; pass project=\"root\" explicitly to read transcript autologs.", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":3},"recent_first":{"type":"boolean","default":false},"category":{"type":"string","description":"Filter to a specific memory category (e.g. failure, insight)"}},"required":["query"]}}),
+        json!({"name": "memory_context", "description": "Return a compact context pack: core notes + matching facts + retrieved memories", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":3},"max_notes":{"type":"integer","default":4},"max_facts":{"type":"integer","default":4},"max_chars":{"type":"integer","default":2000,"description":"hard character budget for the rendered prompt"},"category":{"type":"string","description":"Filter retrieved memories to a specific category"}},"required":["query"]}}),
         json!({"name": "memory_neighbors", "description": "Cosine nearest neighbours from the vector index (for dedup/consolidation in learning layer)", "inputSchema": {"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"k":{"type":"integer","default":10},"max_distance":{"type":"number","default":0},"project":{"type":"string","default":"all"}},"required":[]}}),
         json!({"name": "memory_stats", "description": "Return memory system statistics", "inputSchema": {"type":"object","properties":{}}}),
         json!({"name": "memory_facts", "description": "Search structured facts (subject-predicate-object)", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"max_results":{"type":"integer","default":20}},"required":["query"]}}),
@@ -400,10 +400,10 @@ async fn memory_context(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Resu
     let query = args.get("query").and_then(Value::as_str).unwrap_or("");
     anyhow::ensure!(!query.trim().is_empty(), "query is required");
     let project = args.get("project").and_then(Value::as_str).unwrap_or("all");
-    let n = args.get("n_results").and_then(Value::as_u64).unwrap_or(6) as usize;
-    let max_notes = args.get("max_notes").and_then(Value::as_u64).unwrap_or(12) as usize;
-    let max_facts = args.get("max_facts").and_then(Value::as_u64).unwrap_or(8) as usize;
-    let max_chars = args.get("max_chars").and_then(Value::as_u64).unwrap_or(6000) as usize;
+    let n = args.get("n_results").and_then(Value::as_u64).unwrap_or(3) as usize;
+    let max_notes = args.get("max_notes").and_then(Value::as_u64).unwrap_or(4) as usize;
+    let max_facts = args.get("max_facts").and_then(Value::as_u64).unwrap_or(4) as usize;
+    let max_chars = args.get("max_chars").and_then(Value::as_u64).unwrap_or(2000) as usize;
     let category = args.get("category").and_then(Value::as_str).unwrap_or("");
     let cat = if category.trim().is_empty() { None } else { Some(category.to_string()) };
 
@@ -435,7 +435,7 @@ pub(crate) async fn memory_search(
     let query = args.get("query").and_then(Value::as_str).unwrap_or("");
     anyhow::ensure!(!query.trim().is_empty(), "query is required");
     let project = args.get("project").and_then(Value::as_str).unwrap_or("all");
-    let n = args.get("n_results").and_then(Value::as_u64).unwrap_or(10) as usize;
+    let n = args.get("n_results").and_then(Value::as_u64).unwrap_or(3) as usize;
     let recent_first = args
         .get("recent_first")
         .and_then(Value::as_bool)
@@ -443,12 +443,14 @@ pub(crate) async fn memory_search(
     let category = args.get("category").and_then(Value::as_str).unwrap_or("");
     let cat = if category.trim().is_empty() { None } else { Some(category.to_string()) };
 
-    // Delegate to the shared HTTP ranking core so the MCP tool and the HTTP
-    // /search endpoint return identically-ranked results (composite scoring +
-    // MMR diversity + config-driven weights). Now also supports category filter
-    // for the learning layer.
-    let items =
-        crate::server::api::run_hybrid_search(system, query, project, n, recent_first, false, cat).await;
+    // Cross-project recall drops the reserved autolog buckets at the candidate
+    // level, so useful manual memories are not crowded out by legacy noise.
+    // Explicit project="root" remains available when transcript history is wanted.
+    let exclude_reserved = project == "all";
+    let items = crate::server::api::run_hybrid_search(
+        system, query, project, n, recent_first, false, exclude_reserved, cat,
+    )
+    .await;
 
     let mut lines = vec![format!("=== memory search results ({}) ===", query)];
     if items.is_empty() {
@@ -464,7 +466,7 @@ pub(crate) async fn memory_search(
         ));
         lines.push(format!(
             "    {}",
-            item.document.chars().take(500).collect::<String>()
+            item.document.chars().take(350).collect::<String>()
         ));
     }
     Ok(lines.join("\n"))

@@ -2,6 +2,25 @@
 
 All notable changes to `pi-memnest`.
 
+## [0.5.1] — 2026-07-11
+
+### Changed — token-efficiency overhaul
+
+- `memory_search`: default `n_results` 10 → 3; compact text output (project/score/id + 350-char
+  doc) instead of raw JSON passthrough; cross-project searches send `exclude_reserved` so the
+  server drops the `root`/`default`/`global`/`_superseded` autolog buckets at the candidate
+  level (pass `project="root"` explicitly to read transcript autologs).
+- `memory_context`: defaults shrink to `n_results=3, max_notes=4, max_facts=4, max_chars=2000`;
+  returns only the rendered prompt (not the full JSON envelope); infers the project from cwd
+  when omitted, falling back to `all` (never the reserved `default` bucket).
+- Autocontext: separate `MEMNEST_AUTOCONTEXT_RISK_MIN_SCORE` (default 0.12) for risk-trigger
+  turns so a strict general `MIN_SCORE` no longer silences risk recall; default exclude list
+  now includes `global`.
+- Core server: `/search` default `n_results` 10 → 3, `/context` defaults 6/12/8/6000 →
+  3/4/4/2000, new `SearchRequest.exclude_reserved` flag, MCP tool schemas updated to match.
+- memnest-learn session snapshot slims: profile max 3 facets, playbook rules 4×260 chars,
+  project-scoped context pack (1800 chars) — measured ~1220 → ~550 tokens per session.
+
 ## [0.5.0] — 2026-07-03
 
 ### Added
