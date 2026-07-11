@@ -503,7 +503,10 @@ export default function register(pi: ExtensionAPI): void {
 				// results (so rank n+1 is visible, not silently lost), and headroom
 				// for the client-side reserved filter against pre-0.5.1 servers that
 				// ignore exclude_reserved.
-				n_results: Math.max(requested + STUBS, crossProject ? requested * 3 : 0),
+				n_results: Math.max(
+					requested + STUBS,
+					crossProject ? requested * 3 : 0,
+				),
 				exclude_reserved: crossProject,
 			};
 			if (params.project) body.project = params.project;
@@ -530,9 +533,10 @@ export default function register(pi: ExtensionAPI): void {
 					// server excerpt caps at 600. Flag clipped docs instead of letting
 					// a mid-sentence cut read as a complete memory.
 					const fullLen = Number(item.doc_len ?? 0);
-					const clipped = fullLen > String(item.document ?? "").length;
+					const shownLen = Array.from(String(item.document ?? "")).length;
+					const clipped = fullLen > shownLen;
 					lines.push(
-						`    ${doc}${clipped ? ` …[+${fullLen - String(item.document ?? "").length} chars — memory_get ${item.id}]` : ""}`,
+						`    ${doc}${clipped ? ` …[+${fullLen - shownLen} chars — memory_get ${item.id}]` : ""}`,
 					);
 				}
 				if (results.length > requested) {
@@ -560,10 +564,16 @@ export default function register(pi: ExtensionAPI): void {
 			"Fetch the FULL text of one memory by id. Search results are excerpts; " +
 			"call this when a result ends with a …[+N chars] truncation marker.",
 		parameters: Type.Object({
-			id: Type.String({ description: "Memory chunk id from memory_search results." }),
+			id: Type.String({
+				description: "Memory chunk id from memory_search results.",
+			}),
 		}),
 		async execute(_toolCallId: string, params: any) {
-			const r = await call(`/chunk/${encodeURIComponent(params.id)}`, undefined, "GET");
+			const r = await call(
+				`/chunk/${encodeURIComponent(params.id)}`,
+				undefined,
+				"GET",
+			);
 			if (r.isError) return textResult(r.text, true);
 			try {
 				const c = JSON.parse(r.text);

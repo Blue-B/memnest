@@ -4891,7 +4891,10 @@ function register(pi) {
         // results (so rank n+1 is visible, not silently lost), and headroom
         // for the client-side reserved filter against pre-0.5.1 servers that
         // ignore exclude_reserved.
-        n_results: Math.max(requested + STUBS, crossProject ? requested * 3 : 0),
+        n_results: Math.max(
+          requested + STUBS,
+          crossProject ? requested * 3 : 0
+        ),
         exclude_reserved: crossProject
       };
       if (params.project) body.project = params.project;
@@ -4910,9 +4913,10 @@ function register(pi) {
           );
           const doc = flat(item);
           const fullLen = Number(item.doc_len ?? 0);
-          const clipped = fullLen > String(item.document ?? "").length;
+          const shownLen = Array.from(String(item.document ?? "")).length;
+          const clipped = fullLen > shownLen;
           lines.push(
-            `    ${doc}${clipped ? ` \u2026[+${fullLen - String(item.document ?? "").length} chars \u2014 memory_get ${item.id}]` : ""}`
+            `    ${doc}${clipped ? ` \u2026[+${fullLen - shownLen} chars \u2014 memory_get ${item.id}]` : ""}`
           );
         }
         if (results.length > requested) {
@@ -4936,10 +4940,16 @@ function register(pi) {
     label: "Memory: get full text",
     description: "Fetch the FULL text of one memory by id. Search results are excerpts; call this when a result ends with a \u2026[+N chars] truncation marker.",
     parameters: typebox_exports.Object({
-      id: typebox_exports.String({ description: "Memory chunk id from memory_search results." })
+      id: typebox_exports.String({
+        description: "Memory chunk id from memory_search results."
+      })
     }),
     async execute(_toolCallId, params) {
-      const r = await call(`/chunk/${encodeURIComponent(params.id)}`, void 0, "GET");
+      const r = await call(
+        `/chunk/${encodeURIComponent(params.id)}`,
+        void 0,
+        "GET"
+      );
       if (r.isError) return textResult(r.text, true);
       try {
         const c = JSON.parse(r.text);
