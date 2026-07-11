@@ -68,6 +68,7 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
     Router::new()
         .route("/health", get(api::health))
         .route("/search", post(api::search))
+        .route("/chunk/{id}", get(api::get_chunk_full))
         .route("/neighbors", post(api::neighbors))
         .route("/context", post(api::context_pack))
         .route("/add", post(api::add))

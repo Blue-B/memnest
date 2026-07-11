@@ -55,6 +55,7 @@ const EXPECTED = [
 	"memory_remember",
 	"memory_update",
 	"memory_search",
+	"memory_get",
 	"memory_context",
 	"memory_stats",
 	"memory_sessions",
@@ -171,6 +172,27 @@ if (!reachable) {
 		!/"elapsed_ms"|"timestamp"/.test(t4),
 		t4.slice(0, 200),
 	);
+
+	// Full-text escape hatch: take an id from the search output and fetch it.
+	const idMatch = t4.match(/id=([\w-]+)/);
+	if (idMatch) {
+		const getTool = tools.get("memory_get");
+		const rg1 = await getTool.execute("id", { id: idMatch[1] }, undefined, noop, {
+			cwd: process.cwd(),
+		});
+		const tg = rg1.content?.[0]?.text ?? "";
+		if (/memnest error 404/.test(tg)) {
+			console.log("  SKIP  memory_get live call (server does not expose /chunk yet)");
+		} else {
+			assert(
+				"memory_get returns the full document",
+				tg.startsWith(`id=${idMatch[1]}`) && tg.includes("\n"),
+				tg.slice(0, 200),
+			);
+		}
+	} else {
+		console.log("  SKIP  memory_get (no id in search output)");
+	}
 
 	const ctx = tools.get("memory_context");
 	const r5 = await ctx.execute(

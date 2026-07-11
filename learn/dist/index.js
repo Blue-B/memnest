@@ -1016,7 +1016,6 @@ function src_default(pi) {
       }).then(async (r) => {
         if (!r)
           return;
-        snapshot.markDirty();
         const tag = r.distilled ? "\uD83E\uDDE0 교정 학습" : "\uD83D\uDCDD 교정 기록";
         const short = r.lesson.length > 70 ? r.lesson.slice(0, 67) + "..." : r.lesson;
         ctx.ui.setStatus("memnest-correction", `${tag}: ${short}`);
@@ -1032,17 +1031,12 @@ function src_default(pi) {
         text
       ].join(`
 `);
-      reinforce(client, signal, contextText).then((r) => {
-        if (r.matched)
-          snapshot.markDirty();
-      }).catch(warn);
+      reinforce(client, signal, contextText).catch(warn);
     }
     if (llm && turnCounter % CAPTURE_EVERY_TURNS === 0 && recentTurns.length > 0 && !bgInFlight) {
       bgInFlight = true;
       const slice = recentTurns.slice(-40);
       captureMemories(slice, llm, client, { project, max: 8 }).then(async (r) => {
-        if (r.written.length > 0)
-          snapshot.markDirty();
         await learnFromMemories(r.memories, llm);
       }).catch(warn).finally(() => {
         bgInFlight = false;

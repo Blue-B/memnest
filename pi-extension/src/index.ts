@@ -23,7 +23,10 @@ const cwd = () => (globalThis as any).process?.cwd?.() ?? "";
 const MEMNEST_URL = ENV.MEMNEST_URL ?? "http://127.0.0.1:3111";
 
 // AutoLog can be disabled via env var if user wants tool-only mode.
-const AUTOLOG_ENABLED = (ENV.MEMNEST_AUTOLOG ?? "1") !== "0";
+// Default OFF: autolog transcripts were measured as pure retrieval noise
+// (root bucket, negative scores) and env-based opt-out proved unreliable.
+// Opt back in per-session with MEMNEST_AUTOLOG=1.
+const AUTOLOG_ENABLED = ENV.MEMNEST_AUTOLOG === "1";
 // Skip extremely short user messages (likely noise: "y", "ok", "\n").
 const AUTOLOG_MIN_USER_LEN = Number(ENV.MEMNEST_AUTOLOG_MIN_USER_LEN ?? "3");
 // Tool result bodies can be huge — cap them before sending to memnest.
@@ -314,10 +317,15 @@ function installAutoLog(pi: ExtensionAPI): void {
 			if (!summary) return;
 			const { text: clipped } = truncate(summary, AUTOLOG_MAX_CHARS * 2);
 			fireAndForget("/add", {
-				project: "root",
+				// Project bucket, not "root": every retrieval path excludes the
+				// reserved buckets, so a summary stored there is write-only.
+				project: inferProject(currentCwd),
 				text: `Session summary: ${clipped}`,
 				metadata: {
-					chunk_type: "session_summary",
+					// "session_summary" is not a ChunkType variant — typed serde 422'd
+					// every one of these writes silently. "consolidated" is the variant
+					// that survives the 30-day autolog TTL.
+					chunk_type: "consolidated",
 					importance: "knowledge",
 					session_id: sessionId,
 					source: "pi.session.compact",
@@ -488,11 +496,14 @@ export default function register(pi: ExtensionAPI): void {
 		async execute(_toolCallId: string, params: any) {
 			const requested = params.n_results ?? 3;
 			const crossProject = !params.project || params.project === "all";
+			const STUBS = 5;
 			const body: any = {
 				query: params.query,
-				n_results: requested,
-				// Server-side candidate filter (memnest >= 0.5.1); the client-side
-				// filter below stays as a fallback for older running servers.
+				// Extra candidates serve two purposes: one-line stubs after the top
+				// results (so rank n+1 is visible, not silently lost), and headroom
+				// for the client-side reserved filter against pre-0.5.1 servers that
+				// ignore exclude_reserved.
+				n_results: Math.max(requested + STUBS, crossProject ? requested * 3 : 0),
 				exclude_reserved: crossProject,
 			};
 			if (params.project) body.project = params.project;
@@ -503,21 +514,62 @@ export default function register(pi: ExtensionAPI): void {
 				const excluded = new Set(["root", "default", "global", "_superseded"]);
 				const results = (Array.isArray(parsed.results) ? parsed.results : [])
 					.filter((item: any) => !crossProject || !excluded.has(item.project))
-					.slice(0, requested);
+					.slice(0, requested + STUBS);
+				const flat = (item: any) =>
+					String(item.document ?? "")
+						.replace(/\s+/g, " ")
+						.trim();
 				const lines = [`=== memory search results (${params.query}) ===`];
 				if (results.length === 0) lines.push("no results");
-				for (const [index, item] of results.entries()) {
+				for (const [index, item] of results.slice(0, requested).entries()) {
 					lines.push(
 						`[${index + 1}] project=${item.project} score=${Number(item.score ?? 0).toFixed(4)} id=${item.id}`,
 					);
+					const doc = flat(item);
+					// doc_len (memnest >= 0.5.2) counts the full stored document; the
+					// server excerpt caps at 600. Flag clipped docs instead of letting
+					// a mid-sentence cut read as a complete memory.
+					const fullLen = Number(item.doc_len ?? 0);
+					const clipped = fullLen > String(item.document ?? "").length;
 					lines.push(
-						`    ${String(item.document ?? "")
-							.replace(/\s+/g, " ")
-							.trim()
-							.slice(0, 350)}`,
+						`    ${doc}${clipped ? ` …[+${fullLen - String(item.document ?? "").length} chars — memory_get ${item.id}]` : ""}`,
 					);
 				}
+				if (results.length > requested) {
+					lines.push(
+						"more (one-line stubs; re-query or memory_get for detail):",
+					);
+					for (const [index, item] of results.slice(requested).entries()) {
+						lines.push(
+							`[${requested + index + 1}] project=${item.project} score=${Number(item.score ?? 0).toFixed(4)} id=${item.id} ${flat(item).slice(0, 80)}`,
+						);
+					}
+				}
 				return textResult(lines.join("\n"));
+			} catch {
+				return textResult(r.text);
+			}
+		},
+	});
+
+	// ─── memory_get (GET /chunk/{id}) ──────────────────────────────────────
+	pi.registerTool({
+		name: "memory_get",
+		label: "Memory: get full text",
+		description:
+			"Fetch the FULL text of one memory by id. Search results are excerpts; " +
+			"call this when a result ends with a …[+N chars] truncation marker.",
+		parameters: Type.Object({
+			id: Type.String({ description: "Memory chunk id from memory_search results." }),
+		}),
+		async execute(_toolCallId: string, params: any) {
+			const r = await call(`/chunk/${encodeURIComponent(params.id)}`, undefined, "GET");
+			if (r.isError) return textResult(r.text, true);
+			try {
+				const c = JSON.parse(r.text);
+				return textResult(
+					`id=${c.id} project=${c.project} type=${c.chunk_type} importance=${c.importance} created=${c.timestamp}\n${c.document ?? ""}`,
+				);
 			} catch {
 				return textResult(r.text);
 			}

@@ -50,6 +50,10 @@ pub struct SearchResultItem {
     pub id: String,
     pub project: String,
     pub document: String,
+    /// Full (redacted) document length in chars. When this exceeds
+    /// `document.chars().count()` the excerpt was clipped — fetch the rest
+    /// via GET /chunk/{id} (memory_get).
+    pub doc_len: usize,
     pub score: f32,
     pub timestamp: String,
     pub chunk_type: String,
@@ -317,6 +321,40 @@ pub async fn health() -> Json<HealthResponse> {
     })
 }
 
+/// Full (redacted) document for one chunk — the escape hatch for the 600-char
+/// search excerpt. Bounded at 8,000 chars like NeighborItem, and for the same
+/// reason: agents read skills/lessons from this field, so a tighter clip would
+/// silently drop content.
+pub async fn get_chunk_full(
+    State(system): State<Arc<RwLock<MemorySystem>>>,
+    Path(id): Path<String>,
+) -> Response {
+    let sys = system.read().await;
+    let db = sys.db.read().await;
+    match db.get_chunk(&id) {
+        Ok(Some(c)) => {
+            let redacted = redact_text(&c.document);
+            let doc_len = redacted.chars().count();
+            Json(serde_json::json!({
+                "id": c.id,
+                "project": c.project,
+                "document": redacted.chars().take(8000).collect::<String>(),
+                "doc_len": doc_len,
+                "timestamp": c.created_at.to_rfc3339(),
+                "chunk_type": format!("{:?}", c.metadata.chunk_type),
+                "importance": format!("{:?}", c.metadata.importance),
+                "category": format!("{:?}", c.metadata.category),
+            }))
+            .into_response()
+        }
+        _ => (
+            axum::http::StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("chunk not found: {id}")})),
+        )
+            .into_response(),
+    }
+}
+
 pub async fn search(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<SearchRequest>,
@@ -454,15 +492,18 @@ pub(crate) async fn run_hybrid_search(
                     sys.config.recency_penalty_cap,
                 );
             let embedding = c.embedding.clone().unwrap_or_default();
+            let redacted = redact_text(&c.document);
+            let doc_len = redacted.chars().count();
             items.push((
                 SearchResultItem {
                     id: c.id,
                     project: c.project,
                     document: if require_visible_match {
-                        query_excerpt(&redact_text(&c.document), query, 600)
+                        query_excerpt(&redacted, query, 600)
                     } else {
-                        redact_text(&c.document).chars().take(600).collect()
+                        redacted.chars().take(600).collect()
                     },
+                    doc_len,
                     score: final_score,
                     timestamp: c.created_at.to_rfc3339(),
                     chunk_type: format!("{:?}", c.metadata.chunk_type),
@@ -631,7 +672,7 @@ pub async fn add(
 
     let id = format!(
         "manual_{}",
-        uuid::Uuid::new_v4().to_string().replace("-", "")[..16].to_string()
+        &uuid::Uuid::new_v4().to_string().replace("-", "")[..16]
     );
 
     let bg_system = system.clone();
@@ -674,22 +715,26 @@ async fn persist_chunk_async(
         let index = sys.vector_index.read().await;
         let neighbors = index.search(&embedding, 5)?;
         drop(index);
-        if let Some((existing_id, distance)) = neighbors.first() {
-            if *distance < 0.05 {
-                let db = sys.db.read().await;
-                if let Ok(Some(existing)) = db.get_chunk(existing_id) {
-                    if existing.project == project {
-                        drop(db);
-                        let _ = sys.db.write().await.touch_chunk(existing_id);
-                        tracing::debug!(
-                            "api semantic dedup suppressed {} (≈{}, distance={:.4})",
-                            id,
-                            existing_id,
-                            distance
-                        );
-                        return Ok(());
-                    }
-                }
+        for (existing_id, distance) in &neighbors {
+            if *distance >= 0.05 {
+                break; // neighbours are distance-ascending
+            }
+            // Verify same project before suppressing — embeddings are
+            // global but chunks are project-scoped, so a cross-project
+            // twin at rank 1 must not shadow a same-project dup at rank 2+.
+            let db = sys.db.read().await;
+            if let Ok(Some(existing)) = db.get_chunk(existing_id)
+                && existing.project == project
+            {
+                drop(db);
+                let _ = sys.db.write().await.touch_chunk(existing_id);
+                tracing::debug!(
+                    "api semantic dedup suppressed {} (≈{}, distance={:.4})",
+                    id,
+                    existing_id,
+                    distance
+                );
+                return Ok(());
             }
         }
     }
@@ -856,8 +901,8 @@ pub async fn update(
         out.insert("message".to_string(), serde_json::json!(e.to_string()));
         return Json(out);
     }
-    if embedding_changed {
-        if let Some(embedding) = &chunk.embedding {
+    if embedding_changed
+        && let Some(embedding) = &chunk.embedding {
             let mut vector_index = sys.vector_index.write().await;
             if let Err(e) = vector_index
                 .add(&chunk.id, embedding)
@@ -868,7 +913,6 @@ pub async fn update(
                 return Json(out);
             }
         }
-    }
 
     out.insert("status".to_string(), serde_json::json!("ok"));
     out.insert("id".to_string(), serde_json::json!(chunk.id));
@@ -1057,6 +1101,30 @@ fn render_context_prompt(
     };
 
     'fill: {
+        // Memories are the query-dependent section; render them first so a
+        // pile of static notes/facts can never evict them under a tight budget.
+        if !memories.is_empty() {
+            if !add("retrieved_memories:".to_string(), &mut body, &mut used) {
+                truncated = true;
+                break 'fill;
+            }
+            for item in memories {
+                if !add(
+                    format!(
+                        "- [{}:{} score={:.3}] {}",
+                        item.project,
+                        item.id,
+                        item.score,
+                        item.document.replace('\n', " ")
+                    ),
+                    &mut body,
+                    &mut used,
+                ) {
+                    truncated = true;
+                    break 'fill;
+                }
+            }
+        }
         if !notes.is_empty() {
             if !add("core_notes:".to_string(), &mut body, &mut used) {
                 truncated = true;
@@ -1081,28 +1149,6 @@ fn render_context_prompt(
             for fact in facts {
                 if !add(
                     format!("- {} {} {}", fact.subject, fact.predicate, fact.object),
-                    &mut body,
-                    &mut used,
-                ) {
-                    truncated = true;
-                    break 'fill;
-                }
-            }
-        }
-        if !memories.is_empty() {
-            if !add("retrieved_memories:".to_string(), &mut body, &mut used) {
-                truncated = true;
-                break 'fill;
-            }
-            for item in memories {
-                if !add(
-                    format!(
-                        "- [{}:{} score={:.3}] {}",
-                        item.project,
-                        item.id,
-                        item.score,
-                        item.document.replace('\n', " ")
-                    ),
                     &mut body,
                     &mut used,
                 ) {
@@ -1160,26 +1206,23 @@ pub async fn prune(
     let mut matching_seen = 0usize;
     let mut ids = Vec::new();
     for chunk in chunks {
-        if let Some(chunk_type) = &req.chunk_type {
-            if &chunk.metadata.chunk_type != chunk_type {
+        if let Some(chunk_type) = &req.chunk_type
+            && &chunk.metadata.chunk_type != chunk_type {
                 continue;
             }
-        }
-        if let Some(importance) = &req.importance {
-            if &chunk.metadata.importance != importance {
+        if let Some(importance) = &req.importance
+            && &chunk.metadata.importance != importance {
                 continue;
             }
-        }
 
         matching_seen += 1;
         if keep_latest > 0 && matching_seen <= keep_latest {
             continue;
         }
-        if let Some(cutoff) = cutoff {
-            if chunk.created_at > cutoff {
+        if let Some(cutoff) = cutoff
+            && chunk.created_at > cutoff {
                 continue;
             }
-        }
         ids.push(chunk.id);
     }
 
@@ -1370,7 +1413,7 @@ fn project_from_cwd(cwd: &str) -> String {
         return "default".into();
     }
     let last = trimmed
-        .rsplit(|c| c == '/' || c == '\\')
+        .rsplit(['/', '\\'])
         .next()
         .unwrap_or("")
         .trim();
@@ -1403,7 +1446,7 @@ pub async fn add_summary(
     let summary = SessionSummary {
         id: format!(
             "summary_{}",
-            uuid::Uuid::new_v4().to_string().replace('-', "")[..16].to_string()
+            &uuid::Uuid::new_v4().to_string().replace('-', "")[..16]
         ),
         project,
         session_id,
@@ -1555,8 +1598,8 @@ pub async fn set_collection_meta(
 ) -> Json<HashMap<String, serde_json::Value>> {
     let mut out = HashMap::new();
     // Validate kind if provided.
-    if let Some(k) = req.kind.as_deref() {
-        if !matches!(k, "playbook" | "project" | "autolog" | "archive") {
+    if let Some(k) = req.kind.as_deref()
+        && !matches!(k, "playbook" | "project" | "autolog" | "archive") {
             out.insert("status".into(), serde_json::Value::String("error".into()));
             out.insert(
                 "message".into(),
@@ -1567,7 +1610,6 @@ pub async fn set_collection_meta(
             );
             return Json(out);
         }
-    }
     let sys = system.read().await;
     let db = sys.db.write().await;
     match db.upsert_collection_meta(&name, req.kind.as_deref(), req.description.as_deref()) {
@@ -1665,16 +1707,20 @@ pub async fn collection_detail(
 
     let items: Vec<SearchResultItem> = chunks
         .into_iter()
-        .map(|c| SearchResultItem {
+        .map(|c| {
+            let redacted = redact_text(&c.document);
+            let doc_len = redacted.chars().count();
+            SearchResultItem {
             id: c.id,
             project: c.project,
-            document: redact_text(&c.document).chars().take(600).collect(),
+            document: redacted.chars().take(600).collect(),
+            doc_len,
             score: 0.0,
             timestamp: c.created_at.to_rfc3339(),
             chunk_type: format!("{:?}", c.metadata.chunk_type),
             importance: format!("{:?}", c.metadata.importance),
             category: format!("{:?}", c.metadata.category),
-        })
+        }})
         .collect();
 
     Json(items).into_response()
@@ -4176,12 +4222,11 @@ fn highlight_query_html(text: &str, query: &str) -> String {
     ranges.sort_unstable_by_key(|(start, end)| (*start, *end));
     let mut merged = Vec::<(usize, usize)>::new();
     for (start, end) in ranges {
-        if let Some((_, last_end)) = merged.last_mut() {
-            if start <= *last_end {
+        if let Some((_, last_end)) = merged.last_mut()
+            && start <= *last_end {
                 *last_end = (*last_end).max(end);
                 continue;
             }
-        }
         merged.push((start, end));
     }
 

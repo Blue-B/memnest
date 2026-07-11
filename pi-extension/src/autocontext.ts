@@ -34,7 +34,7 @@ const TOP_INJECT = Math.max(
 );
 const MAX_INJECTIONS = Math.max(
 	1,
-	parseInt(env.MEMNEST_AUTOCONTEXT_MAX_INJECTIONS || "6", 10) || 6,
+	parseInt(env.MEMNEST_AUTOCONTEXT_MAX_INJECTIONS || "4", 10) || 4,
 );
 const TOPIC_OVERLAP = Math.max(
 	0,

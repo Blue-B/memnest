@@ -72,6 +72,7 @@ fn tools() -> Vec<Value> {
         json!({"name": "memory_update", "description": "Update an existing memory chunk by id and refresh indexes", "inputSchema": {"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"project":{"type":"string"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"]},"chunk_type":{"type":"string","enum":["auto_log","manual","filtered","consolidated"]}},"required":["id"]}}),
         json!({"name": "memory_search", "description": "Search memory with hybrid BM25/vector retrieval. Cross-project searches (project=all) skip the reserved autolog buckets root/default/global/_superseded; pass project=\"root\" explicitly to read transcript autologs.", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":3},"recent_first":{"type":"boolean","default":false},"category":{"type":"string","description":"Filter to a specific memory category (e.g. failure, insight)"}},"required":["query"]}}),
         json!({"name": "memory_context", "description": "Return a compact context pack: core notes + matching facts + retrieved memories", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":3},"max_notes":{"type":"integer","default":4},"max_facts":{"type":"integer","default":4},"max_chars":{"type":"integer","default":2000,"description":"hard character budget for the rendered prompt"},"category":{"type":"string","description":"Filter retrieved memories to a specific category"}},"required":["query"]}}),
+        json!({"name": "memory_get", "description": "Fetch the FULL text of one memory by id (search results are 600-char excerpts; use this when a result shows a truncation marker)", "inputSchema": {"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}),
         json!({"name": "memory_neighbors", "description": "Cosine nearest neighbours from the vector index (for dedup/consolidation in learning layer)", "inputSchema": {"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"k":{"type":"integer","default":10},"max_distance":{"type":"number","default":0},"project":{"type":"string","default":"all"}},"required":[]}}),
         json!({"name": "memory_stats", "description": "Return memory system statistics", "inputSchema": {"type":"object","properties":{}}}),
         json!({"name": "memory_facts", "description": "Search structured facts (subject-predicate-object)", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"max_results":{"type":"integer","default":20}},"required":["query"]}}),
@@ -101,6 +102,7 @@ async fn call_tool(system: Arc<RwLock<MemorySystem>>, params: &Value) -> Result<
         "memory_update" => memory_update(system, &args).await,
         "memory_search" => memory_search(system, &args).await,
         "memory_context" => memory_context(system, &args).await,
+        "memory_get" => memory_get(system, &args).await,
         "memory_neighbors" => memory_neighbors(system, &args).await,
         "memory_stats" => memory_stats(system).await,
         "memory_facts" => memory_facts(system, &args).await,
@@ -236,7 +238,7 @@ async fn memory_add(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<S
 
     let id = format!(
         "manual_{}",
-        uuid::Uuid::new_v4().to_string().replace('-', "")[..16].to_string()
+        &uuid::Uuid::new_v4().to_string().replace('-', "")[..16]
     );
 
     // Fire-and-forget: respond immediately, perform embed + write in background.
@@ -278,24 +280,26 @@ async fn persist_chunk(
         let index = sys.vector_index.read().await;
         let neighbors = index.search(&embedding, 5)?;
         drop(index);
-        if let Some((existing_id, distance)) = neighbors.first() {
-            if *distance < 0.05 {
-                // Verify same project before suppressing — embeddings are
-                // global but chunks are project-scoped.
-                let db = sys.db.read().await;
-                if let Ok(Some(existing)) = db.get_chunk(existing_id) {
-                    if existing.project == project {
-                        drop(db);
-                        let _ = sys.db.write().await.touch_chunk(existing_id);
-                        tracing::debug!(
-                            "semantic dedup suppressed {} (≈{}, distance={:.4})",
-                            id,
-                            existing_id,
-                            distance
-                        );
-                        return Ok(());
-                    }
-                }
+        for (existing_id, distance) in &neighbors {
+            if *distance >= 0.05 {
+                break; // neighbours are distance-ascending
+            }
+            // Verify same project before suppressing — embeddings are
+            // global but chunks are project-scoped, so a cross-project
+            // twin at rank 1 must not shadow a same-project dup at rank 2+.
+            let db = sys.db.read().await;
+            if let Ok(Some(existing)) = db.get_chunk(existing_id)
+                && existing.project == project
+            {
+                drop(db);
+                let _ = sys.db.write().await.touch_chunk(existing_id);
+                tracing::debug!(
+                    "mcp semantic dedup suppressed {} (≈{}, distance={:.4})",
+                    id,
+                    existing_id,
+                    distance
+                );
+                return Ok(());
             }
         }
     }
@@ -339,11 +343,10 @@ async fn memory_update(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Resul
         text_changed = text != chunk.document;
         chunk.document = text;
     }
-    if let Some(project) = args.get("project").and_then(Value::as_str) {
-        if !project.trim().is_empty() {
+    if let Some(project) = args.get("project").and_then(Value::as_str)
+        && !project.trim().is_empty() {
             chunk.project = project.trim().to_string();
         }
-    }
     if let Some(importance) = args.get("importance").and_then(Value::as_str) {
         chunk.metadata.importance = parse_importance(importance)?;
     }
@@ -366,13 +369,12 @@ async fn memory_update(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Resul
     sys.db.write().await.insert_chunk(&chunk)?;
     sys.add_text_doc(&chunk.id, &chunk.project, &chunk.document)
         .await?;
-    if embedding_changed {
-        if let Some(embedding) = &chunk.embedding {
+    if embedding_changed
+        && let Some(embedding) = &chunk.embedding {
             let mut vector_index = sys.vector_index.write().await;
             vector_index.add(&chunk.id, embedding)?;
             vector_index.save()?;
         }
-    }
     Ok(format!("memory updated: {} ({})", chunk.id, chunk.project))
 }
 
@@ -416,6 +418,28 @@ async fn memory_context(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Resu
     Ok(resp.prompt)
 }
 
+async fn memory_get(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
+    let id = args.get("id").and_then(Value::as_str).unwrap_or("");
+    anyhow::ensure!(!id.trim().is_empty(), "id is required");
+    let sys = system.read().await;
+    let db = sys.db.read().await;
+    match db.get_chunk(id)? {
+        Some(c) => {
+            let redacted = crate::redaction::redact_text(&c.document);
+            Ok(format!(
+                "id={} project={} type={:?} importance={:?} created={}\n{}",
+                c.id,
+                c.project,
+                c.metadata.chunk_type,
+                c.metadata.importance,
+                c.created_at.to_rfc3339(),
+                redacted.chars().take(8000).collect::<String>()
+            ))
+        }
+        None => anyhow::bail!("chunk not found: {id}"),
+    }
+}
+
 async fn memory_neighbors(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
     let req = crate::server::api::NeighborsRequest {
         id: args.get("id").and_then(Value::as_str).unwrap_or("").to_string(),
@@ -447,8 +471,19 @@ pub(crate) async fn memory_search(
     // level, so useful manual memories are not crowded out by legacy noise.
     // Explicit project="root" remains available when transcript history is wanted.
     let exclude_reserved = project == "all";
+    // Fetch a few extra candidates: the top n are rendered in full, the rest
+    // become one-line stubs so recall loss at small n is visible (the model
+    // can re-query or memory_get instead of never knowing rank n+1 existed).
+    const STUBS: usize = 5;
     let items = crate::server::api::run_hybrid_search(
-        system, query, project, n, recent_first, false, exclude_reserved, cat,
+        system,
+        query,
+        project,
+        n + STUBS,
+        recent_first,
+        false,
+        exclude_reserved,
+        cat,
     )
     .await;
 
@@ -456,7 +491,7 @@ pub(crate) async fn memory_search(
     if items.is_empty() {
         lines.push("no results".to_string());
     }
-    for (i, item) in items.iter().enumerate() {
+    for (i, item) in items.iter().take(n).enumerate() {
         lines.push(format!(
             "[{}] project={} score={:.4} id={}",
             i + 1,
@@ -464,10 +499,26 @@ pub(crate) async fn memory_search(
             item.score,
             item.id
         ));
-        lines.push(format!(
-            "    {}",
-            item.document.chars().take(350).collect::<String>()
-        ));
+        let shown = item.document.chars().count();
+        let marker = if item.doc_len > shown {
+            format!(" …[+{} chars — memory_get {}]", item.doc_len - shown, item.id)
+        } else {
+            String::new()
+        };
+        lines.push(format!("    {}{}", item.document, marker));
+    }
+    if items.len() > n {
+        lines.push("more (one-line stubs; re-query or memory_get for detail):".to_string());
+        for (i, item) in items.iter().enumerate().skip(n) {
+            lines.push(format!(
+                "[{}] project={} score={:.4} id={} {}",
+                i + 1,
+                item.project,
+                item.score,
+                item.id,
+                item.document.chars().take(80).collect::<String>()
+            ));
+        }
     }
     Ok(lines.join("\n"))
 }
@@ -783,7 +834,7 @@ fn project_from_cwd(cwd: &str) -> String {
         return "default".into();
     }
     let last = trimmed
-        .rsplit(|c| c == '/' || c == '\\')
+        .rsplit(['/', '\\'])
         .next()
         .unwrap_or("")
         .trim();

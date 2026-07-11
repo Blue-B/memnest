@@ -43,11 +43,10 @@ fn derive_cipher(key: &str, salt: &[u8]) -> Result<Aes256Gcm> {
 /// encryption out of the box while still permitting `MEMNEST_MASTER_KEY`
 /// for cases where they want to control the key themselves (e.g. KMS, vault).
 pub fn resolve_master_key(data_dir: &Path) -> Result<String> {
-    if let Ok(env_key) = std::env::var("MEMNEST_MASTER_KEY") {
-        if !env_key.is_empty() {
+    if let Ok(env_key) = std::env::var("MEMNEST_MASTER_KEY")
+        && !env_key.is_empty() {
             return Ok(env_key);
         }
-    }
     let key_path = data_dir.join("master.key");
     if key_path.exists() {
         let key = std::fs::read_to_string(&key_path)
@@ -129,13 +128,11 @@ pub fn decrypt(ciphertext: &str) -> Result<String> {
         return String::from_utf8(plaintext).context("invalid utf8 after decryption");
     }
     // Fall back to the legacy (pre-rename) salt so migrated vaults decrypt.
-    if let Ok(lguard) = LEGACY_CIPHER.read() {
-        if let Some(legacy) = lguard.as_ref() {
-            if let Ok(plaintext) = legacy.decrypt(nonce, encrypted) {
+    if let Ok(lguard) = LEGACY_CIPHER.read()
+        && let Some(legacy) = lguard.as_ref()
+            && let Ok(plaintext) = legacy.decrypt(nonce, encrypted) {
                 return String::from_utf8(plaintext).context("invalid utf8 after decryption");
             }
-        }
-    }
     Err(anyhow!("decryption failed (primary and legacy keys both rejected)"))
 }
 
