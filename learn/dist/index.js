@@ -878,7 +878,16 @@ function makeLlm(ctx) {
   if (!ctx.model)
     return null;
   return async ({ system, user }) => {
-    const res = await complete(ctx.model, { systemPrompt: system, messages: [{ role: "user", content: [{ type: "text", text: user }], timestamp: Date.now() }] }, { reasoningEffort: "low" });
+    const res = await complete(ctx.model, {
+      systemPrompt: system,
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: user }],
+          timestamp: Date.now()
+        }
+      ]
+    }, { reasoningEffort: "low" });
     return res.content.filter((c) => c.type === "text" && typeof c.text === "string").map((c) => c.text).join(`
 `).trim();
   };
@@ -910,7 +919,7 @@ async function learnFromMemories(memories, llm) {
 async function buildInjection(prompt) {
   const parts = [];
   try {
-    const profile = await userModelContext(client, prompt || "user preferences working style");
+    const profile = await userModelContext(client, prompt || "user preferences working style", { max: 3 });
     if (profile.trim())
       parts.push(profile);
   } catch (e) {
@@ -925,19 +934,25 @@ async function buildInjection(prompt) {
   try {
     const rules = await client.search(prompt || "user corrections and preferences", {
       project: "playbook",
-      nResults: 6
+      nResults: 4
     });
     if (rules.length > 0) {
       parts.push("learned_rules (you were corrected on these before — follow them):");
       for (const r of rules) {
-        parts.push(`- ${r.document.replace(/\s+/g, " ").trim().slice(0, 300)}`);
+        parts.push(`- ${r.document.replace(/\s+/g, " ").trim().slice(0, 260)}`);
       }
     }
   } catch (e) {
     warn(e);
   }
   try {
-    const { prompt: pack } = await client.context(prompt || "recent work", { maxChars: 3000 });
+    const { prompt: pack } = await client.context(prompt || "recent work", {
+      project: currentProject(),
+      nResults: 3,
+      maxNotes: 4,
+      maxFacts: 4,
+      maxChars: 1800
+    });
     if (pack.trim())
       parts.push(pack);
   } catch (e) {
@@ -995,7 +1010,10 @@ function src_default(pi) {
     const corrLlm = correctionLlm(ctx);
     const project = currentProject();
     if (looksLikeCorrection(text)) {
-      captureCorrection(text, client, project, { llm: corrLlm, context: recentTurns }).then(async (r) => {
+      captureCorrection(text, client, project, {
+        llm: corrLlm,
+        context: recentTurns
+      }).then(async (r) => {
         if (!r)
           return;
         snapshot.markDirty();
@@ -1009,7 +1027,10 @@ function src_default(pi) {
     }
     const signal = detectOutcomeSignal(text);
     if (signal) {
-      const contextText = [...recentTurns.slice(-3).map((t) => t.text), text].join(`
+      const contextText = [
+        ...recentTurns.slice(-3).map((t) => t.text),
+        text
+      ].join(`
 `);
       reinforce(client, signal, contextText).then((r) => {
         if (r.matched)
@@ -1063,7 +1084,9 @@ function src_default(pi) {
       Type.Literal("list"),
       Type.Literal("clear")
     ], { description: "Checklist action" }),
-    text: Type.Optional(Type.String({ description: "Item text (substring match for done/undo/remove)" }))
+    text: Type.Optional(Type.String({
+      description: "Item text (substring match for done/undo/remove)"
+    }))
   });
   pi.registerTool({
     name: "scratchpad",
@@ -1090,10 +1113,18 @@ ${rendered}`);
     }
   });
   const SkillParams = Type.Object({
-    action: Type.Union([Type.Literal("create"), Type.Literal("find"), Type.Literal("update")]),
+    action: Type.Union([
+      Type.Literal("create"),
+      Type.Literal("find"),
+      Type.Literal("update")
+    ]),
     title: Type.Optional(Type.String()),
-    body: Type.Optional(Type.String({ description: "Step-by-step procedure (create) or the step/caveat to append (update)" })),
-    query: Type.Optional(Type.String({ description: "Search text (find) or which skill to refine (update)" }))
+    body: Type.Optional(Type.String({
+      description: "Step-by-step procedure (create) or the step/caveat to append (update)"
+    })),
+    query: Type.Optional(Type.String({
+      description: "Search text (find) or which skill to refine (update)"
+    }))
   });
   pi.registerTool({
     name: "skill",
@@ -1118,13 +1149,19 @@ ${params.body}`,
         const needle = params.query ?? params.title ?? "";
         if (!needle || !params.body)
           return toolText("query (which skill) and body (what to add) are required");
-        const hits2 = await client.search(needle, { project: SKILL_PROJECT, nResults: 1 });
+        const hits2 = await client.search(needle, {
+          project: SKILL_PROJECT,
+          nResults: 1
+        });
         if (hits2.length === 0)
           return toolText("No matching skill to update — use create instead.");
         const target = hits2[0];
         const merged = `${target.document.trimEnd()}
 ${params.body.trim()}`;
-        await client.update(target.id, { text: merged, chunkType: "consolidated" });
+        await client.update(target.id, {
+          text: merged,
+          chunkType: "consolidated"
+        });
         return toolText(`Refined skill (id=${target.id}).`);
       }
       const hits = await client.search(params.query ?? params.title ?? "", {
@@ -1141,7 +1178,9 @@ ${params.body.trim()}`;
   const ConsolidateParams = Type.Object({
     query: Type.String({ description: "Topic to consolidate around" }),
     apply: Type.Optional(Type.Boolean({ description: "Apply changes (default false = dry run)" })),
-    maxDistance: Type.Optional(Type.Number({ description: "Cosine-distance cap for clustering (default 0.25)" }))
+    maxDistance: Type.Optional(Type.Number({
+      description: "Cosine-distance cap for clustering (default 0.25)"
+    }))
   });
   pi.registerTool({
     name: "memory_consolidate",

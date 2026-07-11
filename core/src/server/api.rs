@@ -25,13 +25,17 @@ pub struct SearchRequest {
     /// Optional category filter (e.g. "failure", "insight"). The learning layer uses this.
     #[serde(default)]
     category: String,
+    /// Drop reserved autolog buckets (root/default/global/_superseded) from
+    /// cross-project results. Pass project="root" explicitly to read them.
+    #[serde(default)]
+    exclude_reserved: bool,
 }
 
 fn default_project() -> String {
     "all".to_string()
 }
 fn default_n() -> usize {
-    10
+    3
 }
 
 #[derive(Serialize)]
@@ -137,16 +141,16 @@ pub struct ContextRequest {
 }
 
 fn default_context_results() -> usize {
-    6
+    3
 }
 fn default_context_notes() -> usize {
-    12
+    4
 }
 fn default_context_facts() -> usize {
-    8
+    4
 }
 fn default_context_chars() -> usize {
-    6000
+    2000
 }
 
 #[derive(Deserialize)]
@@ -326,6 +330,7 @@ pub async fn search(
         req.n_results,
         req.recent_first,
         false,
+        req.exclude_reserved,
         cat,
     )
     .await;
@@ -344,6 +349,7 @@ pub(crate) async fn run_hybrid_search(
     n: usize,
     recent_first: bool,
     require_visible_match: bool,
+    exclude_reserved: bool,
     category: Option<String>,
 ) -> Vec<SearchResultItem> {
     let n_results = n.clamp(1, 50);
@@ -401,6 +407,14 @@ pub(crate) async fn run_hybrid_search(
     for (id, score) in fused {
         if let Ok(Some(c)) = db.get_chunk(&id) {
             if project != "all" && c.project != project {
+                continue;
+            }
+            if exclude_reserved
+                && matches!(
+                    c.project.as_str(),
+                    "root" | "default" | "global" | "_superseded"
+                )
+            {
                 continue;
             }
             if let Some(cf) = &cat_filter {
@@ -968,7 +982,17 @@ pub(crate) async fn build_context(
         // pack came back empty. Use false so cross-language / paraphrased recall
         // actually surfaces; relevance stays bounded by distance_cutoff +
         // low_relevance_fallback + n_results + max_chars.
-        run_hybrid_search(system.clone(), &query, &project, n_results.clamp(1, 20), false, false, category).await
+        run_hybrid_search(
+            system.clone(),
+            &query,
+            &project,
+            n_results.clamp(1, 20),
+            false,
+            false,
+            project == "all",
+            category,
+        )
+        .await
     };
 
     let sys = system.read().await;
@@ -3971,7 +3995,8 @@ pub async fn viewer_search(
     let results_html = if !q.is_empty() {
         let mut items = String::new();
         let started = std::time::Instant::now();
-        let results = run_hybrid_search(system.clone(), &q, &project, 20, false, true, None).await;
+        let results =
+            run_hybrid_search(system.clone(), &q, &project, 20, false, true, false, None).await;
 
         for item in &results {
             let highlighted_document = highlight_query_html(&item.document, &q);
