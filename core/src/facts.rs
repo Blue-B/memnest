@@ -63,11 +63,10 @@ pub fn extract_explicit_facts(text: &str, source_session: Option<&str>) -> Vec<F
             .or_else(|| explicit.then(|| parse_pipe_fact(line)).flatten())
             .or_else(|| explicit.then(|| parse_dash_fact(line)).flatten());
 
-        if let Some((subject, predicate, object)) = parsed {
-            if let Some(fact) = make_fact(subject, predicate, object, source_session) {
+        if let Some((subject, predicate, object)) = parsed
+            && let Some(fact) = make_fact(subject, predicate, object, source_session) {
                 facts.push(fact);
             }
-        }
     }
     facts
 }

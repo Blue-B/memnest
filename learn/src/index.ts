@@ -314,7 +314,9 @@ export default function (pi: ExtensionAPI) {
 				})
 					.then(async (r) => {
 						if (!r) return;
-						snapshot.markDirty();
+						// No markDirty: a mid-session snapshot rebuild changes the system
+						// prompt bytes (takenAt header) and invalidates the entire prompt
+						// cache — far costlier than surfacing the lesson next session.
 						const tag = r.distilled ? "🧠 교정 학습" : "📝 교정 기록";
 						const short =
 							r.lesson.length > 70 ? r.lesson.slice(0, 67) + "..." : r.lesson;
@@ -351,11 +353,9 @@ export default function (pi: ExtensionAPI) {
 					...recentTurns.slice(-3).map((t) => t.text),
 					text,
 				].join("\n");
-				reinforce(client, signal, contextText)
-					.then((r) => {
-						if (r.matched) snapshot.markDirty();
-					})
-					.catch(warn);
+				// Reinforcement adjusts stored salience only; no snapshot rebuild
+				// mid-session (see cache note above).
+				reinforce(client, signal, contextText).catch(warn);
 			}
 
 			if (
@@ -368,7 +368,8 @@ export default function (pi: ExtensionAPI) {
 				const slice = recentTurns.slice(-40);
 				captureMemories(slice, llm, client, { project, max: 8 })
 					.then(async (r) => {
-						if (r.written.length > 0) snapshot.markDirty();
+						// No markDirty (cache note above); captures land in the next
+						// snapshot at session_start / compaction / day rollover.
 						await learnFromMemories(r.memories, llm);
 					})
 					.catch(warn)

@@ -93,7 +93,7 @@ pub fn extract_keywords(query: &str, min_len: usize) -> Vec<String> {
         .into_iter()
         .map(|t| t.trim())
         .filter(|t| t.len() >= min_len)
-        .map(|t| strip_korean_particles(t))
+        .map(strip_korean_particles)
         .filter(|t| t.len() >= min_len)
         .map(|t| t.to_string())
         .collect()

@@ -43,11 +43,10 @@ impl KnowledgeGraph {
         visited.insert(start_idx);
 
         while let Some((node, d)) = queue.pop() {
-            if d > 0 {
-                if let Some(name) = self.graph.node_weight(node) {
+            if d > 0
+                && let Some(name) = self.graph.node_weight(node) {
                     results.push((name.clone(), d));
                 }
-            }
             if d >= depth {
                 continue;
             }

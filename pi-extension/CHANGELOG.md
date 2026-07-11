@@ -2,6 +2,29 @@
 
 All notable changes to `pi-memnest`.
 
+## [0.5.2] — 2026-07-11
+
+### Fixed — retrieval quality guardrails for the 0.5.1 token cuts
+
+- `memory_search`: per-document clip 350 → 600 chars (76% of curated memories exceeded 350,
+  and the actionable tail was being silently cut). Clipped results now end with an explicit
+  `…[+N chars — memory_get <id>]` marker instead of reading as complete.
+- New `memory_get(id)` tool + `GET /chunk/{id}` endpoint — full redacted document (8,000-char
+  bound), the escape hatch for every excerpt. `/search` responses now carry `doc_len` so
+  clients can detect clipping.
+- `memory_search` appends up to 5 one-line stubs after the top results, making rank n+1
+  visible so the model can re-query instead of silently losing recall at n=3.
+- `memory_context`: memories (query-relevant) render before notes/facts, so static sections
+  can no longer evict them under the 2,000-char budget.
+- Semantic dedup scans all k neighbours for a same-project duplicate (was: first only).
+- learn: no more mid-session snapshot rebuilds (markDirty on capture/reinforce/correction) —
+  each rebuild changed the system prompt bytes and invalidated the whole prompt cache.
+- Autolog default OFF (opt-in via MEMNEST_AUTOLOG=1); session_compact summaries fixed
+  (chunk_type "session_summary" 422'd silently — now "consolidated") and routed to the
+  project bucket instead of the excluded root bucket; MAX_INJECTIONS default 6 → 4.
+- One-time migration: 94 curated chunks stranded in root (44 decisions) moved to
+  playbook/shell (log: ~/memnest-root-migration-20260711.json).
+
 ## [0.5.1] — 2026-07-11
 
 ### Changed — token-efficiency overhaul

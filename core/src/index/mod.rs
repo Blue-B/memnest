@@ -34,7 +34,7 @@ impl VectorIndex {
         let deleted_path = dir.join("deleted.json");
 
         if index_path.exists() {
-            let index = persist::load(&index_path, Cosine::default())
+            let index = persist::load(&index_path, Cosine)
                 .map_err(|e| anyhow::anyhow!("failed to load HNSW index: {}", e))?;
             let ids: Vec<String> = if ids_path.exists() {
                 let file = std::fs::File::open(&ids_path)?;
@@ -111,14 +111,13 @@ impl VectorIndex {
         let ef = (k * 8).max(64);
         let mut out = Vec::new();
         for item in self.index.search(query, k * 3, ef) {
-            if let Some(id) = self.ids.get(item.id) {
-                if !self.deleted.contains(&item.id) {
+            if let Some(id) = self.ids.get(item.id)
+                && !self.deleted.contains(&item.id) {
                     out.push((id.clone(), item.distance));
                     if out.len() >= k {
                         break;
                     }
                 }
-            }
         }
         Ok(out)
     }

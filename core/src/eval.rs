@@ -72,11 +72,10 @@ pub fn precision_at_1(gold: &[Vec<String>], retrieved: &[Vec<String>]) -> f64 {
             continue;
         }
         counted += 1;
-        if let Some(top1) = r.first() {
-            if g.iter().any(|id| id == top1) {
+        if let Some(top1) = r.first()
+            && g.iter().any(|id| id == top1) {
                 hits += 1.0;
             }
-        }
     }
     if counted == 0 {
         0.0

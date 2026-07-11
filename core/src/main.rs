@@ -323,7 +323,7 @@ async fn import_jsonl(
         let id = rec.id.unwrap_or_else(|| {
             format!(
                 "import_{}",
-                uuid::Uuid::new_v4().to_string().replace('-', "")[..16].to_string()
+                &uuid::Uuid::new_v4().to_string().replace('-', "")[..16]
             )
         });
         let created_at = parse_import_timestamp(rec.created_at.as_deref());
