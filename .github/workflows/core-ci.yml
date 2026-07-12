@@ -1,19 +1,33 @@
-name: CI
+name: Core CI
 
 on:
   pull_request:
+    paths:
+      - "core/**"
+      - ".github/workflows/core-ci.yml"
   push:
     branches:
       - main
       - master
+    paths:
+      - "core/**"
+      - ".github/workflows/core-ci.yml"
+
+permissions:
+  contents: read
 
 jobs:
   rust:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
       - name: Test
         run: cargo test --quiet
       - name: Release build
@@ -21,10 +35,15 @@ jobs:
 
   windows:
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: core
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
       - name: Test
         run: cargo test --quiet
       - name: Release build
