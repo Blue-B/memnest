@@ -4432,7 +4432,10 @@ mod retrieval_eval {
                     if name.to_string_lossy().starts_with("models--") {
                         let link = model_dir.join(&name);
                         if !link.exists() {
+                            #[cfg(unix)]
                             let _ = std::os::unix::fs::symlink(entry.path(), &link);
+                            #[cfg(windows)]
+                            let _ = std::os::windows::fs::symlink_dir(entry.path(), &link);
                         }
                     }
                 }
