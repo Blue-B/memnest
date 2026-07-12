@@ -1,9 +1,12 @@
-name: Release
+name: Core Release
 
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -18,25 +21,33 @@ jobs:
             os: windows-latest
 
     runs-on: ${{ matrix.os }}
+    env:
+      TARGET: ${{ matrix.target }}
+    defaults:
+      run:
+        working-directory: core
     steps:
-      - uses: actions/checkout@v4
-      
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
           targets: ${{ matrix.target }}
-      
+
       - name: Install cross-compilation tools
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-      
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+
       - name: Build release
-        run: cargo build --release --target ${{ matrix.target }}
-      
+        shell: bash
+        run: cargo build --release --target "$TARGET"
+
       - name: Get version
         id: get_version
         shell: bash
@@ -44,28 +55,33 @@ jobs:
 
       - name: Package (Unix)
         if: matrix.os != 'windows-latest'
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/memnest dist/
+          cp "target/$TARGET/release/memnest" dist/
           cp -r scripts dist/
           cp -r packaging dist/
-          cp -r docs dist/
           cp -r static dist/
-          tar -czf "memnest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.tar.gz" -C dist .
-          sha256sum "memnest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.tar.gz" > "memnest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.tar.gz.sha256"
+          cp LICENSE THIRD_PARTY_NOTICES.md dist/
+          cp ../README.md dist/
+          tar -czf "memnest-$VERSION-$TARGET.tar.gz" -C dist .
+          sha256sum "memnest-$VERSION-$TARGET.tar.gz" > "memnest-$VERSION-$TARGET.tar.gz.sha256"
 
       - name: Package (Windows)
         if: matrix.os == 'windows-latest'
         env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
           WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
           WINDOWS_CODESIGN_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PASSWORD }}
         run: |
           mkdir dist
-          cp target/${{ matrix.target }}/release/memnest.exe dist/
+          cp "target/$env:TARGET/release/memnest.exe" dist/
           cp -r scripts dist/
           cp -r packaging dist/
-          cp -r docs dist/
           cp -r static dist/
+          cp LICENSE THIRD_PARTY_NOTICES.md dist/
+          cp ../README.md dist/
           $winSWVersion = "v3.0.0"
           Invoke-WebRequest -Uri "https://github.com/winsw/winsw/releases/download/$winSWVersion/WinSW-x64.exe" -OutFile "dist/WinSW-x64.exe"
           $winswHash = Get-FileHash "dist/WinSW-x64.exe" -Algorithm SHA256
@@ -87,15 +103,16 @@ jobs:
             throw "WINDOWS_CODESIGN_PFX_BASE64 and WINDOWS_CODESIGN_PASSWORD are required for Windows release signing."
           }
 
-          Compress-Archive -Path dist/* -DestinationPath "memnest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip"
-          $hash = Get-FileHash "memnest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip" -Algorithm SHA256
-          "$($hash.Hash)  memnest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip" | Set-Content "memnest-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}.zip.sha256"
+          $archive = "memnest-$($env:VERSION)-$($env:TARGET).zip"
+          Compress-Archive -Path dist/* -DestinationPath $archive
+          $hash = Get-FileHash $archive -Algorithm SHA256
+          "$($hash.Hash)  $archive" | Set-Content "$archive.sha256"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: memnest-${{ matrix.target }}
-          path: memnest-*
+          path: core/memnest-*
 
   release:
     needs: build
@@ -103,17 +120,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artifacts
           pattern: memnest-*
           merge-multiple: true
-      
+
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: artifacts/*
           generate_release_notes: true
