@@ -194,15 +194,60 @@ pub async fn prune_expired(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
     Ok(trashed)
 }
 
+/// Whether cold archival is enabled. `MEMNEST_ARCHIVE=0` / `off` / `false`
+/// disables writes to `<data_dir>/archive/YYYY-MM.jsonl`.
+fn archive_enabled() -> bool {
+    match std::env::var("MEMNEST_ARCHIVE") {
+        Err(_) => true,
+        Ok(raw) => {
+            let v = raw.trim();
+            !(v == "0" || v.eq_ignore_ascii_case("off") || v.eq_ignore_ascii_case("false"))
+        }
+    }
+}
+
+/// Append a full chunk JSON line to `<data_dir>/archive/YYYY-MM.jsonl` before
+/// hard-delete. Failures warn only — availability over completeness.
+fn archive_chunk_before_delete(data_dir: &Path, chunk: &crate::models::MemoryChunk) {
+    if !archive_enabled() {
+        return;
+    }
+    use std::io::Write;
+    let month = chrono::Utc::now().format("%Y-%m");
+    let dir = data_dir.join("archive");
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        tracing::warn!("archive mkdir failed: {e:#}");
+        return;
+    }
+    let path = dir.join(format!("{month}.jsonl"));
+    let line = match serde_json::to_string(chunk) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("archive serialize failed for {}: {e:#}", chunk.id);
+            return;
+        }
+    };
+    if let Err(e) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .and_then(|mut f| writeln!(f, "{line}"))
+    {
+        tracing::warn!("archive write failed for {}: {e:#}", chunk.id);
+    }
+}
+
 /// Hard-delete `_trash` rows whose `trashed_at` is older than 30 days.
 /// This is the second phase of soft-delete: the trash GC provides a 30-day
 /// recovery window then permanently removes the row. Pinned status is ignored
-/// (trash is trash). Writes a "trash_gc" audit line.
+/// (trash is trash). Writes a "trash_gc" audit line. Before each hard delete
+/// the full chunk is archived to `archive/YYYY-MM.jsonl` (unless
+/// `MEMNEST_ARCHIVE=0`).
 pub async fn prune_trash(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
     let sys = system.read().await;
     let cutoff = chrono::Utc::now() - chrono::Duration::days(30);
 
-    let mut to_delete: Vec<String> = Vec::new();
+    let mut to_delete: Vec<crate::models::MemoryChunk> = Vec::new();
     {
         let db = sys.db.read().await;
         let trash = db.get_chunks_by_project("_trash", 1_000_000).unwrap_or_default();
@@ -215,17 +260,20 @@ pub async fn prune_trash(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
                 .map(|dt| dt.with_timezone(&chrono::Utc) < cutoff)
                 .unwrap_or(false);
             if expired {
-                to_delete.push(chunk.id);
+                to_delete.push(chunk);
             }
         }
     }
 
     let deleted = if !to_delete.is_empty() {
         let mut count = 0usize;
+        let mut deleted_ids: Vec<String> = Vec::new();
         {
             let db = sys.db.write().await;
-            for id in &to_delete {
-                if db.delete_chunk(id).unwrap_or(false) {
+            for chunk in &to_delete {
+                archive_chunk_before_delete(&sys.config.data_dir, chunk);
+                if db.delete_chunk(&chunk.id).unwrap_or(false) {
+                    deleted_ids.push(chunk.id.clone());
                     count += 1;
                 }
             }
@@ -233,9 +281,9 @@ pub async fn prune_trash(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
         // Defensive index cleanup: trash rows should not be indexed, but
         // remove defensively in case of any inconsistency.
         if count > 0 {
-            let _ = sys.remove_text_docs(&to_delete).await;
+            let _ = sys.remove_text_docs(&deleted_ids).await;
             let mut vector_index = sys.vector_index.write().await;
-            for id in &to_delete {
+            for id in &deleted_ids {
                 let _ = vector_index.remove(id);
             }
             let _ = vector_index.save();
@@ -366,4 +414,47 @@ mod tests {
         assert!(should_purge(&old), "40-day-old trash must be purged");
         assert!(!should_purge(&recent), "10-day-old trash must survive");
     }
+
+    #[test]
+    fn archive_writes_jsonl_when_enabled() {
+        let dir = tempfile::tempdir().unwrap();
+        // force enable (default)
+        unsafe { std::env::remove_var("MEMNEST_ARCHIVE"); }
+        let chunk = crate::models::MemoryChunk {
+            id: "arch1".into(),
+            project: "_trash".into(),
+            document: "archived body".into(),
+            embedding: None,
+            metadata: Default::default(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        archive_chunk_before_delete(dir.path(), &chunk);
+        let month = chrono::Utc::now().format("%Y-%m");
+        let path = dir.path().join("archive").join(format!("{month}.jsonl"));
+        let content = std::fs::read_to_string(&path).expect("archive file");
+        assert!(content.contains("arch1"));
+        assert!(content.contains("archived body"));
+    }
+
+    #[test]
+    fn archive_disabled_by_env() {
+        let dir = tempfile::tempdir().unwrap();
+        unsafe { std::env::set_var("MEMNEST_ARCHIVE", "0"); }
+        let chunk = crate::models::MemoryChunk {
+            id: "arch0".into(),
+            project: "_trash".into(),
+            document: "should not write".into(),
+            embedding: None,
+            metadata: Default::default(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        archive_chunk_before_delete(dir.path(), &chunk);
+        unsafe { std::env::remove_var("MEMNEST_ARCHIVE"); }
+        let month = chrono::Utc::now().format("%Y-%m");
+        let path = dir.path().join("archive").join(format!("{month}.jsonl"));
+        assert!(!path.exists(), "archive must not exist when MEMNEST_ARCHIVE=0");
+    }
+
 }
