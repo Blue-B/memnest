@@ -7,6 +7,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+#[derive(Debug, Default, Clone)]
+pub struct LifecycleStatus {
+    pub last_run: Option<chrono::DateTime<chrono::Utc>>,
+    pub last_deleted: usize,
+    pub last_error: Option<String>,
+    pub ttl_autolog_days: Option<i64>,
+}
+
 /// TTL policy by `(chunk_type, importance)`.
 ///
 /// Mirrors the old Factory hook policy: throwaway auto-logged chat decays
@@ -104,37 +112,45 @@ pub async fn prune_expired(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
         }
     }
 
-    if to_delete.is_empty() {
-        return Ok(0);
-    }
-
-    let mut deleted = 0usize;
-    {
-        let db = sys.db.write().await;
-        for id in &to_delete {
-            if db.delete_chunk(id).unwrap_or(false) {
-                deleted += 1;
+    let deleted = if !to_delete.is_empty() {
+        let mut count = 0usize;
+        {
+            let db = sys.db.write().await;
+            for id in &to_delete {
+                if db.delete_chunk(id).unwrap_or(false) {
+                    count += 1;
+                }
             }
         }
-    }
-
-    // Best-effort index cleanup — failures here are logged but don't roll back
-    // the DB delete, since stale index entries are harmless (search filters by
-    // chunk id presence in the DB).
-    if deleted > 0 {
-        let _ = sys.remove_text_docs(&to_delete).await;
-        let mut vector_index = sys.vector_index.write().await;
-        for id in &to_delete {
-            let _ = vector_index.remove(id);
+        // Best-effort index cleanup — failures here are logged but don't roll back
+        // the DB delete, since stale index entries are harmless (search filters by
+        // chunk id presence in the DB).
+        if count > 0 {
+            let _ = sys.remove_text_docs(&to_delete).await;
+            let mut vector_index = sys.vector_index.write().await;
+            for id in &to_delete {
+                let _ = vector_index.remove(id);
+            }
+            let _ = vector_index.save();
         }
-        let _ = vector_index.save();
+        tracing::info!(
+            "lifecycle prune: removed {}/{} expired chunks",
+            count,
+            to_delete.len()
+        );
+        count
+    } else {
+        0
+    };
+
+    {
+        let mut status = sys.lifecycle_status.write().await;
+        status.last_run = Some(chrono::Utc::now());
+        status.last_deleted = deleted;
+        status.last_error = None;
+        status.ttl_autolog_days = autolog_ttl_days();
     }
 
-    tracing::info!(
-        "lifecycle prune: removed {}/{} expired chunks",
-        deleted,
-        to_delete.len()
-    );
     Ok(deleted)
 }
 
@@ -151,10 +167,62 @@ pub fn spawn_periodic_lifecycle(system: Arc<RwLock<MemorySystem>>) {
         loop {
             match prune_expired(system.clone()).await {
                 Ok(n) if n > 0 => tracing::info!("daily TTL pruned {} chunks", n),
-                Ok(_) => tracing::debug!("daily TTL: nothing to prune"),
-                Err(e) => tracing::warn!("daily TTL failed: {e:#}"),
+                Ok(_) => tracing::info!("daily TTL: nothing to prune"),
+                Err(e) => {
+                    tracing::warn!("daily TTL failed: {e:#}");
+                    let sys = system.read().await;
+                    let mut status = sys.lifecycle_status.write().await;
+                    status.last_error = Some(format!("{e:#}"));
+                }
             }
             tokio::time::sleep(std::time::Duration::from_secs(86_400)).await;
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    #[tokio::test]
+    async fn lifecycle_status_ok_and_err_paths() {
+        let status = Arc::new(RwLock::new(LifecycleStatus::default()));
+
+        // Verify defaults
+        {
+            let s = status.read().await;
+            assert!(s.last_run.is_none());
+            assert_eq!(s.last_deleted, 0);
+            assert!(s.last_error.is_none());
+        }
+
+        // Simulate success update (mirrors what prune_expired does)
+        {
+            let mut s = status.write().await;
+            s.last_run = Some(chrono::Utc::now());
+            s.last_deleted = 7;
+            s.last_error = None;
+            s.ttl_autolog_days = autolog_ttl_days();
+        }
+        {
+            let s = status.read().await;
+            assert!(s.last_run.is_some());
+            assert_eq!(s.last_deleted, 7);
+            assert!(s.last_error.is_none());
+        }
+
+        // Simulate error update (mirrors what spawn_periodic_lifecycle error arm does)
+        {
+            let mut s = status.write().await;
+            s.last_error = Some("simulated db failure".to_string());
+        }
+        {
+            let s = status.read().await;
+            assert_eq!(s.last_error.as_deref(), Some("simulated db failure"));
+            // last_run still set; error does not clear it
+            assert!(s.last_run.is_some());
+        }
+    }
 }

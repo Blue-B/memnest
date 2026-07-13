@@ -25,6 +25,7 @@ pub struct MemorySystem {
     pub vector_index: Arc<RwLock<index::VectorIndex>>,
     pub text_index: Arc<RwLock<Option<index::TextIndex>>>,
     pub graph: Arc<RwLock<graph::KnowledgeGraph>>,
+    pub lifecycle_status: Arc<RwLock<lifecycle::LifecycleStatus>>,
 }
 
 impl MemorySystem {
@@ -86,6 +87,7 @@ impl MemorySystem {
             vector_index,
             text_index,
             graph,
+            lifecycle_status: Arc::new(RwLock::new(lifecycle::LifecycleStatus::default())),
         })
     }
 
