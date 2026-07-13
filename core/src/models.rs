@@ -218,6 +218,9 @@ pub struct CollectionStat {
     /// Free-form description shown in the viewer card.
     #[serde(default)]
     pub description: String,
+    /// Sum of document byte lengths for all chunks in this collection.
+    #[serde(default)]
+    pub text_bytes: u64,
 }
 
 fn default_kind() -> String {

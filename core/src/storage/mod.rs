@@ -244,7 +244,8 @@ impl Database {
                 SUM(CASE WHEN json_extract(c.metadata, '$.chunk_type') = 'manual'   THEN 1 ELSE 0 END) AS manual_count,
                 SUM(CASE WHEN json_extract(c.metadata, '$.chunk_type') = 'auto_log' THEN 1 ELSE 0 END) AS autolog_count,
                 COALESCE(m.kind,        '')                                      AS kind,
-                COALESCE(m.description, '')                                      AS description
+                COALESCE(m.description, '')                                      AS description,
+                COALESCE(SUM(LENGTH(c.document)), 0)                             AS text_bytes
              FROM chunks c
              LEFT JOIN collection_meta m ON m.name = c.project
              GROUP BY c.project
@@ -258,6 +259,7 @@ impl Database {
             let autolog_count = row.get::<_, Option<i64>>(3)?.unwrap_or(0) as usize;
             let stored_kind: String = row.get(4)?;
             let description: String = row.get(5)?;
+            let text_bytes = row.get::<_, i64>(6)? as u64;
             let kind = if !stored_kind.is_empty() {
                 stored_kind
             } else {
@@ -270,9 +272,32 @@ impl Database {
                 autolog_count,
                 kind,
                 description,
+                text_bytes,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
+    }
+
+    /// Age bucket counts for the 'root' project (chunks older than 30/90/180 days).
+    /// Cutoff strings are RFC3339-formatted UTC timestamps passed from the caller.
+    pub fn age_buckets_root(&self, cut30: &str, cut90: &str, cut180: &str) -> Result<(u64, u64, u64)> {
+        let conn = self.pool.get()?;
+        let over_30d: u64 = conn.query_row(
+            "SELECT COUNT(*) FROM chunks WHERE project = 'root' AND created_at < ?1",
+            params![cut30],
+            |row| row.get::<_, i64>(0),
+        )? as u64;
+        let over_90d: u64 = conn.query_row(
+            "SELECT COUNT(*) FROM chunks WHERE project = 'root' AND created_at < ?1",
+            params![cut90],
+            |row| row.get::<_, i64>(0),
+        )? as u64;
+        let over_180d: u64 = conn.query_row(
+            "SELECT COUNT(*) FROM chunks WHERE project = 'root' AND created_at < ?1",
+            params![cut180],
+            |row| row.get::<_, i64>(0),
+        )? as u64;
+        Ok((over_30d, over_90d, over_180d))
     }
 
     /// Upsert collection metadata. Used by `PUT /collection/:name/meta`.
