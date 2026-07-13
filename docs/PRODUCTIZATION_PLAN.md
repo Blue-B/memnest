@@ -37,7 +37,7 @@ count unchanged (17,092), no `daily TTL pruned` journal line.
 
 ---
 
-## [ ] T1. Lifecycle observability (last prune visible)
+## [x] T1. Lifecycle observability (last prune visible)
 
 Why: on 2026-07-11 the TTL loop silently deleted 4,931 chunks. Users must be
 able to see when the pruner last ran, what it deleted, and whether it failed.
@@ -77,7 +77,7 @@ cargo test lifecycle 2>&1 | tail -5
 sleep 130 && curl -s localhost:3999/health | python3 -m json.tool
 ```
 
-## [ ] T2. Health report + cleanup recommendation (/stats extension)
+## [x] T2. Health report + cleanup recommendation (/stats extension)
 
 Why: "when should I clean up" must be answered by the system, not by the user
 running SQL. Depends on T1 (reuses lifecycle status).
@@ -106,7 +106,7 @@ Acceptance:
   (chunks match `select count(*)`).
 - `cargo test` passes; unit test for threshold → recommendation mapping.
 
-## [ ] T3. Prune dry-run + audit log
+## [x] T3. Prune dry-run + audit log
 
 Why: nobody clicks a mass-delete without a preview. `/prune` already exists;
 it needs `dry_run` and an audit trail.
@@ -131,7 +131,7 @@ Acceptance:
 - Real prune writes an audit line; TTL prune writes `source:"ttl"`.
 - `cargo test` passes.
 
-## [ ] T4. Pin (exempt a chunk from any automatic expiry)
+## [x] T4. Pin (exempt a chunk from any automatic expiry)
 
 Why: "remember this one forever" must be possible on auto_log without copying
 it to another bucket by hand.
@@ -158,7 +158,7 @@ Acceptance:
   `pinned` directly, read it back).
 - `cargo test` passes.
 
-## [ ] T5. Soft-delete trash (recoverable deletes)
+## [x] T5. Soft-delete trash (recoverable deletes)
 
 Why: today `/delete` and `/prune` are instant and permanent; recovery is a
 manual DB backup. Commercial software needs an undo window.
@@ -186,7 +186,7 @@ Acceptance:
 - `cargo test` passes; audit lines (T3) written for trash-purge with
   `source:"trash_gc"`.
 
-## [ ] T6. Archive before hard delete
+## [x] T6. Archive before hard delete
 
 Why: even with unlimited TTL locally, the product default (30d) must not mean
 amnesia. Anything hard-deleted by lifecycle (TTL prune, trash GC) is appended
