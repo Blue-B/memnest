@@ -74,6 +74,7 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
         .route("/add", post(api::add))
         .route("/update", post(api::update))
         .route("/delete", post(api::delete))
+        .route("/restore", post(api::restore))
         .route("/prune", post(api::prune))
         .route("/reproject", post(api::reproject))
         .route("/sessions/fork", post(api::fork_session))

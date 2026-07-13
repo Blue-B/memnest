@@ -65,6 +65,14 @@ pub struct Metadata {
     /// of its age or chunk_type. Pinned chunks must be deleted explicitly.
     #[serde(default)]
     pub pinned: bool,
+    /// Set when a chunk is soft-deleted to `_trash`. Holds the project it
+    /// originally belonged to so `/restore` can move it back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_project: Option<String>,
+    /// RFC 3339 timestamp of when the chunk was moved to `_trash`.
+    /// The trash GC hard-deletes rows whose `trashed_at` is older than 30 days.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trashed_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]

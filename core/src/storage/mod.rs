@@ -388,6 +388,48 @@ impl Database {
         Ok(affected > 0)
     }
 
+    /// Move a chunk to `_trash`: sets `project = "_trash"`, records
+    /// `original_project` and `trashed_at` in metadata, and upserts via
+    /// INSERT OR REPLACE. Returns false if the chunk is not found or is
+    /// already in `_trash`.
+    pub fn trash_chunk(&self, id: &str, trashed_at: &str) -> Result<bool> {
+        let Some(mut chunk) = self.get_chunk(id)? else {
+            return Ok(false);
+        };
+        if chunk.project == "_trash" {
+            return Ok(false);
+        }
+        let original = std::mem::take(&mut chunk.project);
+        chunk.project = "_trash".to_string();
+        chunk.metadata.original_project = Some(original);
+        chunk.metadata.trashed_at = Some(trashed_at.to_string());
+        chunk.updated_at = Utc::now();
+        self.insert_chunk(&chunk)?;
+        Ok(true)
+    }
+
+    /// Restore a chunk from `_trash` back to its `original_project`.
+    /// Clears `original_project` and `trashed_at` from metadata.
+    /// Returns `None` if the chunk is not found or is not in `_trash`.
+    pub fn restore_chunk(&self, id: &str) -> Result<Option<MemoryChunk>> {
+        let Some(mut chunk) = self.get_chunk(id)? else {
+            return Ok(None);
+        };
+        if chunk.project != "_trash" {
+            return Ok(None);
+        }
+        let original = chunk
+            .metadata
+            .original_project
+            .take()
+            .unwrap_or_else(|| "default".to_string());
+        chunk.metadata.trashed_at = None;
+        chunk.project = original;
+        chunk.updated_at = Utc::now();
+        self.insert_chunk(&chunk)?;
+        Ok(Some(chunk))
+    }
+
     /// Returns the id of any existing chunk whose `document` exactly matches
     /// (after trimming) within the same project. Used by `memory_add` to skip
     /// trivial duplicates without re-running the embedding model.
@@ -1247,5 +1289,59 @@ mod tests {
             db.get_note("legacy-note").unwrap().unwrap().value,
             "ok".to_string()
         );
+    }
+
+    #[tokio::test]
+    async fn trash_chunk_preserves_original_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        let chunk = sample_chunk("my-project", "hello world", Importance::Log);
+        let id = chunk.id.clone();
+        db.insert_chunk(&chunk).unwrap();
+
+        let now = Utc::now().to_rfc3339();
+        let moved = db.trash_chunk(&id, &now).unwrap();
+        assert!(moved, "trash_chunk should return true");
+
+        let trashed = db.get_chunk(&id).unwrap().unwrap();
+        assert_eq!(trashed.project, "_trash");
+        assert_eq!(
+            trashed.metadata.original_project.as_deref(),
+            Some("my-project")
+        );
+        assert!(trashed.metadata.trashed_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn restore_chunk_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        let chunk = sample_chunk("my-project", "round trip test", Importance::Log);
+        let id = chunk.id.clone();
+        db.insert_chunk(&chunk).unwrap();
+
+        let now = Utc::now().to_rfc3339();
+        db.trash_chunk(&id, &now).unwrap();
+
+        let restored = db.restore_chunk(&id).unwrap().expect("should restore");
+        assert_eq!(restored.project, "my-project");
+        assert!(restored.metadata.original_project.is_none());
+        assert!(restored.metadata.trashed_at.is_none());
+
+        let in_db = db.get_chunk(&id).unwrap().unwrap();
+        assert_eq!(in_db.project, "my-project");
+    }
+
+    #[tokio::test]
+    async fn trash_chunk_noop_when_already_trashed() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        let chunk = sample_chunk("proj", "doc", Importance::Log);
+        let id = chunk.id.clone();
+        db.insert_chunk(&chunk).unwrap();
+
+        let now = Utc::now().to_rfc3339();
+        assert!(db.trash_chunk(&id, &now).unwrap());
+        assert!(!db.trash_chunk(&id, &now).unwrap(), "already in trash");
     }
 }
