@@ -13,6 +13,26 @@ use tokio::sync::RwLock;
 /// within a month, automatic-filter outputs are even shorter-lived, and any
 /// user-curated content (Manual + Knowledge/Decision/Preference) is kept
 /// forever. Returning `None` means "never expire".
+///
+/// The AutoLog window is overridable via `MEMNEST_TTL_AUTOLOG_DAYS`:
+/// `0` / `off` / `unlimited` disables expiry entirely (dialogue kept forever
+/// for long-range recall); any positive integer replaces the 30-day default.
+/// Invalid values fall back to 30.
+fn autolog_ttl_days() -> Option<i64> {
+    static TTL: std::sync::OnceLock<Option<i64>> = std::sync::OnceLock::new();
+    *TTL.get_or_init(|| match std::env::var("MEMNEST_TTL_AUTOLOG_DAYS") {
+        Err(_) => Some(30),
+        Ok(raw) => {
+            let v = raw.trim();
+            if v == "0" || v.eq_ignore_ascii_case("off") || v.eq_ignore_ascii_case("unlimited") {
+                None
+            } else {
+                v.parse::<i64>().ok().filter(|d| *d > 0).or(Some(30))
+            }
+        }
+    })
+}
+
 fn ttl_days_for(chunk_type: &ChunkType, importance: &Importance) -> Option<i64> {
     // Anything the user explicitly marked is permanent regardless of source.
     if matches!(
@@ -24,7 +44,7 @@ fn ttl_days_for(chunk_type: &ChunkType, importance: &Importance) -> Option<i64> 
     match chunk_type {
         ChunkType::Manual => None,
         ChunkType::Consolidated => None, // summaries replace raw logs, keep them
-        ChunkType::AutoLog => Some(30),
+        ChunkType::AutoLog => autolog_ttl_days(),
         ChunkType::Filtered => Some(7),
     }
 }
