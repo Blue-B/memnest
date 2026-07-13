@@ -61,6 +61,10 @@ pub struct Metadata {
     /// is stored AES-GCM encrypted at rest.
     #[serde(default)]
     pub sensitive: bool,
+    /// When true, automatic TTL expiry is suppressed for this chunk regardless
+    /// of its age or chunk_type. Pinned chunks must be deleted explicitly.
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -225,4 +229,26 @@ pub struct CollectionStat {
 
 fn default_kind() -> String {
     "project".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metadata_missing_pinned_deserializes_as_false() {
+        // Old DB rows stored before the `pinned` field existed must still load.
+        let json = r#"{"chunk_type":"auto_log","importance":"log","category":"general","session_id":"","truncated":false,"access_count":0,"keywords":[],"sensitive":false}"#;
+        let meta: Metadata = serde_json::from_str(json).expect("deserialize");
+        assert!(!meta.pinned, "pinned must default to false for legacy rows");
+    }
+
+    #[test]
+    fn metadata_pinned_true_round_trips() {
+        let mut meta = Metadata::default();
+        meta.pinned = true;
+        let json = serde_json::to_string(&meta).unwrap();
+        let meta2: Metadata = serde_json::from_str(&json).unwrap();
+        assert!(meta2.pinned);
+    }
 }

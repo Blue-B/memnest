@@ -69,7 +69,7 @@ fn write_response(stdout: &mut io::Stdout, value: Value) -> Result<()> {
 fn tools() -> Vec<Value> {
     vec![
         json!({"name": "memory_add", "description": "Save a memory chunk", "inputSchema": {"type":"object","properties":{"text":{"type":"string"},"project":{"type":"string"}},"required":["text"]}}),
-        json!({"name": "memory_update", "description": "Update an existing memory chunk by id and refresh indexes", "inputSchema": {"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"project":{"type":"string"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"]},"chunk_type":{"type":"string","enum":["auto_log","manual","filtered","consolidated"]}},"required":["id"]}}),
+        json!({"name": "memory_update", "description": "Update an existing memory chunk by id and refresh indexes", "inputSchema": {"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"project":{"type":"string"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"]},"chunk_type":{"type":"string","enum":["auto_log","manual","filtered","consolidated"]},"pinned":{"type":"boolean","description":"When true, exempt this chunk from automatic TTL expiry"}},"required":["id"]}}),
         json!({"name": "memory_search", "description": "Search memory with hybrid BM25/vector retrieval. Cross-project searches (project=all) skip the reserved autolog buckets root/default/global/_superseded; pass project=\"root\" explicitly to read transcript autologs.", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":3},"recent_first":{"type":"boolean","default":false},"category":{"type":"string","description":"Filter to a specific memory category (e.g. failure, insight)"}},"required":["query"]}}),
         json!({"name": "memory_context", "description": "Return a compact context pack: core notes + matching facts + retrieved memories", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":3},"max_notes":{"type":"integer","default":4},"max_facts":{"type":"integer","default":4},"max_chars":{"type":"integer","default":2000,"description":"hard character budget for the rendered prompt"},"category":{"type":"string","description":"Filter retrieved memories to a specific category"}},"required":["query"]}}),
         json!({"name": "memory_get", "description": "Fetch the FULL text of one memory by id (search results are 600-char excerpts; use this when a result shows a truncation marker)", "inputSchema": {"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}),
@@ -352,6 +352,9 @@ async fn memory_update(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Resul
     }
     if let Some(chunk_type) = args.get("chunk_type").and_then(Value::as_str) {
         chunk.metadata.chunk_type = parse_chunk_type(chunk_type)?;
+    }
+    if let Some(pinned) = args.get("pinned").and_then(Value::as_bool) {
+        chunk.metadata.pinned = pinned;
     }
 
     let mut embedding_changed = false;
