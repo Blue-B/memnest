@@ -296,9 +296,19 @@ pub struct ContextResponse {
 }
 
 #[derive(Serialize)]
+pub struct LifecycleInfo {
+    last_run: Option<String>,
+    last_deleted: usize,
+    last_error: Option<String>,
+    ttl_autolog_days: Option<i64>,
+    enabled: bool,
+}
+
+#[derive(Serialize)]
 pub struct HealthResponse {
     status: String,
     version: String,
+    lifecycle: LifecycleInfo,
 }
 
 #[derive(Serialize)]
@@ -314,10 +324,19 @@ pub struct StatsResponse {
 
 // ── API Handlers ─────────────────────────────────────────────
 
-pub async fn health() -> Json<HealthResponse> {
+pub async fn health(State(system): State<Arc<RwLock<MemorySystem>>>) -> Json<HealthResponse> {
+    let sys = system.read().await;
+    let status = sys.lifecycle_status.read().await;
     Json(HealthResponse {
         status: "ok".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
+        lifecycle: LifecycleInfo {
+            last_run: status.last_run.map(|dt| dt.to_rfc3339()),
+            last_deleted: status.last_deleted,
+            last_error: status.last_error.clone(),
+            ttl_autolog_days: status.ttl_autolog_days,
+            enabled: sys.config.enable_lifecycle,
+        },
     })
 }
 
