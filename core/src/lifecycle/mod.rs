@@ -118,20 +118,19 @@ pub async fn run_lifecycle(
     Ok(stats)
 }
 
-/// Apply the TTL policy: delete chunks whose age exceeds the limit for their
-/// (chunk_type, importance) bucket. Returns the number of chunks pruned.
+/// Apply the TTL policy: soft-delete chunks whose age exceeds the limit for
+/// their (chunk_type, importance) bucket by moving them to `_trash`.
+/// Returns the number of chunks moved to trash.
 ///
-/// This is the heart of automatic decay — without it, AutoLog content piles
-/// up forever (the current production state, ~537 chunks). Indexes are kept
-/// in sync so search results immediately reflect the pruning.
+/// Chunks in `_trash` are kept for 30 days then hard-deleted by
+/// `prune_trash`. This two-phase approach gives a recovery window.
 pub async fn prune_expired(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
     let sys = system.read().await;
     let now = chrono::Utc::now();
+    let now_str = now.to_rfc3339();
 
-    // Phase 1: identify victims under the read lock. We deliberately collect
-    // ids first instead of deleting in-place so the second phase can drop the
-    // read lock before acquiring the write locks for index removal.
-    let mut to_delete: Vec<String> = Vec::new();
+    // Phase 1: collect victim ids under the read lock.
+    let mut to_trash: Vec<String> = Vec::new();
     {
         let db = sys.db.read().await;
         let chunks = db.get_all_chunks(1_000_000).unwrap_or_default();
@@ -139,12 +138,84 @@ pub async fn prune_expired(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
             if chunk.metadata.pinned {
                 continue;
             }
+            // Skip chunks already in _trash (avoid re-trashing).
+            if chunk.project == "_trash" {
+                continue;
+            }
             if let Some(days) = ttl_days_for(&chunk.metadata.chunk_type, &chunk.metadata.importance)
             {
                 let age = (now - chunk.created_at).num_days();
                 if age > days {
-                    to_delete.push(chunk.id);
+                    to_trash.push(chunk.id);
                 }
+            }
+        }
+    }
+
+    let trashed = if !to_trash.is_empty() {
+        let mut count = 0usize;
+        {
+            let db = sys.db.write().await;
+            for id in &to_trash {
+                if db.trash_chunk(id, &now_str).unwrap_or(false) {
+                    count += 1;
+                }
+            }
+        }
+        // Remove from search indexes so trash is invisible to queries.
+        if count > 0 {
+            let _ = sys.remove_text_docs(&to_trash).await;
+            let mut vector_index = sys.vector_index.write().await;
+            for id in &to_trash {
+                let _ = vector_index.remove(id);
+            }
+            let _ = vector_index.save();
+        }
+        tracing::info!(
+            "lifecycle prune: trashed {}/{} expired chunks",
+            count,
+            to_trash.len()
+        );
+        count
+    } else {
+        0
+    };
+
+    append_audit_log(&sys.config.data_dir, "ttl", trashed, serde_json::Value::Null);
+
+    {
+        let mut status = sys.lifecycle_status.write().await;
+        status.last_run = Some(chrono::Utc::now());
+        status.last_deleted = trashed;
+        status.last_error = None;
+        status.ttl_autolog_days = autolog_ttl_days();
+    }
+
+    Ok(trashed)
+}
+
+/// Hard-delete `_trash` rows whose `trashed_at` is older than 30 days.
+/// This is the second phase of soft-delete: the trash GC provides a 30-day
+/// recovery window then permanently removes the row. Pinned status is ignored
+/// (trash is trash). Writes a "trash_gc" audit line.
+pub async fn prune_trash(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
+    let sys = system.read().await;
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(30);
+
+    let mut to_delete: Vec<String> = Vec::new();
+    {
+        let db = sys.db.read().await;
+        let trash = db.get_chunks_by_project("_trash", 1_000_000).unwrap_or_default();
+        for chunk in trash {
+            let expired = chunk
+                .metadata
+                .trashed_at
+                .as_deref()
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                .map(|dt| dt.with_timezone(&chrono::Utc) < cutoff)
+                .unwrap_or(false);
+            if expired {
+                to_delete.push(chunk.id);
             }
         }
     }
@@ -159,9 +230,8 @@ pub async fn prune_expired(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
                 }
             }
         }
-        // Best-effort index cleanup — failures here are logged but don't roll back
-        // the DB delete, since stale index entries are harmless (search filters by
-        // chunk id presence in the DB).
+        // Defensive index cleanup: trash rows should not be indexed, but
+        // remove defensively in case of any inconsistency.
         if count > 0 {
             let _ = sys.remove_text_docs(&to_delete).await;
             let mut vector_index = sys.vector_index.write().await;
@@ -170,26 +240,13 @@ pub async fn prune_expired(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
             }
             let _ = vector_index.save();
         }
-        tracing::info!(
-            "lifecycle prune: removed {}/{} expired chunks",
-            count,
-            to_delete.len()
-        );
+        tracing::info!("trash_gc: hard-deleted {} expired trash rows", count);
         count
     } else {
         0
     };
 
-    append_audit_log(&sys.config.data_dir, "ttl", deleted, serde_json::Value::Null);
-
-    {
-        let mut status = sys.lifecycle_status.write().await;
-        status.last_run = Some(chrono::Utc::now());
-        status.last_deleted = deleted;
-        status.last_error = None;
-        status.ttl_autolog_days = autolog_ttl_days();
-    }
-
+    append_audit_log(&sys.config.data_dir, "trash_gc", deleted, serde_json::Value::Null);
     Ok(deleted)
 }
 
@@ -205,7 +262,7 @@ pub fn spawn_periodic_lifecycle(system: Arc<RwLock<MemorySystem>>) {
         tokio::time::sleep(std::time::Duration::from_secs(120)).await;
         loop {
             match prune_expired(system.clone()).await {
-                Ok(n) if n > 0 => tracing::info!("daily TTL pruned {} chunks", n),
+                Ok(n) if n > 0 => tracing::info!("daily TTL trashed {} chunks", n),
                 Ok(_) => tracing::info!("daily TTL: nothing to prune"),
                 Err(e) => {
                     tracing::warn!("daily TTL failed: {e:#}");
@@ -213,6 +270,11 @@ pub fn spawn_periodic_lifecycle(system: Arc<RwLock<MemorySystem>>) {
                     let mut status = sys.lifecycle_status.write().await;
                     status.last_error = Some(format!("{e:#}"));
                 }
+            }
+            match prune_trash(system.clone()).await {
+                Ok(n) if n > 0 => tracing::info!("trash_gc hard-deleted {} old rows", n),
+                Ok(_) => {}
+                Err(e) => tracing::warn!("trash_gc failed: {e:#}"),
             }
             tokio::time::sleep(std::time::Duration::from_secs(86_400)).await;
         }
@@ -286,5 +348,22 @@ mod tests {
         assert_eq!(v["source"], "ttl");
         assert_eq!(v["deleted"], 0);
         assert!(v["filters"].is_null());
+    }
+
+    #[test]
+    fn trash_purge_cutoff_selects_correct_rows() {
+        let now = chrono::Utc::now();
+        let cutoff = now - chrono::Duration::days(30);
+
+        let should_purge = |trashed_at_str: &str| -> bool {
+            chrono::DateTime::parse_from_rfc3339(trashed_at_str)
+                .map(|dt| dt.with_timezone(&chrono::Utc) < cutoff)
+                .unwrap_or(false)
+        };
+
+        let old = (now - chrono::Duration::days(40)).to_rfc3339();
+        let recent = (now - chrono::Duration::days(10)).to_rfc3339();
+        assert!(should_purge(&old), "40-day-old trash must be purged");
+        assert!(!should_purge(&recent), "10-day-old trash must survive");
     }
 }

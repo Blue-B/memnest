@@ -548,7 +548,7 @@ pub(crate) async fn run_hybrid_search(
             if exclude_reserved
                 && matches!(
                     c.project.as_str(),
-                    "root" | "default" | "global" | "_superseded"
+                    "root" | "default" | "global" | "_superseded" | "_trash"
                 )
             {
                 continue;
@@ -745,6 +745,16 @@ pub async fn add(
     } else {
         req.project
     };
+    // Soft-delete bucket is internal; never accept direct writes into it.
+    if matches!(project.as_str(), "_trash" | "_superseded") {
+        let mut map = HashMap::new();
+        map.insert("status".to_string(), "error".to_string());
+        map.insert(
+            "error".to_string(),
+            format!("project '{project}' is reserved; write rejected"),
+        );
+        return Json(map);
+    }
     let text = redact_text(&req.text);
     let metadata = req.metadata.unwrap_or(Metadata {
         chunk_type: ChunkType::Manual,
@@ -865,13 +875,14 @@ pub async fn delete(
     Json(req): Json<DeleteRequest>,
 ) -> Json<HashMap<String, serde_json::Value>> {
     let sys = system.read().await;
+    let now_str = chrono::Utc::now().to_rfc3339();
     let db = sys.db.write().await;
 
     let mut deleted = Vec::new();
     let mut not_found = Vec::new();
 
     for id in req.ids {
-        match db.delete_chunk(&id) {
+        match db.trash_chunk(&id, &now_str) {
             Ok(true) => deleted.push(id),
             Ok(false) => not_found.push(id),
             Err(_) => not_found.push(id),
@@ -892,6 +903,57 @@ pub async fn delete(
     let mut result = HashMap::new();
     result.insert("deleted".to_string(), serde_json::json!(deleted));
     result.insert("not_found".to_string(), serde_json::json!(not_found));
+    Json(result)
+}
+
+#[derive(Deserialize)]
+pub struct RestoreRequest {
+    pub ids: Vec<String>,
+}
+
+pub async fn restore(
+    State(system): State<Arc<RwLock<MemorySystem>>>,
+    Json(req): Json<RestoreRequest>,
+) -> Json<HashMap<String, serde_json::Value>> {
+    let sys = system.read().await;
+    let mut restored = Vec::new();
+    let mut missing = Vec::new();
+
+    for id in req.ids {
+        let chunk = {
+            let db = sys.db.write().await;
+            db.restore_chunk(&id).unwrap_or(None)
+        };
+        match chunk {
+            Some(chunk) => {
+                let embedding = if let Some(emb) = chunk.embedding.clone() {
+                    emb
+                } else {
+                    let embedder = sys.embedder.clone();
+                    let text = chunk.document.clone();
+                    match tokio::task::spawn_blocking(move || embedder.encode_document(&text)).await {
+                        Ok(Ok(emb)) => emb,
+                        _ => {
+                            missing.push(id);
+                            continue;
+                        }
+                    }
+                };
+                let _ = sys.add_text_doc(&chunk.id, &chunk.project, &chunk.document).await;
+                {
+                    let mut vector_index = sys.vector_index.write().await;
+                    let _ = vector_index.add(&chunk.id, &embedding);
+                    let _ = vector_index.save();
+                }
+                restored.push(id);
+            }
+            None => missing.push(id),
+        }
+    }
+
+    let mut result = HashMap::new();
+    result.insert("restored".to_string(), serde_json::json!(restored));
+    result.insert("missing".to_string(), serde_json::json!(missing));
     Json(result)
 }
 
@@ -1353,9 +1415,10 @@ pub async fn prune(
         });
     }
 
+    let now_str = chrono::Utc::now().to_rfc3339();
     let mut deleted = 0usize;
     for id in &ids {
-        if db.delete_chunk(id).unwrap_or(false) {
+        if db.trash_chunk(id, &now_str).unwrap_or(false) {
             deleted += 1;
         }
     }
@@ -1717,7 +1780,9 @@ pub async fn list_collections(
 ) -> Json<Vec<CollectionStat>> {
     let sys = system.read().await;
     let db = sys.db.read().await;
-    Json(db.collection_stats(500).unwrap_or_default())
+    let mut stats = db.collection_stats(500).unwrap_or_default();
+    stats.retain(|s| s.name != "_trash");
+    Json(stats)
 }
 
 #[derive(Deserialize)]
