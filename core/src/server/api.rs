@@ -124,6 +124,8 @@ pub struct MetadataPatch {
     keywords: Option<Vec<String>>,
     #[serde(default)]
     sensitive: Option<bool>,
+    #[serde(default)]
+    pinned: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -177,6 +179,8 @@ pub struct PruneRequest {
     older_than_days: Option<i64>,
     #[serde(default)]
     dry_run: bool,
+    #[serde(default)]
+    include_pinned: bool,
 }
 
 #[derive(Deserialize)]
@@ -1068,6 +1072,9 @@ fn apply_metadata_patch(target: &mut Metadata, patch: MetadataPatch) {
     if let Some(value) = patch.sensitive {
         target.sensitive = value;
     }
+    if let Some(value) = patch.pinned {
+        target.pinned = value;
+    }
 }
 
 pub async fn context_pack(
@@ -1311,6 +1318,9 @@ pub async fn prune(
             && &chunk.metadata.importance != importance {
                 continue;
             }
+        if chunk.metadata.pinned && !req.include_pinned {
+            continue;
+        }
 
         matching_seen += 1;
         if keep_latest > 0 && matching_seen <= keep_latest {

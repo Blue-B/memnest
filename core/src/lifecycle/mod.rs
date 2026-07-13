@@ -136,6 +136,9 @@ pub async fn prune_expired(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
         let db = sys.db.read().await;
         let chunks = db.get_all_chunks(1_000_000).unwrap_or_default();
         for chunk in chunks {
+            if chunk.metadata.pinned {
+                continue;
+            }
             if let Some(days) = ttl_days_for(&chunk.metadata.chunk_type, &chunk.metadata.importance)
             {
                 let age = (now - chunk.created_at).num_days();
