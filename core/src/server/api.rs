@@ -226,10 +226,24 @@ fn default_true() -> bool {
 }
 
 #[derive(Serialize)]
+pub struct PruneSample {
+    id: String,
+    project: String,
+    created_at: chrono::DateTime<chrono::Utc>,
+    preview: String,
+}
+
+#[derive(Serialize)]
 pub struct PruneResponse {
     matched: usize,
     deleted: usize,
     ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dry_run: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    would_delete: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sample: Option<Vec<PruneSample>>,
 }
 
 #[derive(Serialize)]
@@ -1269,6 +1283,9 @@ pub async fn prune(
             matched: 0,
             deleted: 0,
             ids: Vec::new(),
+            dry_run: None,
+            would_delete: None,
+            sample: None,
         });
     }
 
@@ -1284,7 +1301,7 @@ pub async fn prune(
         .unwrap_or_default();
 
     let mut matching_seen = 0usize;
-    let mut ids = Vec::new();
+    let mut victims = Vec::new();
     for chunk in chunks {
         if let Some(chunk_type) = &req.chunk_type
             && &chunk.metadata.chunk_type != chunk_type {
@@ -1303,16 +1320,33 @@ pub async fn prune(
             && chunk.created_at > cutoff {
                 continue;
             }
-        ids.push(chunk.id);
+        victims.push(chunk);
     }
 
-    let matched = ids.len();
+    let matched = victims.len();
+    let ids: Vec<String> = victims.iter().map(|c| c.id.clone()).collect();
+
+    if req.dry_run {
+        let sample: Vec<PruneSample> = victims.iter().take(20).map(|c| PruneSample {
+            id: c.id.clone(),
+            project: c.project.clone(),
+            created_at: c.created_at,
+            preview: c.document.chars().take(80).collect(),
+        }).collect();
+        return Json(PruneResponse {
+            matched,
+            deleted: 0,
+            ids: Vec::new(),
+            dry_run: Some(true),
+            would_delete: Some(matched),
+            sample: Some(sample),
+        });
+    }
+
     let mut deleted = 0usize;
-    if !req.dry_run {
-        for id in &ids {
-            if db.delete_chunk(id).unwrap_or(false) {
-                deleted += 1;
-            }
+    for id in &ids {
+        if db.delete_chunk(id).unwrap_or(false) {
+            deleted += 1;
         }
     }
     drop(db);
@@ -1327,10 +1361,26 @@ pub async fn prune(
         let _ = vector_index.save();
     }
 
+    crate::lifecycle::append_audit_log(
+        &sys.config.data_dir,
+        "api",
+        deleted,
+        serde_json::json!({
+            "project": project,
+            "chunk_type": req.chunk_type,
+            "importance": req.importance,
+            "keep_latest": req.keep_latest,
+            "older_than_days": req.older_than_days,
+        }),
+    );
+
     Json(PruneResponse {
         matched,
         deleted,
         ids,
+        dry_run: None,
+        would_delete: None,
+        sample: None,
     })
 }
 

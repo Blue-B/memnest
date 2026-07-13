@@ -4,6 +4,7 @@ use crate::MemorySystem;
 use crate::models::{ChunkType, Importance};
 use anyhow::Result;
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -54,6 +55,39 @@ fn ttl_days_for(chunk_type: &ChunkType, importance: &Importance) -> Option<i64> 
         ChunkType::Consolidated => None, // summaries replace raw logs, keep them
         ChunkType::AutoLog => autolog_ttl_days(),
         ChunkType::Filtered => Some(7),
+    }
+}
+
+/// Append a single JSON audit line to `<data_dir>/audit.log`.
+/// Failures are logged as warnings and never block the caller.
+pub(crate) fn append_audit_log(
+    data_dir: &Path,
+    source: &str,
+    deleted: usize,
+    filters: serde_json::Value,
+) {
+    use std::io::Write;
+    let ts = chrono::Utc::now().to_rfc3339();
+    let line = match serde_json::to_string(&serde_json::json!({
+        "ts": ts,
+        "source": source,
+        "deleted": deleted,
+        "filters": filters,
+    })) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("audit log serialize failed: {e:#}");
+            return;
+        }
+    };
+    let path = data_dir.join("audit.log");
+    if let Err(e) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .and_then(|mut f| writeln!(f, "{line}"))
+    {
+        tracing::warn!("audit log write failed: {e:#}");
     }
 }
 
@@ -143,6 +177,8 @@ pub async fn prune_expired(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
         0
     };
 
+    append_audit_log(&sys.config.data_dir, "ttl", deleted, serde_json::Value::Null);
+
     {
         let mut status = sys.lifecycle_status.write().await;
         status.last_run = Some(chrono::Utc::now());
@@ -224,5 +260,28 @@ mod tests {
             // last_run still set; error does not clear it
             assert!(s.last_run.is_some());
         }
+    }
+
+    #[test]
+    fn audit_log_line_has_required_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        append_audit_log(dir.path(), "api", 5, serde_json::json!({"project": "test"}));
+        let content = std::fs::read_to_string(dir.path().join("audit.log")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert!(v["ts"].is_string(), "ts missing");
+        assert_eq!(v["source"], "api");
+        assert_eq!(v["deleted"], 5);
+        assert!(v.get("filters").is_some(), "filters missing");
+    }
+
+    #[test]
+    fn audit_log_ttl_source_and_null_filters() {
+        let dir = tempfile::tempdir().unwrap();
+        append_audit_log(dir.path(), "ttl", 0, serde_json::Value::Null);
+        let content = std::fs::read_to_string(dir.path().join("audit.log")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(v["source"], "ttl");
+        assert_eq!(v["deleted"], 0);
+        assert!(v["filters"].is_null());
     }
 }
