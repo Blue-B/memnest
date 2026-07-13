@@ -312,6 +312,63 @@ pub struct HealthResponse {
 }
 
 #[derive(Serialize)]
+pub struct CollectionEntry {
+    name: String,
+    chunks: usize,
+    text_bytes: u64,
+}
+
+#[derive(Serialize)]
+pub struct AgeBuckets {
+    over_30d: u64,
+    over_90d: u64,
+    over_180d: u64,
+}
+
+#[derive(Serialize)]
+pub struct DiskStats {
+    db_bytes: u64,
+    text_index_bytes: u64,
+    vector_bytes: u64,
+}
+
+// Thresholds for cleanup recommendations.
+const THRESHOLD_ROOT_CHUNKS: usize = 50_000;
+const THRESHOLD_DISK_BYTES: u64 = 2 * 1024 * 1024 * 1024; // 2 GiB
+
+fn dir_size(path: &std::path::Path) -> u64 {
+    let mut total = 0u64;
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                total += dir_size(&p);
+            } else if let Ok(m) = std::fs::metadata(&p) {
+                total += m.len();
+            }
+        }
+    }
+    total
+}
+
+fn build_recommendations(root_chunks: usize, total_disk: u64) -> Vec<String> {
+    let mut out = Vec::new();
+    if root_chunks > THRESHOLD_ROOT_CHUNKS {
+        out.push(format!(
+            "root project has {} chunks (threshold {}); consider pruning auto_log entries",
+            root_chunks, THRESHOLD_ROOT_CHUNKS
+        ));
+    }
+    if total_disk > THRESHOLD_DISK_BYTES {
+        out.push(format!(
+            "total disk usage is {} bytes (threshold 2 GiB); consider archiving old data",
+            total_disk
+        ));
+    }
+    out
+}
+
+#[derive(Serialize)]
 pub struct StatsResponse {
     total_chunks: usize,
     total_sessions: usize,
@@ -320,6 +377,10 @@ pub struct StatsResponse {
     total_servers: usize,
     graph_nodes: usize,
     graph_edges: usize,
+    collections: Vec<CollectionEntry>,
+    age_buckets: AgeBuckets,
+    disk: DiskStats,
+    recommendations: Vec<String>,
 }
 
 // ── API Handlers ─────────────────────────────────────────────
@@ -2035,6 +2096,31 @@ pub async fn stats(
     let total_servers = db.server_count().unwrap_or(0);
     let (graph_nodes, graph_edges) = db.graph_stats().unwrap_or((0, 0));
 
+    // T2: health report fields
+    let coll_stats = db.collection_stats(500).unwrap_or_default();
+    let collections: Vec<CollectionEntry> = coll_stats
+        .iter()
+        .map(|c| CollectionEntry { name: c.name.clone(), chunks: c.chunk_count, text_bytes: c.text_bytes })
+        .collect();
+
+    let age_buckets = {
+        let now = chrono::Utc::now();
+        let cut30 = (now - chrono::Duration::days(30)).to_rfc3339();
+        let cut90 = (now - chrono::Duration::days(90)).to_rfc3339();
+        let cut180 = (now - chrono::Duration::days(180)).to_rfc3339();
+        let (o30, o90, o180) = db.age_buckets_root(&cut30, &cut90, &cut180).unwrap_or_default();
+        AgeBuckets { over_30d: o30, over_90d: o90, over_180d: o180 }
+    };
+
+    let data_dir = &sys.config.data_dir;
+    let db_bytes = std::fs::metadata(data_dir.join("memory.db")).map(|m| m.len()).unwrap_or(0);
+    let text_index_bytes = dir_size(&data_dir.join("text_index"));
+    let vector_bytes = dir_size(&data_dir.join("vectors"));
+    let disk = DiskStats { db_bytes, text_index_bytes, vector_bytes };
+
+    let root_chunks = coll_stats.iter().find(|c| c.name == "root").map(|c| c.chunk_count).unwrap_or(0);
+    let recommendations = build_recommendations(root_chunks, db_bytes + text_index_bytes + vector_bytes);
+
     if params.get("format") == Some(&"html".to_string()) {
         let endpoint_rows = r##"
           <div class="endpoint-row">
@@ -2116,6 +2202,10 @@ pub async fn stats(
         total_servers,
         graph_nodes,
         graph_edges,
+        collections,
+        age_buckets,
+        disk,
+        recommendations,
     })
     .into_response()
 }
@@ -4781,6 +4871,26 @@ mod retrieval_eval {
         let full = render_context_prompt(&[], &[], &memories, 100_000);
         assert!(!full.contains("(context truncated"), "unexpected truncation");
         assert!(full.contains("m0") && full.contains("m49"), "missing memories");
+    }
+
+    #[test]
+    fn recommendations_threshold_mapping() {
+        // Below both thresholds: no recommendations.
+        assert!(build_recommendations(0, 0).is_empty());
+        assert!(build_recommendations(49_999, 2 * 1024 * 1024 * 1024 - 1).is_empty());
+        // At exactly the threshold: no trigger (threshold is strict >).
+        assert!(build_recommendations(50_000, 2 * 1024 * 1024 * 1024).is_empty());
+        // Over root-chunks threshold.
+        let recs = build_recommendations(50_001, 0);
+        assert_eq!(recs.len(), 1);
+        assert!(recs[0].contains("root"));
+        // Over disk threshold.
+        let recs = build_recommendations(0, 2 * 1024 * 1024 * 1024 + 1);
+        assert_eq!(recs.len(), 1);
+        assert!(recs[0].contains("disk"));
+        // Both over threshold: two recommendations.
+        let recs = build_recommendations(100_000, 3 * 1024 * 1024 * 1024);
+        assert_eq!(recs.len(), 2);
     }
 
     #[tokio::test]
