@@ -1,105 +1,102 @@
-<p align="center">
-  <img src="./docs/logo.png" alt="memnest-journal" width="160" />
-</p>
+# memnest-journal
 
-<h1 align="center">memnest-journal</h1>
+<!-- markdownlint-disable MD013 -->
 
-<p align="center">
-  <strong>Your AI memory as a git-backed markdown repo you own, edit, diff, and revert.</strong>
-  <br/>
-  <em>The missing human layer for any AI memory system.</em>
-</p>
+A Markdown and git audit mirror for local memnest data.
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/memnest-journal"><img src="https://img.shields.io/npm/v/memnest-journal.svg?style=flat&color=blue" alt="npm version" /></a>
-  <a href="https://www.npmjs.com/package/memnest-journal"><img src="https://img.shields.io/npm/dm/memnest-journal.svg?style=flat&color=blue" alt="downloads" /></a>
-  <a href="https://github.com/Blue-B/memnest/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/memnest-journal.svg?style=flat&color=green" alt="license" /></a>
-  <a href="https://github.com/Blue-B/memnest/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Blue-B/memnest/ci.yml?branch=main&style=flat&label=CI" alt="CI" /></a>
-  <a href="https://github.com/sponsors/Blue-B"><img src="https://img.shields.io/badge/sponsor-❤-ea4aaa.svg?style=flat" alt="sponsor" /></a>
-</p>
+`memnest-journal` exports selected memnest database records into a readable directory and can commit that directory to git. It is useful for reviewing what an agent stored, comparing snapshots, and keeping an off-machine audit copy in a private repository.
 
----
+It is not the memnest engine, a live database replica, or an automatic rollback system. A git revert changes the journal files only. Use the core backup and restore commands when you need to recover the actual memnest data directory.
 
-`memnest-journal` is the missing **human layer** on top of
-[memnest](https://github.com/Blue-B/memnest). It exports every
-memory chunk, fact, note, session summary, and (encrypted) secret to a
-plain markdown tree under git — then lets you `diff`, `revert`, `push`,
-review, and edit them by hand like any other source file.
+## What it exports
 
-It does not replace memnest, mem0, agentmemory, Letta, or Zep. It
-turns the one you already have into something you can **trust and
-collaborate on**, because the memory finally lives where you already
-have tools: in git.
+A journal has this layout:
 
----
-
-## Why this exists
-
-Every persistent-memory product today treats memory as a black box:
-
-- You can read it through a search API.
-- You **can't** see what changed when.
-- You **can't** revert a bad write.
-- You **can't** edit a wrong fact.
-- You **can't** review what a teammate's agent learned.
-- You **can't** ship the memory through your existing PR + audit
-  pipeline.
-
-`memnest-journal` makes memory a first-class versioned artifact:
-
-| Pain                                        | Black-box memory     | memnest-journal                |
-| ------------------------------------------- | -------------------- | --------------------------------- |
-| AI learned a wrong fact                     | Live with it / wipe  | `vim chunks/…` + `pjournal import` |
-| AI wrote a 1-million-token mess overnight   | Manual cleanup       | `git revert HEAD`                  |
-| Need to share memory across machines        | Custom sync code     | `git push`                         |
-| Audit: who/when added this memory?          | Best-effort logs     | `git log` + `git blame`            |
-| Team needs to review what an agent learned  | Slack screenshots    | open a PR on the journal repo      |
-| Compliance asks for tamper-evident history  | Hope DB is append-only | git commit hashes, signed commits |
-
----
-
-## Install
-
-```bash
-# zero native deps — works on Node 20+ and Bun
-npm install -g memnest-journal
-```
-
-Requires a running memnest server (default `http://127.0.0.1:3111`)
-and access to its sqlite store (default `~/.memnest/memory.db`).
-
-## Quick start
-
-```bash
-pjournal init ~/memory-journal             # one-time
-pjournal sync --push                        # export DB -> commit -> git push
-
-# the AI keeps writing memories during the day...
-pjournal sync                               # incremental commit, no push
-
-# you spot a wrong memory
-vim ~/memory-journal/chunks/myproject/manual_abc.md
-pjournal import                             # push your edit back into memnest
-
-# the AI overnight wrote 200 bad memories
-cd ~/memory-journal && git log --oneline -10
-git revert <bad-commit>                     # restore to last-known-good
-```
-
-## What's in the repo
-
-```
-~/memory-journal/
+```text
+~/.memnest/journal/
 ├── README.md
-├── .gitignore                # never commit master.key, sqlite, vector index
-├── chunks/<project>/<id>.md  # one memory per file, frontmatter + body
-├── facts/<hash>.md           # structured (subject, predicate, object)
-├── notes/<key>.md            # key-value notes
-├── secrets/<key>.enc.md      # AES-256-GCM ciphertext only, never plaintext
+├── .gitignore
+├── chunks/<project>/<id>.md
+├── facts/<hash>.md
+├── notes/<key>.md
+├── secrets/<key>.enc.md
 └── sessions/<project>/<id>.md
 ```
 
-A `chunks/*.md` file:
+Each record is rendered as Markdown with frontmatter. Memory chunks are grouped by project, facts use stable hashed filenames, notes use their key, and sessions are grouped by project.
+
+The exporter reads the SQLite database directly in read-only mode. It does not export vector index files, the text index, the database, or `master.key`.
+
+## Current status
+
+The public npm registry does not currently provide `memnest-journal`. Install it from this repository.
+
+Version 0.1.0 is an audit-oriented exporter with a limited import path:
+
+- export supports chunks, facts, notes, stored secret records, and session summaries
+- sync exports, stages, and commits the journal, with an optional push
+- import applies modified chunk files by adding a new memory with a provenance marker
+- import does not replace or delete the original memory
+- facts, sessions, and secrets are read-only in the journal
+- modified note files are detected but are not written back to memnest in this version
+
+## Requirements
+
+- Git
+- a local memnest data directory for export
+- a running memnest HTTP service for import
+- Bun, or a Node.js runtime that provides `node:sqlite`
+
+This checkout was tested with Node.js 22.22 and Bun. The fallback code can use `better-sqlite3` when that module is installed and resolvable, but it is not included as a package dependency.
+
+## Install from source
+
+From the memnest repository root:
+
+```bash
+npm install -g ./journal
+```
+
+Confirm the CLI is available:
+
+```bash
+pjournal --help
+```
+
+## Quick start
+
+Initialize the default journal path:
+
+```bash
+pjournal init
+pjournal sync
+pjournal status
+pjournal log -n 10
+```
+
+The default locations are:
+
+- journal: `~/.memnest/journal`
+- memnest database: `~/.memnest/memory.db`
+- memnest HTTP service: `http://127.0.0.1:3111`
+
+If your engine uses another data directory, pass the matching `--db` path. Use `--dir` on every command when the journal is not at the default path.
+
+### Add a private remote
+
+`pjournal init` creates a local git repository but does not add a remote. Configure one before using `--push`:
+
+```bash
+cd ~/.memnest/journal
+git remote add origin <private-repository-url>
+pjournal sync --push
+```
+
+A private remote is recommended because ordinary memory and note text is not encrypted.
+
+## Review a stored memory
+
+A chunk file looks like this:
 
 ```markdown
 ---
@@ -111,115 +108,115 @@ session_id: ""
 sensitive: false
 created_at: 2026-05-17T08:26:15.658664381+00:00
 ---
-CLIProxyAPI troubleshooting: '429 model_cooldown' on a specific Claude
-model while other models / same account work means stale in-memory
-cooldown cache. Fix: `systemctl --user restart cliproxyapi`.
+Project X deploys on port 8320.
 ```
 
-Edit the body, run `pjournal import`, and the corrected memory becomes
-searchable in memnest — with a provenance marker
-(`<!-- memnest-journal: edited-from=<old_id> -->`) so reviewers can
-trace the lineage.
+Use normal git commands to inspect journal history:
 
-## Security model
+```bash
+git -C ~/.memnest/journal log --oneline
+git -C ~/.memnest/journal diff HEAD~1 HEAD
+git -C ~/.memnest/journal blame chunks/playbook/manual_1a6465da04984426.md
+```
 
-- **Secrets are never exported in plaintext.** Only the AES-256-GCM
-  ciphertext blob and metadata leave the local store. The decryption
-  key (`~/.memnest/master.key`) lives outside the repo and is in the
-  default `.gitignore`.
-- **Sensitive chunks are skipped by default.** Pass
-  `--include-sensitive` to opt in (e.g. for a private repo you'll push
-  to a personal remote).
-- **Imports go through the HTTP server**, not the sqlite file. We never
-  poke the DB directly, so the BM25 / vector / fact indices stay
-  consistent.
-- **Git history is tamper-evident.** A signed `git commit -S` flow
-  works out of the box because we just shell out to your `git`.
+These commands inspect the exported history. They do not change the live memnest database.
+
+## Import a corrected chunk
+
+Start the memnest HTTP service, edit an existing file under `chunks/`, and run:
+
+```bash
+pjournal import
+```
+
+Version 0.1.0 posts the edited body to `/add` as a new memory and appends a marker such as:
+
+```html
+<!-- memnest-journal: edited-from=manual_... at=2026-05-17T08:26:15.658Z -->
+```
+
+The original memory remains in memnest and can still appear in search. If you need an in-place correction, use the core `/update` API, an MCP `memory_update` tool, or pi's `memory_update` tool instead.
+
+`pjournal import` only considers modified or staged files under `chunks/` and `notes/`. In this release, chunk edits are applied, note edits are counted as pending, and facts, sessions, and secrets are not imported.
+
+## Sync and filter safety
+
+`pjournal sync` performs a full export, removes journal files not present in that export, stages all changes, and commits them. This is appropriate for an unfiltered full snapshot.
+
+Do not combine `pjournal sync` with `--project` or `--since` in version 0.1.0. The current pruning behavior can remove journal files that were excluded by the partial export.
+
+For a filtered read-only export, use `pjournal export` without `--prune`:
+
+```bash
+pjournal export --project project-a,project-b
+pjournal export --since 2026-07-01T00:00:00Z
+```
+
+Review the working tree before committing filtered output.
 
 ## Commands
 
 ```text
-pjournal init   <dir>                    # initialize a journal repo
-pjournal export                          # DB -> markdown (idempotent)
-pjournal sync   [--push] [--message ...] # export then git add+commit (+push)
-pjournal import                          # apply your *.md edits back to memnest
-pjournal log    [-n N]                   # show commit history
-pjournal status                          # show pending changes
-
-Common flags:
-  --dir <path>          journal dir (default: ~/.memnest/journal)
-  --db  <path>          memnest sqlite (default: ~/.memnest/memory.db)
-  --url <url>           memnest server (default: http://127.0.0.1:3111)
-  --project <a,b,c>     limit to specific projects (export/sync)
-  --since <iso>         only export chunks newer than this timestamp
-  --include-sensitive   include chunks flagged sensitive=true
-  --prune               delete repo files that no longer exist in DB
-  --remote <name>       git remote (default: origin)
-  --branch <name>       git branch (default: main)
+pjournal init   [dir]                     initialize a journal repository
+pjournal export [options]                 export database records to Markdown
+pjournal sync   [--push] [--message text] export, prune, stage, and commit
+pjournal import                           apply supported modified files
+pjournal log    [-n N]                    show journal commit history
+pjournal status                           show pending journal changes
 ```
 
-## Workflows
+Common options:
 
-### Solo dev: sync to a private GitHub repo
+```text
+--dir <path>          journal directory, default ~/.memnest/journal
+--db <path>           memnest SQLite database, default ~/.memnest/memory.db
+--url <url>           memnest HTTP service, default http://127.0.0.1:3111
+--project <a,b,c>     filter exported chunks by project
+--since <iso>         filter chunks by timestamp
+--include-sensitive   include chunks marked sensitive=true
+--prune               remove unmatched files during pjournal export
+--push                push after pjournal sync
+--remote <name>       git remote, default origin
+--branch <name>       ref passed to git push, default main
+--message <text>      commit message for pjournal sync
+```
+
+`--branch` does not create or switch branches. It is passed to `git push`, so create and check out the intended branch with git first.
+
+## Security boundaries
+
+- Sensitive chunks are skipped unless `--include-sensitive` is supplied.
+- Ordinary chunks, notes, facts, and session summaries are plaintext Markdown. Use a private repository.
+- Secret export copies the value stored in the database without decrypting it. A normal memnest installation stores secret values as `$enc$...` ciphertext, but the journal does not independently verify that format before writing the file. Inspect the generated `secrets/` tree before any push.
+- `master.key`, SQLite files, and index directories are added to the generated `.gitignore`.
+- The CLI uses your existing git configuration. It does not enable signed commits or enforce branch protection.
+- Git history is useful audit evidence, but this package does not claim compliance with a particular standard.
+
+## Backup and recovery
+
+For actual recovery, stop the engine and back up or restore the complete core data directory:
 
 ```bash
-pjournal init ~/memory-journal
-cd ~/memory-journal && gh repo create memory --private --source=. --push
-crontab -l | { cat; echo "*/15 * * * * pjournal sync --push"; } | crontab -
+memnest --data-dir ~/.memnest --backup-dir ~/memnest-backup
+memnest --data-dir ~/.memnest --restore-dir ~/memnest-backup --force
 ```
 
-You now have an off-machine, time-versioned backup of every AI memory.
+The journal can help identify what changed, but it does not contain the complete database and indexes required for a lossless restore.
 
-### Team: PR review for agent memory
+## Development
 
 ```bash
-# the agent runs in CI / a shared box and pushes to a `learning` branch
-pjournal sync --push --branch learning
-
-# a teammate reviews the PR: did the agent learn something we don't want
-# the team to act on? Did it mis-attribute a fact?
-gh pr view ...
-gh pr review --approve  # merges into main, becomes the source of truth
+npm run smoke
 ```
 
-### Compliance: SOC2-ready memory audit trail
+The smoke test covers initialization, export, git sync, chunk import, stored secret export, and sensitive-chunk filtering against a temporary memnest instance.
 
-Every change is a signed git commit. Every revert is a signed git
-commit. The `secrets/` tree carries AES-256-GCM ciphertext — even if the
-repo leaks, the master.key never does.
+## Related documentation
 
-## How it relates to other memory systems
-
-This is intentionally **not** a memory system. It is a thin adapter on
-top of one. If you already use:
-
-- **memnest** — first-class support today.
-- **mem0 / agentmemory / Letta / Zep** — pluggable in principle; only
-  memnest is implemented in 0.x. PRs welcome.
-
-The whole codebase is ~870 lines (including the 94-line smoke harness).
-The value is the workflow, not the algorithm.
-
-### Capability comparison
-
-|                                                | memnest-journal | mem0 export | agentmemory dump | Letta replay | Zep “documents” |
-|------------------------------------------------|:------------------:|:-----------:|:----------------:|:------------:|:---------------:|
-| Memory lives as plain `.md` files              |         ✅         |     ❌      |        ❌         |      ❌       |        ❌        |
-| `git diff` between two memory snapshots        |         ✅         |     ❌      |        ❌         |      ❌       |        ❌        |
-| `git revert` a bad memory write                |         ✅         |     ❌      |        ❌         |      ❌       |        ❌        |
-| `git blame` on a fact                          |         ✅         |     ❌      |        ❌         |      ❌       |        ❌        |
-| Code-review (PR) flow for agent learning       |         ✅         |     ❌      |        ❌         |      ❌       |        ❌        |
-| Manual edit re-applied with provenance marker  |         ✅         |     ❌      |        ❌         |      ❌       |        ❌        |
-| AES-GCM secrets exported as ciphertext only    |         ✅         |     n/a    |        n/a       |      n/a     |       n/a       |
-| Zero native deps                               |         ✅         |     ❌      |        ❌         |      ❌       |        ❌        |
-| Works under Bun, Node 20+, no Docker           |         ✅         |     ❌      |        ❌         |      ❌       |        ❌        |
-
-## Contributing & support
-
-Issues and PRs welcome at [github.com/Blue-B/memnest](https://github.com/Blue-B/memnest/issues).
-
-If you adopt this in a team and it removes a real audit gap, consider [sponsoring](https://github.com/sponsors/Blue-B) to fund maintenance and a hosted review UI (planned for 0.3.x).
+- [memnest root README](../README.md) for engine installation, lifecycle, backup, and security
+- [CHANGELOG.md](./CHANGELOG.md) for package changes and known limitations
+- [pi-memnest](../pi-extension/README.md) for the pi integration
 
 ## License
 
-MIT © Blue-B.
+MIT © Blue-B
