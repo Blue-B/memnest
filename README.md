@@ -1,248 +1,186 @@
-<div align="center">
-
 # memnest
 
-**Layered persistent memory for AI coding agents — local, encrypted, free.**
+<!-- markdownlint-disable MD013 -->
 
-One Rust engine, an MCP bridge, and a git-backed audit layer. No cloud, no per-call cost.
+Local memory service for AI coding agents.
+
+One Rust binary that stores what your agent learned, answers retrieval queries about it, and shows you whether the recall actually helped.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 ![Rust](https://img.shields.io/badge/core-Rust-orange.svg)
 ![Protocol](https://img.shields.io/badge/interface-MCP%20%2B%20HTTP-blue.svg)
 
-<br/>
+![memnest operations dashboard](docs/dashboard.png)
 
-<img src="docs/dashboard.png" alt="memnest dashboard" width="820" />
+## Why this exists
 
-</div>
+An agent session ends and the project decisions, the user's preferences, and every correction you made go with it. Next session you explain the same constraints again.
 
----
+The usual fixes each give something up. Hosted memory services want your project history on their servers. A bare vector database stores embeddings but cannot tell you which memory was actually used, whether a write succeeded, or why retrieval returned the wrong thing. Rolling your own means you own an indexing pipeline instead of shipping features.
 
-## Overview
+memnest keeps the store in a directory on your machine, serves it over HTTP and MCP so any agent can reach it, and records every recall so retrieval quality is something you can inspect and correct instead of guess at.
 
-memnest is a local-first memory system for AI agents. Everything lives in a
-single SQLite store at `~/.memnest/memory.db`, and any client you use — Claude
-Code, Claude Desktop, Cursor, Cline, Codex CLI, pi, or `curl` — reads and writes the
-same memory. No account, no cloud, and your data never leaves your machine.
+## Architecture
 
-It is client-agnostic by design: the engine exposes a **stdio MCP** server and an
-**HTTP API** over one store, so it is not tied to any single editor or agent.
+```text
+   pi extension            MCP clients             Any other host
+   20 tools, /memnest      Claude Code,            HTTP + JSONL
+   autocontext             Cursor, and others      adapter contract
+          |                       |                       |
+          +-----------+-----------+-----------+-----------+
+                      |                       |
+                 HTTP :3111               stdio MCP
+                      |                       |
+          +-----------v-----------------------v-----------+
+          |             memnest core (Rust)               |
+          |                                               |
+          |   write path      search path      operations |
+          |   redact          BM25 + vector    recall log  |
+          |   embed           RRF fusion       job status   |
+          |   dedup + alias   re-rank + MMR    feedback     |
+          +-----------------------+-----------------------+
+                                  |
+          +-----------------------v-----------------------+
+          |          ~/.memnest, one data directory       |
+          |   SQLite      tantivy      HNSW      archive  |
+          |   records     BM25 index   vectors   JSONL    |
+          +-----------------------------------------------+
+```
 
-## Features
+A write is redacted for credential-shaped strings, embedded, checked against existing memories, and acknowledged only after it is stored. A search fuses BM25 and vector candidates, re-ranks them by importance, type, recency, and recorded feedback, then diversifies the result with MMR. Every search returns a `recall_id`, and marking that recall helpful or harmful changes how those memories rank next time.
 
-- **Hybrid search** — BM25 full-text (Tantivy) fused with vector similarity (HNSW) over native [fastembed](https://github.com/Anush008/fastembed-rs) embeddings.
-- **Context packs** — one call returns always-on notes, matching facts, and retrieved memories as a prompt-ready `<memnest_context>` block.
-- **Correctable memory** — update an existing memory by id and refresh text/vector indexes, so stale facts are fixed instead of duplicated.
-- **Core notes** — small key-value memory blocks for durable persona, user profile, active project, or operating rules.
-- **Knowledge graph and lifecycle** — relationships between memories, plus importance-weighted decay and consolidation of old entries.
-- **Encrypted secret vault** — credentials are stored with AES-256-GCM (Argon2-derived key); incoming text is scanned and secrets (`sk-…`, private keys, `api_key=…`) are redacted before storage.
-- **Built-in dashboard** — unified search, per-collection volume, and recent entries, in Korean and English.
-- **Two interfaces, one store** — an HTTP API and a stdio MCP server read the same database.
-- **Hardened defaults** — binds to `127.0.0.1` only, refuses non-local binds without a token, and sets CSP, `nosniff`, and `no-store` headers.
+## What you get
 
-## Repository layout
+| Area | What is implemented |
+| --- | --- |
+| Retrieval | Hybrid BM25 and HNSW vector search, project filters, compact excerpts, nearest-neighbor queries, and a `recall_id` on every search |
+| Feedback loop | Helpful and harmful outcomes persist per memory and feed back into the ranking score, so memories that proved useful surface first |
+| Structured memory | Optional record, fact, rule, and procedure kinds with confidence, provenance, verification, and replacement metadata |
+| Context assembly | Character-bounded context packs built from matching memories, notes, and facts, counted in Unicode characters so non-Latin text is not truncated early |
+| Observability | 90 days of recall events and processing jobs with latency, adapter identity, and outcomes, shown in an operations console |
+| Recovery | Deletes move to a hidden trash collection, restore reindexes them, and hard-deleted records are archived to monthly JSONL first |
+| Secret storage | A separate vault encrypts credential values with AES-256-GCM using a local master key |
+| Integration | One binary serves HTTP and stdio MCP. pi is first-class, and a public adapter contract covers other hosts |
 
-This is a monorepo for the layers of the system.
-
-| Directory | Package | Language | Role |
-| --------- | ------- | -------- | ---- |
-| [`core/`](./core) | `memnest` | Rust | The engine: HTTP API + stdio MCP server, hybrid search, secret vault, dashboard. Required. |
-| [`pi-extension/`](./pi-extension) | `pi-memnest` | TypeScript | A convenience bridge for [pi](https://github.com/badlogic/pi-mono) (tools + AutoLog + Autocontext). Other clients connect to the core directly over MCP, so this is optional. |
-| [`journal/`](./journal) | `memnest-journal` | TypeScript | Audit layer that mirrors the database to a git-backed markdown repo, so you can diff, revert, and review what the agent learned. Optional. |
-| [`learn/`](./learn) | `memnest-learn` | TypeScript | Learning + working-memory layer: failure/correction learning and KV-cache-stable injection, borrowing the host agent's own model (no extra API key). Optional. |
+Memory, note, fact, and session text is stored locally but is not encrypted at rest. The secret vault is the only storage path designed for sensitive values. See [Security](#security).
 
 ## Quick start
 
+Build and run the engine from this checkout. There are no published release tags or npm packages yet.
+
 ```bash
-# 1. Build the engine (or grab a release binary)
-git clone https://github.com/Blue-B/memnest
+git clone https://github.com/Blue-B/memnest.git
 cd memnest/core
 cargo build --release
-cp target/release/memnest ~/.local/bin/
-
-# 2. Run it
-memnest                     # HTTP + dashboard on http://127.0.0.1:3111
-
-# 3. Connect a client — the MCP registration is identical everywhere:
-#    { "command": "memnest", "args": ["--mcp"] }
-#    For pi:
-pi install npm:pi-memnest
-
-# 4. (optional) Mirror memory to git
-npm install -g memnest-journal
-pjournal init ~/memory-journal && pjournal sync --push
+./target/release/memnest --data-dir ~/.memnest
 ```
 
-Engine flags:
+The service listens on `http://127.0.0.1:3111` and serves the dashboard on the same port. New installs use `~/.memnest`. An existing `~/.factory/memories` store keeps being used until you migrate, so an upgrade never hides data behind a new default path.
+
+You do not have to remember the port:
 
 ```bash
-memnest                      # HTTP server + dashboard (127.0.0.1:3111)
-memnest --mcp                # stdio MCP mode
-memnest --doctor             # environment and store health check
-memnest --warmup-embedding   # preload the embedding model
+memnest status      # health, dashboard link, data directory
+memnest dashboard   # just the clickable link
 ```
 
-Common flags: `--port`, `--host`, `--data-dir`, `--backup-dir`, `--restore-dir`,
-`--import-jsonl`. Run `memnest --help` for the full list.
+Save a memory, search for it, then tell memnest whether the result was any good:
 
-## Connect your client
+```bash
+curl -s http://127.0.0.1:3111/add \
+  -H 'content-type: application/json' \
+  -d '{"text":"Deploy uses port 8320","project":"acme","metadata":{"importance":"knowledge","memory_kind":"fact"}}'
 
-Every MCP client registers the same command — `memnest --mcp` — and they all
-share the one `~/.memnest/memory.db`, so a memory written in one client is
-searchable in every other. You do **not** need a running service for `--mcp`
-mode; each client spawns its own short-lived stdio server.
+curl -s http://127.0.0.1:3111/search \
+  -H 'content-type: application/json' \
+  -d '{"query":"deploy port","project":"acme","n_results":3}'
+
+curl -s http://127.0.0.1:3111/feedback \
+  -H 'content-type: application/json' \
+  -d '{"recall_id":"recall_...","outcome":"helpful"}'
+```
+
+The first write takes longer because fastembed downloads the embedding model. `/add` returns a memory id and a job id, and reports `succeeded` or `deduplicated` only after the record is stored and indexed.
+
+## Connect your agent
+
+### pi
+
+Start the HTTP service, then install the extension from this checkout:
+
+```bash
+cd /path/to/memnest/pi-extension
+npm install
+pi install .
+```
+
+It connects to `http://127.0.0.1:3111` by default and registers 20 tools. Run `/memnest` inside pi for status and the dashboard link. Set `MEMNEST_URL` for a different address and `MEMNEST_TOKEN` when bearer authentication is on. Details are in [`pi-extension/README.md`](./pi-extension/README.md).
+
+### Any MCP client
+
+```bash
+./target/release/memnest --mcp --data-dir ~/.memnest
+```
+
+Register that command in the client, using absolute paths when it does not inherit your shell environment:
 
 ```json
 {
   "mcpServers": {
-    "memnest": { "command": "memnest", "args": ["--mcp"] }
+    "memnest": {
+      "command": "/absolute/path/to/memnest",
+      "args": ["--mcp", "--data-dir", "/home/you/.memnest"]
+    }
   }
 }
 ```
 
-| Client | Config location |
-| ------ | --------------- |
-| Claude Desktop | macOS `~/Library/Application Support/Claude/claude_desktop_config.json` · Windows `%APPDATA%\Claude\claude_desktop_config.json` (WSL binary: `"command": "wsl.exe", "args": ["-e", "memnest", "--mcp"]`) |
-| Cursor | `~/.cursor/mcp.json` (global) or `<project>/.cursor/mcp.json` |
-| Cline | `.../globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` |
-| Continue.dev | `~/.continue/config.json` → `experimental.modelContextProtocolServers` |
-| Zed | `~/.config/zed/settings.json` → `context_servers` |
-| Claude Code, Codex CLI, Windsurf, opencode, … | Any MCP-capable client: register command `memnest`, args `["--mcp"]`. |
-| pi | `pi install npm:pi-memnest` — HTTP bridge with memory tools, AutoLog, and risk-triggered Autocontext. |
-| Scripts / anything | Call the HTTP API directly at `http://127.0.0.1:3111`. |
+Each MCP client starts its own process, so do not point two writers at one data directory. For pi, scripts, and the dashboard together, run a single long-lived HTTP service instead.
 
-Optional `args` additions: `--data-dir <path>` to override `~/.memnest`;
-`--warmup-embedding` for a slower start but faster first query.
+### Anything else
 
-If a client shows 0 tools, `memnest` is probably not in its PATH — use an
-absolute path like `/home/you/.local/bin/memnest`. If two clients fight over
-the same store's write lock, run the shared service below and keep `--mcp`
-only in the primary client.
+Translate your host's events into HTTP calls using the dependency-free JSONL adapter in [`adapters/`](./adapters). Adapters send `adapter` and `adapter_version` on every write and search, so their traffic and failures stay visible in the operations console.
 
-## Run as a service
+## How memnest compares
 
-For pi + curl + the dashboard to work alongside MCP clients, run the engine as
-a long-lived local service. Installers live in [`core/scripts/`](./core/scripts).
+memnest is a memory engine, not an agent runtime. It does not run your agent, manage prompts, or replace compaction. It remembers, retrieves, and reports.
 
-**Linux (systemd user service, data in `~/.memnest`):**
+| Category | What it does | Where memnest differs |
+| --- | --- | --- |
+| Session-continuity extensions, such as [pi-observational-memory](https://github.com/elpapi42/pi-observational-memory) | Keep one long session coherent across compaction by capturing observations and reflections, recovered by id | memnest is a cross-session searchable store with hybrid retrieval. The two solve different problems and can run together: one protects today's session, the other remembers last quarter's decision |
+| Hosted memory services | Managed memory behind an account and an API | The store is a local directory you can back up, inspect, and delete. No account, no upload |
+| Agent platforms with built-in memory | Bundle memory with their own runtime, desktop app, and sync | memnest stays a dependency of the agent you already use, and ships as one binary with no runtime of its own |
+| Vector databases | Store and search embeddings | memnest adds redaction, deduplication with stable ids, lifecycle and recovery, and a feedback loop that changes ranking |
 
-```bash
-cd core && cargo build --release
-scripts/preflight-linux.sh --user --bin target/release/memnest
-scripts/install-linux.sh   --user --bin target/release/memnest
-# server:  scripts/install-linux.sh --system  (data in /var/lib/memnest)
-# verify:  curl -fsS http://127.0.0.1:3111/health
-# remove:  scripts/uninstall-linux.sh --user
-```
+## Repository layout
 
-**WSL (service inside the distro + Windows logon task that wakes it):**
+| Directory | Package | Role |
+| --- | --- | --- |
+| [`core/`](./core) | `memnest` 0.2.0 | The engine. HTTP API, MCP server, indexes, lifecycle, observability, vault, dashboard |
+| [`pi-extension/`](./pi-extension) | `pi-memnest` 0.6.0 | First-class pi integration: 20 tools, `/memnest`, autocontext, feedback, opt-in AutoLog |
+| [`adapters/`](./adapters) | contract | Platform-neutral integration contract and a reference JSONL adapter |
+| [`journal/`](./journal) | `memnest-journal` 0.1.0 | Optional Markdown and git audit mirror, not a database backup |
+| [`learn/`](./learn) | `memnest-learn` 0.1.0 | Optional pi learning and working-memory layer that uses the host agent model |
 
-```powershell
-.\scripts\install-wsl.ps1 -Distro Ubuntu-24.04 -RepoPath /home/<user>/memnest
-# verify: wsl -d Ubuntu-24.04 -- systemctl --user status memnest.service
-# remove: .\scripts\uninstall-wsl.ps1 -Distro Ubuntu-24.04 -RepoPath /home/<user>/memnest
-```
+Only `core/` is required.
 
-**Windows native (`memnest.exe` wrapped by WinSW, data in `%ProgramData%\Memnest\data`):**
+## Documentation
 
-```powershell
-.\scripts\preflight-windows.ps1
-.\scripts\install-windows.ps1          # options: -Port 3211, -BinPath, -WinSWPath + -WinSWSha256
-```
-
-**Updating** is installer-managed: back up, then install the new release over
-the existing service — data stays in the configured data directory.
-
-```bash
-systemctl --user stop memnest.service
-memnest --data-dir ~/.memnest --backup-dir ~/memnest-backup      # backup
-scripts/install-linux.sh --user --bin <new-binary>               # upgrade
-# rollback: memnest --data-dir ~/.memnest --restore-dir ~/memnest-backup --force
-```
-
-## Usage examples
-
-Record and recall through any connected client (here, pi's tools):
-
-```text
-memory_remember text="Deploy uses blue-green on port 8080"
-memory_search   query="deploy port"
-```
-
-Or call the HTTP API directly:
-
-```bash
-# add a memory
-curl -s http://127.0.0.1:3111/add \
-  -H 'content-type: application/json' \
-  -d '{"text":"Deploy uses blue-green on port 8080","project":"acme"}'
-
-# hybrid search (BM25 + vector)
-curl -s http://127.0.0.1:3111/search \
-  -H 'content-type: application/json' \
-  -d '{"query":"deploy port","n_results":5}'
-
-# update a stale memory and refresh indexes
-curl -s http://127.0.0.1:3111/update \
-  -H 'content-type: application/json' \
-  -d '{"id":"manual_...","text":"Deploy now uses port 8320","importance":"decision"}'
-
-# prompt-ready context pack: notes + facts + retrieved memories
-curl -s http://127.0.0.1:3111/context \
-  -H 'content-type: application/json' \
-  -d '{"query":"deploy port","project":"acme"}'
-
-# store statistics
-curl -s http://127.0.0.1:3111/stats
-```
-
-Review and revert what the agent learned, through the journal:
-
-```bash
-pjournal sync --push                  # export DB -> commit -> push
-git -C ~/memory-journal log --oneline
-git -C ~/memory-journal revert <bad-commit>
-```
-
-## Architecture
-
-```
-   Claude Code · Claude Desktop · Cursor · Cline · Codex CLI · pi · curl …
-                 |                                   |
-                 | stdio MCP  (memnest --mcp)     | HTTP
-                 v                                   v
-        +-------------------------------------------------+
-        |   core (Rust)            127.0.0.1:3111         |
-        |   search · facts · secrets · dashboard          |
-        +-----------------------+-------------------------+
-                                |  ~/.memnest/memory.db
-                                v
-                       journal (npm) -> git markdown mirror
-```
-
-## Building and testing
-
-| Layer | Commands |
-| ----- | -------- |
-| core | `cd core && cargo build --release && cargo test` |
-| pi-extension | `cd pi-extension && npm install && npm run build && npm run smoke` |
-| journal | `cd journal && npm install && npm run smoke` |
-| learn | `cd learn && npm install && npm run build && npm test` |
-
-## Troubleshooting
-
-- **Dashboard does not open** — check the service: `systemctl --user status memnest.service`, then `curl -fsS http://127.0.0.1:3111/health`.
-- **Port 3111 in use** — start with `--port <other>` or free the port.
-- **WSL service dead after reboot** — `Start-ScheduledTask -TaskName "Memnest WSL"`, then check `systemctl --user status memnest.service` inside the distro.
-- **First search/save fails offline** — the embedding model downloads on first use; run `memnest --warmup-embedding` once while online.
-- **Remote bind refused** — non-localhost binds require `MEMNEST_TOKEN`; clients must then send `Authorization: Bearer <token>`.
+- [Operations guide](docs/operations.md) covers service install on Linux, WSL, and Windows, backup and restore, retention and recovery, CLI reference, and development checks
+- [0.2 before and after report](docs/upgrade-0.2-before-after.md) records the measured baseline, what changed, and the verification evidence
+- [Adapter contract](adapters/README.md) is the integration surface for non-pi hosts
 
 ## Security
 
-- The default bind is `127.0.0.1`. Non-local binds are refused unless `MEMNEST_TOKEN` is set, in which case a `Bearer` token is required. Never expose the port to the public internet without a reviewed reverse proxy and TLS in front.
-- Secrets are encrypted with AES-256-GCM (Argon2-derived key); the master key never leaves the local disk. Incoming text is scanned and credential-shaped strings are redacted before storage.
-- Data directories: `~/.memnest` (Linux user service), `/var/lib/memnest` (system service), `%ProgramData%\Memnest\data` (Windows service). Stop the service before backing up or restoring.
-- Third-party license attributions for the engine: [`core/THIRD_PARTY_NOTICES.md`](./core/THIRD_PARTY_NOTICES.md).
+The HTTP server binds to `127.0.0.1`. A non-local bind is refused unless `MEMNEST_TOKEN` is set, and requests must then send `Authorization: Bearer <token>`. Do not expose port 3111 to the internet directly; put a reviewed reverse proxy and TLS in front of it if you need remote access.
+
+Incoming memory text is scanned for credential-shaped strings and redacted, but that is a safety net, not a place to put secrets. Use the vault for those. On normal startup memnest creates `<data-dir>/master.key` and uses it for AES-256-GCM secret values; confirm that file exists before relying on vault encryption, because the crypto helper falls back to stored plaintext when no key is available.
+
+Engine attributions are in [`core/THIRD_PARTY_NOTICES.md`](./core/THIRD_PARTY_NOTICES.md).
+
+## Contributing
+
+Run the checks in the [operations guide](docs/operations.md#development-checks) for the component you touched. Issues and pull requests go to the [memnest repository](https://github.com/Blue-B/memnest/issues).
 
 ## License
 
