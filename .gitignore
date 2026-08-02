@@ -13,6 +13,10 @@
 *.db-wal
 master.key
 
+# Local agent state (never commit session or subagent artifacts)
+.pi/
+.pi-subagents/
+
 # OS / editor
 .DS_Store
 *.log
