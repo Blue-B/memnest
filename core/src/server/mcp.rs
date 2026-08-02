@@ -1,5 +1,5 @@
 use crate::MemorySystem;
-use crate::models::{ChunkType, Importance, MemoryChunk, Metadata};
+use crate::models::{ChunkType, Importance, MemoryKind, Metadata, ProcessingJob, RecallEvent};
 use crate::redaction::redact_text;
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -68,9 +68,10 @@ fn write_response(stdout: &mut io::Stdout, value: Value) -> Result<()> {
 
 fn tools() -> Vec<Value> {
     vec![
-        json!({"name": "memory_add", "description": "Save a memory chunk", "inputSchema": {"type":"object","properties":{"text":{"type":"string"},"project":{"type":"string"}},"required":["text"]}}),
+        json!({"name": "memory_add", "description": "Save a structured memory chunk through the platform-neutral Memnest contract", "inputSchema": {"type":"object","properties":{"text":{"type":"string"},"project":{"type":"string"},"adapter":{"type":"string","description":"host integration name, e.g. claude-code, codex, opencode"},"adapter_version":{"type":"string"},"memory_kind":{"type":"string","enum":["record","fact","rule","procedure"],"default":"record"},"confidence":{"type":"number","minimum":0,"maximum":1},"source_ids":{"type":"array","items":{"type":"string"}},"supersedes":{"type":"string"}},"required":["text"]}}),
         json!({"name": "memory_update", "description": "Update an existing memory chunk by id and refresh indexes", "inputSchema": {"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"project":{"type":"string"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"]},"chunk_type":{"type":"string","enum":["auto_log","manual","filtered","consolidated"]},"pinned":{"type":"boolean","description":"When true, exempt this chunk from automatic TTL expiry"}},"required":["id"]}}),
         json!({"name": "memory_search", "description": "Search memory with hybrid BM25/vector retrieval. Cross-project searches (project=all) skip the reserved autolog buckets root/default/global/_superseded; pass project=\"root\" explicitly to read transcript autologs.", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":3},"recent_first":{"type":"boolean","default":false},"category":{"type":"string","description":"Filter to a specific memory category (e.g. failure, insight)"}},"required":["query"]}}),
+        json!({"name": "memory_feedback", "description": "Mark a recall as helpful, harmful, or ignored", "inputSchema": {"type":"object","properties":{"recall_id":{"type":"string"},"outcome":{"type":"string","enum":["helpful","harmful","ignored"]},"note":{"type":"string"}},"required":["recall_id","outcome"]}}),
         json!({"name": "memory_context", "description": "Return a compact context pack: core notes + matching facts + retrieved memories", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":3},"max_notes":{"type":"integer","default":4},"max_facts":{"type":"integer","default":4},"max_chars":{"type":"integer","default":2000,"description":"hard character budget for the rendered prompt"},"category":{"type":"string","description":"Filter retrieved memories to a specific category"}},"required":["query"]}}),
         json!({"name": "memory_get", "description": "Fetch the FULL text of one memory by id (search results are 600-char excerpts; use this when a result shows a truncation marker)", "inputSchema": {"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}),
         json!({"name": "memory_neighbors", "description": "Cosine nearest neighbours from the vector index (for dedup/consolidation in learning layer)", "inputSchema": {"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"k":{"type":"integer","default":10},"max_distance":{"type":"number","default":0},"project":{"type":"string","default":"all"}},"required":[]}}),
@@ -101,6 +102,7 @@ async fn call_tool(system: Arc<RwLock<MemorySystem>>, params: &Value) -> Result<
         "memory_add" => memory_add(system, &args).await,
         "memory_update" => memory_update(system, &args).await,
         "memory_search" => memory_search(system, &args).await,
+        "memory_feedback" => memory_feedback(system, &args).await,
         "memory_context" => memory_context(system, &args).await,
         "memory_get" => memory_get(system, &args).await,
         "memory_neighbors" => memory_neighbors(system, &args).await,
@@ -218,6 +220,45 @@ async fn memory_add(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<S
         .and_then(Value::as_str)
         .unwrap_or("default")
         .to_string();
+    let adapter = args
+        .get("adapter")
+        .and_then(Value::as_str)
+        .unwrap_or("mcp")
+        .to_string();
+    let memory_kind = args
+        .get("memory_kind")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<MemoryKind>(value).ok())
+        .unwrap_or_default();
+    let metadata = Metadata {
+        chunk_type: ChunkType::Manual,
+        adapter: Some(adapter.clone()),
+        adapter_version: args
+            .get("adapter_version")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        memory_kind,
+        confidence: args
+            .get("confidence")
+            .and_then(Value::as_f64)
+            .map(|value| value.clamp(0.0, 1.0) as f32),
+        source_ids: args
+            .get("source_ids")
+            .and_then(Value::as_array)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        supersedes: args
+            .get("supersedes")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        ..Default::default()
+    };
 
     // Exact-match dedup runs synchronously on the request path: it's a single
     // indexed SELECT and lets us return a clear "duplicate" status instead of
@@ -236,91 +277,66 @@ async fn memory_add(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<S
         }
     }
 
-    let id = format!(
-        "manual_{}",
-        &uuid::Uuid::new_v4().to_string().replace('-', "")[..16]
-    );
-
-    // Fire-and-forget: respond immediately, perform embed + write in background.
-    // This keeps the user's response path free of embedding latency, matching the
-    // old hook-based "Stop hook" architecture's behaviour.
-    let bg_id = id.clone();
-    let bg_project = project.clone();
-    let bg_text = text.clone();
-    let bg_system = system.clone();
-    tokio::spawn(async move {
-        if let Err(e) = persist_chunk(bg_system, bg_id, bg_project, bg_text).await {
-            tracing::warn!("background memory_add failed: {e:#}");
-        }
-    });
-
-    Ok(format!("memory queued: {} ({})", id, project))
-}
-
-async fn persist_chunk(
-    system: Arc<RwLock<MemorySystem>>,
-    id: String,
-    project: String,
-    text: String,
-) -> Result<()> {
-    let sys = system.read().await;
-    let embedder = sys.embedder.clone();
-    // Run CPU-bound embedding off the runtime worker thread.
-    let embed_text = text.clone();
-    let embedding = tokio::task::spawn_blocking(move || embedder.encode_document(&embed_text))
-        .await
-        .map_err(|e| anyhow::anyhow!("embed task join: {e}"))??;
-
-    // Semantic dedup: if a chunk in the same project already lives within
-    // cosine distance 0.05 (~95% similarity) we treat the new write as a
-    // duplicate and just touch the existing chunk instead of inserting.
-    // Threshold mirrors the old Factory hooks: tight enough to ignore minor
-    // re-phrasings, loose enough to allow legitimate new content.
+    let id = format!("manual_{}", uuid::Uuid::new_v4().simple());
+    let job_id = format!("job_{}", uuid::Uuid::new_v4().simple());
+    let now = chrono::Utc::now();
+    let mut job = ProcessingJob {
+        id: job_id.clone(),
+        operation: "embed_and_store".to_string(),
+        target_id: id.clone(),
+        state: "queued".to_string(),
+        canonical_id: None,
+        adapter: adapter.clone(),
+        error: None,
+        created_at: now,
+        updated_at: now,
+    };
     {
-        let index = sys.vector_index.read().await;
-        let neighbors = index.search(&embedding, 5)?;
-        drop(index);
-        for (existing_id, distance) in &neighbors {
-            if *distance >= 0.05 {
-                break; // neighbours are distance-ascending
-            }
-            // Verify same project before suppressing — embeddings are
-            // global but chunks are project-scoped, so a cross-project
-            // twin at rank 1 must not shadow a same-project dup at rank 2+.
-            let db = sys.db.read().await;
-            if let Ok(Some(existing)) = db.get_chunk(existing_id)
-                && existing.project == project
-            {
-                drop(db);
-                let _ = sys.db.write().await.touch_chunk(existing_id);
-                tracing::debug!(
-                    "mcp semantic dedup suppressed {} (≈{}, distance={:.4})",
-                    id,
-                    existing_id,
-                    distance
-                );
-                return Ok(());
-            }
-        }
+        let sys = system.read().await;
+        sys.db.write().await.upsert_processing_job(&job)?;
     }
 
-    let chunk = MemoryChunk {
-        id: id.clone(),
-        project: project.clone(),
-        document: text,
-        embedding: Some(embedding.clone()),
-        metadata: Metadata {
-            chunk_type: ChunkType::Manual,
-            ..Default::default()
-        },
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-    };
-    sys.db.write().await.insert_chunk(&chunk)?;
-    sys.add_text_doc(&chunk.id, &chunk.project, &chunk.document)
-        .await?;
-    sys.vector_index.write().await.add(&chunk.id, &embedding)?;
-    Ok(())
+    job.state = "running".to_string();
+    job.updated_at = chrono::Utc::now();
+    {
+        let sys = system.read().await;
+        sys.db.write().await.upsert_processing_job(&job)?;
+    }
+    match crate::server::api::persist_chunk_async(
+        system.clone(),
+        id.clone(),
+        project.clone(),
+        text,
+        metadata,
+    )
+    .await
+    {
+        Ok(canonical_id) => {
+            job.state = if canonical_id.is_some() {
+                "deduplicated".to_string()
+            } else {
+                "succeeded".to_string()
+            };
+            job.canonical_id = canonical_id;
+        }
+        Err(error) => {
+            job.state = "failed".to_string();
+            job.error = Some(error.to_string());
+        }
+    }
+    job.updated_at = chrono::Utc::now();
+    {
+        let sys = system.read().await;
+        sys.db.write().await.upsert_processing_job(&job)?;
+    }
+    if let Some(error) = &job.error {
+        anyhow::bail!("memory store failed [job={}]: {}", job_id, error);
+    }
+
+    Ok(format!(
+        "memory {}: {} ({}) [job={}]",
+        job.state, id, project, job_id
+    ))
 }
 
 async fn memory_update(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
@@ -344,9 +360,10 @@ async fn memory_update(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Resul
         chunk.document = text;
     }
     if let Some(project) = args.get("project").and_then(Value::as_str)
-        && !project.trim().is_empty() {
-            chunk.project = project.trim().to_string();
-        }
+        && !project.trim().is_empty()
+    {
+        chunk.project = project.trim().to_string();
+    }
     if let Some(importance) = args.get("importance").and_then(Value::as_str) {
         chunk.metadata.importance = parse_importance(importance)?;
     }
@@ -372,12 +389,11 @@ async fn memory_update(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Resul
     sys.db.write().await.insert_chunk(&chunk)?;
     sys.add_text_doc(&chunk.id, &chunk.project, &chunk.document)
         .await?;
-    if embedding_changed
-        && let Some(embedding) = &chunk.embedding {
-            let mut vector_index = sys.vector_index.write().await;
-            vector_index.add(&chunk.id, embedding)?;
-            vector_index.save()?;
-        }
+    if embedding_changed && let Some(embedding) = &chunk.embedding {
+        let mut vector_index = sys.vector_index.write().await;
+        vector_index.add(&chunk.id, embedding)?;
+        vector_index.save()?;
+    }
     Ok(format!("memory updated: {} ({})", chunk.id, chunk.project))
 }
 
@@ -408,9 +424,16 @@ async fn memory_context(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Resu
     let n = args.get("n_results").and_then(Value::as_u64).unwrap_or(3) as usize;
     let max_notes = args.get("max_notes").and_then(Value::as_u64).unwrap_or(4) as usize;
     let max_facts = args.get("max_facts").and_then(Value::as_u64).unwrap_or(4) as usize;
-    let max_chars = args.get("max_chars").and_then(Value::as_u64).unwrap_or(2000) as usize;
+    let max_chars = args
+        .get("max_chars")
+        .and_then(Value::as_u64)
+        .unwrap_or(2000) as usize;
     let category = args.get("category").and_then(Value::as_str).unwrap_or("");
-    let cat = if category.trim().is_empty() { None } else { Some(category.to_string()) };
+    let cat = if category.trim().is_empty() {
+        None
+    } else {
+        Some(category.to_string())
+    };
 
     // Delegate to the shared context-pack core so the MCP tool and the HTTP
     // /context endpoint return an identical, budget-bounded prompt.
@@ -445,13 +468,30 @@ async fn memory_get(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<S
 
 async fn memory_neighbors(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
     let req = crate::server::api::NeighborsRequest {
-        id: args.get("id").and_then(Value::as_str).unwrap_or("").to_string(),
-        text: args.get("text").and_then(Value::as_str).unwrap_or("").to_string(),
+        id: args
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        text: args
+            .get("text")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
         k: args.get("k").and_then(Value::as_u64).unwrap_or(10) as usize,
-        max_distance: args.get("max_distance").and_then(Value::as_f64).unwrap_or(0.0) as f32,
-        project: args.get("project").and_then(Value::as_str).unwrap_or("all").to_string(),
+        max_distance: args
+            .get("max_distance")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0) as f32,
+        project: args
+            .get("project")
+            .and_then(Value::as_str)
+            .unwrap_or("all")
+            .to_string(),
     };
-    let items = crate::server::api::neighbors(axum::extract::State(system), axum::Json(req)).await.0;
+    let items = crate::server::api::neighbors(axum::extract::State(system), axum::Json(req))
+        .await
+        .0;
     Ok(serde_json::to_string(&items)?)
 }
 
@@ -468,7 +508,11 @@ pub(crate) async fn memory_search(
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let category = args.get("category").and_then(Value::as_str).unwrap_or("");
-    let cat = if category.trim().is_empty() { None } else { Some(category.to_string()) };
+    let cat = if category.trim().is_empty() {
+        None
+    } else {
+        Some(category.to_string())
+    };
 
     // Cross-project recall drops the reserved autolog buckets at the candidate
     // level, so useful manual memories are not crowded out by legacy noise.
@@ -478,8 +522,9 @@ pub(crate) async fn memory_search(
     // become one-line stubs so recall loss at small n is visible (the model
     // can re-query or memory_get instead of never knowing rank n+1 existed).
     const STUBS: usize = 5;
+    let started = std::time::Instant::now();
     let items = crate::server::api::run_hybrid_search(
-        system,
+        system.clone(),
         query,
         project,
         n + STUBS,
@@ -489,8 +534,25 @@ pub(crate) async fn memory_search(
         cat,
     )
     .await;
+    let event = RecallEvent {
+        id: format!("recall_{}", uuid::Uuid::new_v4().simple()),
+        query: redact_text(query),
+        project: project.to_string(),
+        result_ids: items.iter().take(n).map(|item| item.id.clone()).collect(),
+        duration_ms: started.elapsed().as_millis().min(i64::MAX as u128) as i64,
+        adapter: "mcp".to_string(),
+        outcome: "pending".to_string(),
+        created_at: chrono::Utc::now(),
+    };
+    {
+        let sys = system.read().await;
+        let _ = sys.db.write().await.insert_recall_event(&event);
+    }
 
-    let mut lines = vec![format!("=== memory search results ({}) ===", query)];
+    let mut lines = vec![
+        format!("=== memory search results ({}) ===", query),
+        format!("recall_id={}", event.id),
+    ];
     if items.is_empty() {
         lines.push("no results".to_string());
     }
@@ -504,7 +566,11 @@ pub(crate) async fn memory_search(
         ));
         let shown = item.document.chars().count();
         let marker = if item.doc_len > shown {
-            format!(" …[+{} chars — memory_get {}]", item.doc_len - shown, item.id)
+            format!(
+                " …[+{} chars — memory_get {}]",
+                item.doc_len - shown,
+                item.id
+            )
         } else {
             String::new()
         };
@@ -524,6 +590,37 @@ pub(crate) async fn memory_search(
         }
     }
     Ok(lines.join("\n"))
+}
+
+async fn memory_feedback(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
+    let recall_id = args
+        .get("recall_id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    anyhow::ensure!(!recall_id.is_empty(), "recall_id is required");
+    let outcome = args
+        .get("outcome")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_lowercase();
+    anyhow::ensure!(
+        matches!(outcome.as_str(), "helpful" | "harmful" | "ignored"),
+        "outcome must be helpful, harmful, or ignored"
+    );
+    let note = args.get("note").and_then(Value::as_str).map(redact_text);
+    let sys = system.read().await;
+    let db = sys.db.write().await;
+    let ids = db
+        .set_recall_feedback(recall_id, &outcome, note.as_deref())?
+        .ok_or_else(|| anyhow::anyhow!("recall event not found"))?;
+    Ok(format!(
+        "recall {} marked {} ({} memories)",
+        recall_id,
+        outcome,
+        ids.len()
+    ))
 }
 
 async fn memory_stats(system: Arc<RwLock<MemorySystem>>) -> Result<String> {
@@ -836,18 +933,10 @@ fn project_from_cwd(cwd: &str) -> String {
     if trimmed.is_empty() {
         return "default".into();
     }
-    let last = trimmed
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or("")
-        .trim();
+    let last = trimmed.rsplit(['/', '\\']).next().unwrap_or("").trim();
     if last.is_empty() {
         "default".into()
     } else {
         last.to_string()
     }
 }
-
-
-
-

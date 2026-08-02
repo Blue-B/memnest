@@ -94,6 +94,8 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
             get(api::get_secret).delete(api::delete_secret),
         )
         .route("/stats", get(api::stats))
+        .route("/operations", get(api::operations))
+        .route("/feedback", post(api::recall_feedback))
         .nest_service("/assets", ServeDir::new("static"))
         .route("/", get(api::viewer_dashboard))
         .route("/viewer/collections", get(api::viewer_collections))

@@ -154,6 +154,50 @@ impl Database {
                 description TEXT NOT NULL DEFAULT '',
                 updated_at  TEXT NOT NULL
             );
+
+            -- A queued write may be semantically deduplicated after the caller
+            -- receives its id. Aliases keep that public id resolvable and point
+            -- it at the canonical memory instead of creating a phantom id.
+            CREATE TABLE IF NOT EXISTS memory_aliases (
+                alias_id TEXT PRIMARY KEY,
+                canonical_id TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_memory_aliases_canonical
+                ON memory_aliases(canonical_id);
+
+            CREATE TABLE IF NOT EXISTS processing_jobs (
+                id TEXT PRIMARY KEY,
+                operation TEXT NOT NULL,
+                target_id TEXT NOT NULL,
+                state TEXT NOT NULL CHECK (state IN ('queued','running','succeeded','deduplicated','failed')),
+                canonical_id TEXT,
+                adapter TEXT NOT NULL DEFAULT 'core',
+                error TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_processing_jobs_updated
+                ON processing_jobs(updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_processing_jobs_state
+                ON processing_jobs(state, updated_at DESC);
+
+            CREATE TABLE IF NOT EXISTS recall_events (
+                id TEXT PRIMARY KEY,
+                query TEXT NOT NULL,
+                project TEXT NOT NULL,
+                result_ids TEXT NOT NULL DEFAULT '[]',
+                duration_ms INTEGER NOT NULL DEFAULT 0,
+                adapter TEXT NOT NULL DEFAULT 'http',
+                outcome TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (outcome IN ('pending','helpful','harmful','ignored')),
+                feedback_note TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_recall_events_created
+                ON recall_events(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_recall_events_outcome
+                ON recall_events(outcome, created_at DESC);
             "#,
         )?;
         migrate_legacy_schema(&conn)?;
@@ -174,6 +218,29 @@ impl Database {
                 params![name, kind, desc, now],
             )?;
         }
+
+        // Queued/running rows cannot be replayed because memory text is never
+        // persisted in telemetry. Mark them failed on restart instead of
+        // presenting stale work as active or pretending it completed.
+        conn.execute(
+            "UPDATE processing_jobs
+             SET state = 'failed',
+                 error = COALESCE(error, 'interrupted by service restart'),
+                 updated_at = ?1
+             WHERE state IN ('queued', 'running')",
+            params![Utc::now().to_rfc3339()],
+        )?;
+
+        // Operational history is intentionally bounded. It contains redacted
+        // queries and safe status metadata, never memory bodies or secrets.
+        conn.execute(
+            "DELETE FROM recall_events WHERE datetime(created_at) < datetime('now', '-90 days')",
+            [],
+        )?;
+        conn.execute(
+            "DELETE FROM processing_jobs WHERE datetime(updated_at) < datetime('now', '-90 days')",
+            [],
+        )?;
 
         Ok(Self { pool })
     }
@@ -280,7 +347,12 @@ impl Database {
 
     /// Age bucket counts for the 'root' project (chunks older than 30/90/180 days).
     /// Cutoff strings are RFC3339-formatted UTC timestamps passed from the caller.
-    pub fn age_buckets_root(&self, cut30: &str, cut90: &str, cut180: &str) -> Result<(u64, u64, u64)> {
+    pub fn age_buckets_root(
+        &self,
+        cut30: &str,
+        cut90: &str,
+        cut180: &str,
+    ) -> Result<(u64, u64, u64)> {
         let conn = self.pool.get()?;
         let over_30d: u64 = conn.query_row(
             "SELECT COUNT(*) FROM chunks WHERE project = 'root' AND created_at < ?1",
@@ -368,13 +440,26 @@ impl Database {
         rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
     }
 
+    pub fn canonical_chunk_id(&self, id: &str) -> Result<String> {
+        let conn = self.pool.get()?;
+        Ok(conn
+            .query_row(
+                "SELECT canonical_id FROM memory_aliases WHERE alias_id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or_else(|| id.to_string()))
+    }
+
     pub fn get_chunk(&self, id: &str) -> Result<Option<MemoryChunk>> {
+        let canonical_id = self.canonical_chunk_id(id)?;
         let conn = self.pool.get()?;
         let mut stmt = conn.prepare(
             "SELECT id, project, document, embedding, metadata, created_at, updated_at
              FROM chunks WHERE id = ?1",
         )?;
-        let mut rows = stmt.query(params![id])?;
+        let mut rows = stmt.query(params![canonical_id])?;
         if let Some(row) = rows.next()? {
             Ok(Some(self.row_to_chunk(row)?))
         } else {
@@ -382,9 +467,33 @@ impl Database {
         }
     }
 
-    pub fn delete_chunk(&self, id: &str) -> Result<bool> {
+    pub fn insert_memory_alias(&self, alias_id: &str, canonical_id: &str) -> Result<()> {
         let conn = self.pool.get()?;
-        let affected = conn.execute("DELETE FROM chunks WHERE id = ?1", params![id])?;
+        conn.execute(
+            "INSERT OR REPLACE INTO memory_aliases (alias_id, canonical_id, created_at)
+             VALUES (?1, ?2, ?3)",
+            params![alias_id, canonical_id, Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_chunk(&self, id: &str) -> Result<bool> {
+        let mut conn = self.pool.get()?;
+        let tx = conn.transaction()?;
+        let canonical_id: String = tx
+            .query_row(
+                "SELECT canonical_id FROM memory_aliases WHERE alias_id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or_else(|| id.to_string());
+        tx.execute(
+            "DELETE FROM memory_aliases WHERE alias_id = ?1 OR canonical_id = ?1",
+            params![canonical_id],
+        )?;
+        let affected = tx.execute("DELETE FROM chunks WHERE id = ?1", params![canonical_id])?;
+        tx.commit()?;
         Ok(affected > 0)
     }
 
@@ -975,6 +1084,198 @@ impl Database {
             conn.query_row("SELECT COUNT(*) FROM graph_edges", [], |row| row.get(0))?;
         Ok((node_count as usize, edge_count as usize))
     }
+
+    // ── Operational observability ────────────────────────────
+
+    pub fn upsert_processing_job(&self, job: &ProcessingJob) -> Result<()> {
+        let conn = self.pool.get()?;
+        conn.execute(
+            "INSERT INTO processing_jobs
+             (id, operation, target_id, state, canonical_id, adapter, error, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(id) DO UPDATE SET
+               state = excluded.state,
+               canonical_id = excluded.canonical_id,
+               adapter = excluded.adapter,
+               error = excluded.error,
+               updated_at = excluded.updated_at",
+            params![
+                job.id,
+                job.operation,
+                job.target_id,
+                job.state,
+                job.canonical_id,
+                job.adapter,
+                job.error,
+                job.created_at.to_rfc3339(),
+                job.updated_at.to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn recent_processing_jobs(&self, limit: usize) -> Result<Vec<ProcessingJob>> {
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, operation, target_id, state, canonical_id, adapter, error, created_at, updated_at
+             FROM processing_jobs ORDER BY updated_at DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit as i64], |row| {
+            Ok(ProcessingJob {
+                id: row.get(0)?,
+                operation: row.get(1)?,
+                target_id: row.get(2)?,
+                state: row.get(3)?,
+                canonical_id: row.get(4)?,
+                adapter: row.get(5)?,
+                error: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn insert_recall_event(&self, event: &RecallEvent) -> Result<()> {
+        let conn = self.pool.get()?;
+        conn.execute(
+            "INSERT INTO recall_events
+             (id, query, project, result_ids, duration_ms, adapter, outcome, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                event.id,
+                event.query,
+                event.project,
+                serde_json::to_string(&event.result_ids)?,
+                event.duration_ms,
+                event.adapter,
+                event.outcome,
+                event.created_at.to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn recent_recall_events(&self, limit: usize) -> Result<Vec<RecallEvent>> {
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, query, project, result_ids, duration_ms, adapter, outcome, created_at
+             FROM recall_events ORDER BY created_at DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit as i64], |row| {
+            let ids: String = row.get(3)?;
+            Ok(RecallEvent {
+                id: row.get(0)?,
+                query: row.get(1)?,
+                project: row.get(2)?,
+                result_ids: serde_json::from_str(&ids).unwrap_or_default(),
+                duration_ms: row.get(4)?,
+                adapter: row.get(5)?,
+                outcome: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn set_recall_feedback(
+        &self,
+        id: &str,
+        outcome: &str,
+        note: Option<&str>,
+    ) -> Result<Option<Vec<String>>> {
+        let mut conn = self.pool.get()?;
+        let tx = conn.transaction()?;
+        let event: Option<(String, String)> = tx
+            .query_row(
+                "SELECT result_ids, outcome FROM recall_events WHERE id = ?1",
+                params![id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let Some((ids_json, previous_outcome)) = event else {
+            return Ok(None);
+        };
+        let ids: Vec<String> = serde_json::from_str(&ids_json).unwrap_or_default();
+        if previous_outcome != outcome {
+            for id in &ids {
+                let canonical_id: String = tx
+                    .query_row(
+                        "SELECT canonical_id FROM memory_aliases WHERE alias_id = ?1",
+                        params![id],
+                        |row| row.get(0),
+                    )
+                    .optional()?
+                    .unwrap_or_else(|| id.clone());
+                let metadata_json: Option<String> = tx
+                    .query_row(
+                        "SELECT metadata FROM chunks WHERE id = ?1",
+                        params![canonical_id],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                let Some(metadata_json) = metadata_json else {
+                    continue;
+                };
+                let mut metadata: Metadata = serde_json::from_str(&metadata_json)?;
+                match previous_outcome.as_str() {
+                    "helpful" => metadata.helpful_count = (metadata.helpful_count - 1).max(0),
+                    "harmful" => metadata.harmful_count = (metadata.harmful_count - 1).max(0),
+                    _ => {}
+                }
+                match outcome {
+                    "helpful" => metadata.helpful_count += 1,
+                    "harmful" => metadata.harmful_count += 1,
+                    _ => {}
+                }
+                tx.execute(
+                    "UPDATE chunks SET metadata = ?2, updated_at = ?3 WHERE id = ?1",
+                    params![
+                        canonical_id,
+                        serde_json::to_string(&metadata)?,
+                        Utc::now().to_rfc3339()
+                    ],
+                )?;
+            }
+        }
+        tx.execute(
+            "UPDATE recall_events SET outcome = ?2, feedback_note = ?3 WHERE id = ?1",
+            params![id, outcome, note],
+        )?;
+        tx.commit()?;
+        Ok(Some(ids))
+    }
+
+    pub fn operations_summary(&self) -> Result<OperationsSummary> {
+        let conn = self.pool.get()?;
+        let (recalls, helpful, harmful, average): (i64, i64, i64, f64) = conn.query_row(
+            "SELECT
+               COUNT(*),
+               COALESCE(SUM(CASE WHEN outcome = 'helpful' THEN 1 ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN outcome = 'harmful' THEN 1 ELSE 0 END), 0),
+               COALESCE(AVG(duration_ms), 0)
+             FROM recall_events
+             WHERE datetime(created_at) >= datetime('now', '-24 hours')",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+        let count_state = |state: &str| -> Result<usize> {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM processing_jobs WHERE state = ?1",
+                params![state],
+                |row| row.get::<_, i64>(0),
+            )? as usize)
+        };
+        Ok(OperationsSummary {
+            recalls_24h: recalls as usize,
+            helpful_24h: helpful as usize,
+            harmful_24h: harmful as usize,
+            queued_jobs: count_state("queued")?,
+            running_jobs: count_state("running")?,
+            failed_jobs: count_state("failed")?,
+            average_recall_ms_24h: average,
+        })
+    }
 }
 
 fn encode_embedding(vector: &[f32]) -> Vec<u8> {
@@ -1343,5 +1644,155 @@ mod tests {
         let now = Utc::now().to_rfc3339();
         assert!(db.trash_chunk(&id, &now).unwrap());
         assert!(!db.trash_chunk(&id, &now).unwrap(), "already in trash");
+    }
+
+    #[tokio::test]
+    async fn semantic_dedup_alias_keeps_queued_id_resolvable() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        let chunk = sample_chunk("proj", "canonical memory", Importance::Knowledge);
+        let canonical_id = chunk.id.clone();
+        db.insert_chunk(&chunk).unwrap();
+        db.insert_memory_alias("queued-id", &canonical_id).unwrap();
+
+        let resolved = db.get_chunk("queued-id").unwrap().expect("alias resolves");
+        assert_eq!(resolved.id, canonical_id);
+        assert_eq!(resolved.document, "canonical memory");
+        assert_eq!(db.canonical_chunk_id("queued-id").unwrap(), resolved.id);
+        assert!(
+            db.trash_chunk("queued-id", &Utc::now().to_rfc3339())
+                .unwrap()
+        );
+        assert_eq!(
+            db.get_chunk("queued-id").unwrap().unwrap().project,
+            "_trash"
+        );
+    }
+
+    #[tokio::test]
+    async fn operational_events_and_feedback_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        let chunk = sample_chunk("proj", "useful memory", Importance::Knowledge);
+        let chunk_id = chunk.id.clone();
+        db.insert_chunk(&chunk).unwrap();
+        let now = Utc::now();
+        db.insert_recall_event(&RecallEvent {
+            id: "recall-test".to_string(),
+            query: "safe query".to_string(),
+            project: "proj".to_string(),
+            result_ids: vec![chunk_id.clone()],
+            duration_ms: 12,
+            adapter: "test".to_string(),
+            outcome: "pending".to_string(),
+            created_at: now,
+        })
+        .unwrap();
+        db.upsert_processing_job(&ProcessingJob {
+            id: "job-test".to_string(),
+            operation: "embed_and_store".to_string(),
+            target_id: chunk_id.clone(),
+            state: "succeeded".to_string(),
+            canonical_id: None,
+            adapter: "test".to_string(),
+            error: None,
+            created_at: now,
+            updated_at: now,
+        })
+        .unwrap();
+
+        let ids = db
+            .set_recall_feedback("recall-test", "helpful", Some("worked"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(ids, vec![chunk_id.clone()]);
+        db.set_recall_feedback("recall-test", "helpful", Some("retry"))
+            .unwrap();
+        assert_eq!(
+            db.get_chunk(&chunk_id)
+                .unwrap()
+                .unwrap()
+                .metadata
+                .helpful_count,
+            1,
+            "same feedback must be idempotent"
+        );
+        db.set_recall_feedback("recall-test", "harmful", None)
+            .unwrap();
+
+        let recalls = db.recent_recall_events(10).unwrap();
+        let jobs = db.recent_processing_jobs(10).unwrap();
+        let summary = db.operations_summary().unwrap();
+        assert_eq!(recalls[0].outcome, "harmful");
+        assert_eq!(jobs[0].state, "succeeded");
+        assert_eq!(summary.recalls_24h, 1);
+        assert_eq!(summary.helpful_24h, 0);
+        assert_eq!(summary.harmful_24h, 1);
+        assert_eq!(
+            db.get_chunk(&chunk_id)
+                .unwrap()
+                .unwrap()
+                .metadata
+                .helpful_count,
+            0
+        );
+        assert_eq!(
+            db.get_chunk(&chunk_id)
+                .unwrap()
+                .unwrap()
+                .metadata
+                .harmful_count,
+            1
+        );
+
+        db.insert_recall_event(&RecallEvent {
+            id: "empty-recall".to_string(),
+            query: "no result".to_string(),
+            project: "proj".to_string(),
+            result_ids: Vec::new(),
+            duration_ms: 2,
+            adapter: "test".to_string(),
+            outcome: "pending".to_string(),
+            created_at: now,
+        })
+        .unwrap();
+        assert_eq!(
+            db.set_recall_feedback("empty-recall", "ignored", None)
+                .unwrap(),
+            Some(Vec::new())
+        );
+        assert!(
+            db.set_recall_feedback("missing", "ignored", None)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn startup_marks_interrupted_jobs_failed() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let db = Database::new(dir.path()).await.unwrap();
+            let now = Utc::now();
+            db.upsert_processing_job(&ProcessingJob {
+                id: "interrupted".to_string(),
+                operation: "embed_and_store".to_string(),
+                target_id: "manual-x".to_string(),
+                state: "running".to_string(),
+                canonical_id: None,
+                adapter: "test".to_string(),
+                error: None,
+                created_at: now,
+                updated_at: now,
+            })
+            .unwrap();
+        }
+        let reopened = Database::new(dir.path()).await.unwrap();
+        let jobs = reopened.recent_processing_jobs(5).unwrap();
+        assert_eq!(jobs[0].state, "failed");
+        assert_eq!(
+            jobs[0].error.as_deref(),
+            Some("interrupted by service restart")
+        );
     }
 }

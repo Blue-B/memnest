@@ -1,11 +1,12 @@
 use anyhow::{Context, bail};
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use memnest::models::{ChunkType, Fact, FactHistory, Importance, MemoryChunk, Metadata};
 use memnest::redaction::redact_text;
 use memnest::{MemorySystem, config::Config};
 use serde::Deserialize;
 use serde_json::Value;
 use std::io::{BufRead, BufReader};
+use std::net::ToSocketAddrs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::info;
@@ -21,8 +22,12 @@ struct Cli {
     #[arg(long, default_value = "127.0.0.1")]
     host: String,
 
-    #[arg(long, default_value = "3113")]
-    viewer_port: u16,
+    /// Deprecated compatibility flag. The dashboard always uses --port.
+    #[arg(long, hide = true)]
+    viewer_port: Option<u16>,
+
+    #[command(subcommand)]
+    command: Option<CliCommand>,
 
     #[arg(long)]
     mcp: bool,
@@ -50,6 +55,14 @@ struct Cli {
 
     #[arg(long)]
     force: bool,
+}
+
+#[derive(Subcommand, Debug)]
+enum CliCommand {
+    /// Show the canonical dashboard URL and whether the local service is reachable.
+    Status,
+    /// Print the canonical dashboard URL. Terminals usually render it as a clickable link.
+    Dashboard,
 }
 
 #[derive(Debug, Deserialize)]
@@ -93,9 +106,40 @@ async fn main() -> anyhow::Result<()> {
     let mut config = Config::default();
     config.api_port = cli.port;
     config.api_host = cli.host.clone();
-    config.viewer_port = cli.viewer_port;
+    if cli.viewer_port.is_some() {
+        eprintln!(
+            "warning: --viewer-port is deprecated; the dashboard uses --port ({})",
+            cli.port
+        );
+    }
     if let Some(dir) = cli.data_dir {
         config.data_dir = PathBuf::from(dir);
+    }
+
+    if let Some(command) = &cli.command {
+        let dashboard_url = format!(
+            "http://{}:{}/",
+            canonical_display_host(&config.api_host),
+            config.api_port
+        );
+        let reachable = service_reachable(&config.api_host, config.api_port);
+        match command {
+            CliCommand::Status => {
+                println!("memnest v{}", env!("CARGO_PKG_VERSION"));
+                println!(
+                    "service: {}",
+                    if reachable {
+                        "reachable"
+                    } else {
+                        "not reachable"
+                    }
+                );
+                println!("dashboard: {dashboard_url}");
+                println!("data dir: {}", config.data_dir.display());
+            }
+            CliCommand::Dashboard => println!("{dashboard_url}"),
+        }
+        return Ok(());
     }
 
     if let Some(path) = cli.backup_dir.as_deref() {
@@ -226,6 +270,33 @@ async fn shutdown_signal() {
 #[cfg(not(unix))]
 async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
+}
+
+fn canonical_display_host(host: &str) -> String {
+    if matches!(host, "127.0.0.1" | "0.0.0.0" | "::" | "::1") {
+        "localhost".to_string()
+    } else if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]")
+    } else {
+        host.to_string()
+    }
+}
+
+fn service_reachable(host: &str, port: u16) -> bool {
+    let probe_host = if matches!(host, "0.0.0.0" | "::") {
+        "localhost"
+    } else {
+        host
+    };
+    (probe_host, port)
+        .to_socket_addrs()
+        .ok()
+        .into_iter()
+        .flatten()
+        .any(|address| {
+            std::net::TcpStream::connect_timeout(&address, std::time::Duration::from_millis(400))
+                .is_ok()
+        })
 }
 
 fn enforce_bind_safety(host: &str) -> anyhow::Result<()> {
@@ -458,4 +529,17 @@ fn parse_import_timestamp(value: Option<&str>) -> chrono::DateTime<chrono::Utc> 
         return dt.and_utc();
     }
     chrono::Utc::now()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dashboard_hosts_are_safe_for_urls() {
+        assert_eq!(canonical_display_host("127.0.0.1"), "localhost");
+        assert_eq!(canonical_display_host("0.0.0.0"), "localhost");
+        assert_eq!(canonical_display_host("192.168.1.20"), "192.168.1.20");
+        assert_eq!(canonical_display_host("2001:db8::1"), "[2001:db8::1]");
+    }
 }
