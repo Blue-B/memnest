@@ -1,11 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub data_dir: PathBuf,
-    pub viewer_port: u16,
-    pub viewer_host: String,
     pub api_port: u16,
     pub api_host: String,
     pub embed_model: String,
@@ -28,11 +26,9 @@ impl Default for Config {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
         let data_dir = std::env::var("MEMNEST_DATA_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| home.join(".factory").join("memories"));
+            .unwrap_or_else(|_| default_data_dir(&home));
         Self {
             data_dir,
-            viewer_port: 3113,
-            viewer_host: "127.0.0.1".to_string(),
             api_port: 3111,
             api_host: "127.0.0.1".to_string(),
             embed_model: std::env::var("MEMNEST_EMBED_MODEL")
@@ -53,5 +49,32 @@ impl Default for Config {
             enable_graph: true,
             enable_lifecycle: true,
         }
+    }
+}
+
+fn default_data_dir(home: &Path) -> PathBuf {
+    let current = home.join(".memnest");
+    let legacy = home.join(".factory").join("memories");
+    if current.exists() || !legacy.exists() {
+        current
+    } else {
+        legacy
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_data_dir_preserves_legacy_store_until_migrated() {
+        let home = tempfile::tempdir().unwrap();
+        let legacy = home.path().join(".factory").join("memories");
+        std::fs::create_dir_all(&legacy).unwrap();
+        assert_eq!(default_data_dir(home.path()), legacy);
+
+        let current = home.path().join(".memnest");
+        std::fs::create_dir_all(&current).unwrap();
+        assert_eq!(default_data_dir(home.path()), current);
     }
 }

@@ -29,6 +29,9 @@ pub struct SearchRequest {
     /// cross-project results. Pass project="root" explicitly to read them.
     #[serde(default)]
     exclude_reserved: bool,
+    /// Safe integration label used only for local observability.
+    #[serde(default = "default_http_adapter")]
+    adapter: String,
 }
 
 fn default_project() -> String {
@@ -37,12 +40,16 @@ fn default_project() -> String {
 fn default_n() -> usize {
     3
 }
+fn default_http_adapter() -> String {
+    "http".to_string()
+}
 
 #[derive(Serialize)]
 pub struct SearchResponse {
     results: Vec<SearchResultItem>,
     total: usize,
     elapsed_ms: u128,
+    recall_id: String,
 }
 
 #[derive(Serialize)]
@@ -59,6 +66,11 @@ pub struct SearchResultItem {
     pub chunk_type: String,
     pub importance: String,
     pub category: String,
+    pub memory_kind: String,
+    pub confidence: Option<f32>,
+    pub adapter: String,
+    pub helpful_count: i64,
+    pub harmful_count: i64,
 }
 
 #[derive(Deserialize)]
@@ -126,6 +138,35 @@ pub struct MetadataPatch {
     sensitive: Option<bool>,
     #[serde(default)]
     pinned: Option<bool>,
+    #[serde(default)]
+    adapter: Option<String>,
+    #[serde(default)]
+    adapter_version: Option<String>,
+    #[serde(default)]
+    memory_kind: Option<MemoryKind>,
+    #[serde(default)]
+    confidence: Option<f32>,
+    #[serde(default)]
+    source_ids: Option<Vec<String>>,
+    #[serde(default)]
+    supersedes: Option<String>,
+    #[serde(default)]
+    verified_at: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct FeedbackRequest {
+    recall_id: String,
+    outcome: String,
+    #[serde(default)]
+    note: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct OperationsResponse {
+    summary: OperationsSummary,
+    recalls: Vec<RecallEvent>,
+    jobs: Vec<ProcessingJob>,
 }
 
 #[derive(Deserialize)]
@@ -326,6 +367,9 @@ pub struct LifecycleInfo {
 pub struct HealthResponse {
     status: String,
     version: String,
+    dashboard_url: String,
+    data_dir: String,
+    embed_model: String,
     lifecycle: LifecycleInfo,
 }
 
@@ -399,6 +443,7 @@ pub struct StatsResponse {
     age_buckets: AgeBuckets,
     disk: DiskStats,
     recommendations: Vec<String>,
+    operations: OperationsSummary,
 }
 
 // ── API Handlers ─────────────────────────────────────────────
@@ -409,6 +454,9 @@ pub async fn health(State(system): State<Arc<RwLock<MemorySystem>>>) -> Json<Hea
     Json(HealthResponse {
         status: "ok".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
+        dashboard_url: format!("http://localhost:{}/", sys.config.api_port),
+        data_dir: sys.config.data_dir.display().to_string(),
+        embed_model: sys.config.embed_model.clone(),
         lifecycle: LifecycleInfo {
             last_run: status.last_run.map(|dt| dt.to_rfc3339()),
             last_deleted: status.last_deleted,
@@ -458,9 +506,13 @@ pub async fn search(
     Json(req): Json<SearchRequest>,
 ) -> Json<SearchResponse> {
     let started = std::time::Instant::now();
-    let cat = if req.category.trim().is_empty() { None } else { Some(req.category.clone()) };
+    let cat = if req.category.trim().is_empty() {
+        None
+    } else {
+        Some(req.category.clone())
+    };
     let items = run_hybrid_search(
-        system,
+        system.clone(),
         &req.query,
         &req.project,
         req.n_results,
@@ -470,11 +522,28 @@ pub async fn search(
         cat,
     )
     .await;
+    let elapsed_ms = started.elapsed().as_millis();
+    let recall_id = format!("recall_{}", uuid::Uuid::new_v4().simple());
+    let event = RecallEvent {
+        id: recall_id.clone(),
+        query: redact_text(&req.query),
+        project: req.project.clone(),
+        result_ids: items.iter().map(|item| item.id.clone()).collect(),
+        duration_ms: elapsed_ms.min(i64::MAX as u128) as i64,
+        adapter: req.adapter,
+        outcome: "pending".to_string(),
+        created_at: chrono::Utc::now(),
+    };
+    {
+        let sys = system.read().await;
+        let _ = sys.db.write().await.insert_recall_event(&event);
+    }
     let total = items.len();
     Json(SearchResponse {
         results: items,
         total,
-        elapsed_ms: started.elapsed().as_millis(),
+        elapsed_ms,
+        recall_id,
     })
 }
 
@@ -539,7 +608,10 @@ pub(crate) async fn run_hybrid_search(
     };
     let mut vector_only_used = 0usize;
     let mut items: Vec<(SearchResultItem, Vec<f32>)> = Vec::new();
-    let cat_filter = category.as_ref().map(|c| c.trim().to_lowercase()).filter(|c| !c.is_empty());
+    let cat_filter = category
+        .as_ref()
+        .map(|c| c.trim().to_lowercase())
+        .filter(|c| !c.is_empty());
     for (id, score) in fused {
         if let Ok(Some(c)) = db.get_chunk(&id) {
             if project != "all" && c.project != project {
@@ -584,6 +656,7 @@ pub(crate) async fn run_hybrid_search(
                 + keyword_bonus_from_ratio(keyword_ratio, sys.config.keyword_max_bonus)
                 + importance_bonus(&c.metadata.importance)
                 + type_bonus(&c.metadata.chunk_type)
+                + feedback_bonus(c.metadata.helpful_count, c.metadata.harmful_count)
                 - recency_penalty(
                     c.created_at,
                     sys.config.recency_penalty_rate,
@@ -607,6 +680,14 @@ pub(crate) async fn run_hybrid_search(
                     chunk_type: format!("{:?}", c.metadata.chunk_type),
                     importance: format!("{:?}", c.metadata.importance),
                     category: format!("{:?}", c.metadata.category),
+                    memory_kind: serde_json::to_value(&c.metadata.memory_kind)
+                        .ok()
+                        .and_then(|value| value.as_str().map(str::to_string))
+                        .unwrap_or_else(|| "record".to_string()),
+                    confidence: c.metadata.confidence,
+                    adapter: c.metadata.adapter.clone().unwrap_or_default(),
+                    helpful_count: c.metadata.helpful_count,
+                    harmful_count: c.metadata.harmful_count,
                 },
                 embedding,
             ));
@@ -678,7 +759,10 @@ pub async fn neighbors(
     let sys = system.read().await;
     let query_embedding: Option<Vec<f32>> = if !req.id.trim().is_empty() {
         let db = sys.db.read().await;
-        db.get_chunk(&req.id).ok().flatten().and_then(|c| c.embedding)
+        db.get_chunk(&req.id)
+            .ok()
+            .flatten()
+            .and_then(|c| c.embedding)
     } else if !req.text.trim().is_empty() {
         let embedder = sys.embedder.clone();
         let text = req.text.clone();
@@ -737,15 +821,11 @@ pub async fn add(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<AddRequest>,
 ) -> Json<HashMap<String, String>> {
-    // Fire-and-forget: respond immediately, perform embed + DB write + index update
-    // in a background task. This matches the legacy Stop-hook architecture where
-    // memory writes never block the user-facing response path.
     let project = if req.project.is_empty() {
         "default".to_string()
     } else {
         req.project
     };
-    // Soft-delete bucket is internal; never accept direct writes into it.
     if matches!(project.as_str(), "_trash" | "_superseded") {
         let mut map = HashMap::new();
         map.insert("status".to_string(), "error".to_string());
@@ -756,14 +836,16 @@ pub async fn add(
         return Json(map);
     }
     let text = redact_text(&req.text);
-    let metadata = req.metadata.unwrap_or(Metadata {
+    let mut metadata = req.metadata.unwrap_or(Metadata {
         chunk_type: ChunkType::Manual,
         ..Default::default()
     });
+    let adapter = metadata
+        .adapter
+        .clone()
+        .unwrap_or_else(|| "http".to_string());
+    metadata.adapter.get_or_insert_with(|| adapter.clone());
 
-    // Exact-match dedup before queueing — cheap indexed lookup, lets the
-    // client see a clear "deduplicated" status instead of paying for an
-    // embedding round trip just to discard the result.
     {
         let sys = system.read().await;
         let db = sys.db.read().await;
@@ -778,38 +860,69 @@ pub async fn add(
         }
     }
 
-    let id = format!(
-        "manual_{}",
-        &uuid::Uuid::new_v4().to_string().replace("-", "")[..16]
-    );
+    let id = format!("manual_{}", uuid::Uuid::new_v4().simple());
+    let job_id = format!("job_{}", uuid::Uuid::new_v4().simple());
+    let now = chrono::Utc::now();
+    let mut job = ProcessingJob {
+        id: job_id.clone(),
+        operation: "embed_and_store".to_string(),
+        target_id: id.clone(),
+        state: "queued".to_string(),
+        canonical_id: None,
+        adapter: adapter.clone(),
+        error: None,
+        created_at: now,
+        updated_at: now,
+    };
+    {
+        let sys = system.read().await;
+        let _ = sys.db.write().await.upsert_processing_job(&job);
+    }
 
-    let bg_system = system.clone();
-    let bg_id = id.clone();
-    let bg_project = project.clone();
-    let bg_text = text.clone();
-    let bg_metadata = metadata.clone();
-    tokio::spawn(async move {
-        if let Err(e) =
-            persist_chunk_async(bg_system, bg_id, bg_project, bg_text, bg_metadata).await
-        {
-            tracing::warn!("background api add failed: {e:#}");
+    job.state = "running".to_string();
+    job.updated_at = chrono::Utc::now();
+    {
+        let sys = system.read().await;
+        let _ = sys.db.write().await.upsert_processing_job(&job);
+    }
+    match persist_chunk_async(system.clone(), id.clone(), project.clone(), text, metadata).await {
+        Ok(canonical_id) => {
+            job.state = if canonical_id.is_some() {
+                "deduplicated".to_string()
+            } else {
+                "succeeded".to_string()
+            };
+            job.canonical_id = canonical_id;
+            job.error = None;
         }
-    });
+        Err(error) => {
+            job.state = "failed".to_string();
+            job.error = Some(error.to_string());
+            tracing::warn!("api add failed: {error:#}");
+        }
+    }
+    job.updated_at = chrono::Utc::now();
+    {
+        let sys = system.read().await;
+        let _ = sys.db.write().await.upsert_processing_job(&job);
+    }
 
     let mut map = HashMap::new();
-    map.insert("status".to_string(), "queued".to_string());
+    map.insert("status".to_string(), job.state.clone());
     map.insert("id".to_string(), id);
+    map.insert("job_id".to_string(), job_id);
     map.insert("project".to_string(), project);
+    map.insert("adapter".to_string(), adapter);
     Json(map)
 }
 
-async fn persist_chunk_async(
+pub(crate) async fn persist_chunk_async(
     system: Arc<RwLock<MemorySystem>>,
     id: String,
     project: String,
     text: String,
     metadata: Metadata,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Option<String>> {
     let sys = system.read().await;
     let embedder = sys.embedder.clone();
     let embed_text = text.clone();
@@ -835,14 +948,16 @@ async fn persist_chunk_async(
                 && existing.project == project
             {
                 drop(db);
-                let _ = sys.db.write().await.touch_chunk(existing_id);
+                let db = sys.db.write().await;
+                db.touch_chunk(existing_id)?;
+                db.insert_memory_alias(&id, existing_id)?;
                 tracing::debug!(
-                    "api semantic dedup suppressed {} (≈{}, distance={:.4})",
+                    "semantic dedup aliased {} to {} (distance={:.4})",
                     id,
                     existing_id,
                     distance
                 );
-                return Ok(());
+                return Ok(Some(existing_id.clone()));
             }
         }
     }
@@ -867,7 +982,7 @@ async fn persist_chunk_async(
         vector_index.add(&chunk.id, &embedding)?;
         let _ = vector_index.save();
     }
-    Ok(())
+    Ok(None)
 }
 
 pub async fn delete(
@@ -882,8 +997,9 @@ pub async fn delete(
     let mut not_found = Vec::new();
 
     for id in req.ids {
-        match db.trash_chunk(&id, &now_str) {
-            Ok(true) => deleted.push(id),
+        let canonical_id = db.canonical_chunk_id(&id).unwrap_or_else(|_| id.clone());
+        match db.trash_chunk(&canonical_id, &now_str) {
+            Ok(true) => deleted.push(canonical_id),
             Ok(false) => not_found.push(id),
             Err(_) => not_found.push(id),
         }
@@ -931,7 +1047,8 @@ pub async fn restore(
                 } else {
                     let embedder = sys.embedder.clone();
                     let text = chunk.document.clone();
-                    match tokio::task::spawn_blocking(move || embedder.encode_document(&text)).await {
+                    match tokio::task::spawn_blocking(move || embedder.encode_document(&text)).await
+                    {
                         Ok(Ok(emb)) => emb,
                         _ => {
                             missing.push(id);
@@ -939,7 +1056,9 @@ pub async fn restore(
                         }
                     }
                 };
-                let _ = sys.add_text_doc(&chunk.id, &chunk.project, &chunk.document).await;
+                let _ = sys
+                    .add_text_doc(&chunk.id, &chunk.project, &chunk.document)
+                    .await;
                 {
                     let mut vector_index = sys.vector_index.write().await;
                     let _ = vector_index.add(&chunk.id, &embedding);
@@ -1061,18 +1180,17 @@ pub async fn update(
         out.insert("message".to_string(), serde_json::json!(e.to_string()));
         return Json(out);
     }
-    if embedding_changed
-        && let Some(embedding) = &chunk.embedding {
-            let mut vector_index = sys.vector_index.write().await;
-            if let Err(e) = vector_index
-                .add(&chunk.id, embedding)
-                .and_then(|_| vector_index.save())
-            {
-                out.insert("status".to_string(), serde_json::json!("error"));
-                out.insert("message".to_string(), serde_json::json!(e.to_string()));
-                return Json(out);
-            }
+    if embedding_changed && let Some(embedding) = &chunk.embedding {
+        let mut vector_index = sys.vector_index.write().await;
+        if let Err(e) = vector_index
+            .add(&chunk.id, embedding)
+            .and_then(|_| vector_index.save())
+        {
+            out.insert("status".to_string(), serde_json::json!("error"));
+            out.insert("message".to_string(), serde_json::json!(e.to_string()));
+            return Json(out);
         }
+    }
 
     out.insert("status".to_string(), serde_json::json!("ok"));
     out.insert("id".to_string(), serde_json::json!(chunk.id));
@@ -1103,6 +1221,27 @@ fn apply_metadata_patch(target: &mut Metadata, patch: MetadataPatch) {
     }
     if let Some(value) = patch.source {
         target.source = Some(value);
+    }
+    if let Some(value) = patch.adapter {
+        target.adapter = Some(value);
+    }
+    if let Some(value) = patch.adapter_version {
+        target.adapter_version = Some(value);
+    }
+    if let Some(value) = patch.memory_kind {
+        target.memory_kind = value;
+    }
+    if let Some(value) = patch.confidence {
+        target.confidence = Some(value.clamp(0.0, 1.0));
+    }
+    if let Some(value) = patch.source_ids {
+        target.source_ids = value;
+    }
+    if let Some(value) = patch.supersedes {
+        target.supersedes = Some(value);
+    }
+    if let Some(value) = patch.verified_at {
+        target.verified_at = Some(value);
     }
     if let Some(value) = patch.role {
         target.role = Some(value);
@@ -1143,7 +1282,11 @@ pub async fn context_pack(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<ContextRequest>,
 ) -> Json<ContextResponse> {
-    let cat = if req.category.trim().is_empty() { None } else { Some(req.category.clone()) };
+    let cat = if req.category.trim().is_empty() {
+        None
+    } else {
+        Some(req.category.clone())
+    };
     Json(
         build_context(
             system,
@@ -1246,14 +1389,14 @@ fn render_context_prompt(
     const OPEN: &str = "<memnest_context>";
     const CLOSE: &str = "</memnest_context>";
     const TRUNC_MARK: &str = "(context truncated to fit budget)";
-    let reserved = OPEN.len() + CLOSE.len() + TRUNC_MARK.len() + 4;
+    let reserved = OPEN.chars().count() + CLOSE.chars().count() + TRUNC_MARK.chars().count() + 4;
     let budget = max_chars.max(reserved);
 
     let mut body: Vec<String> = Vec::new();
     let mut used = reserved;
     let mut truncated = false;
     let add = |line: String, body: &mut Vec<String>, used: &mut usize| -> bool {
-        let cost = line.len() + 1;
+        let cost = line.chars().count() + 1;
         if *used + cost > budget {
             false
         } else {
@@ -1373,13 +1516,15 @@ pub async fn prune(
     let mut victims = Vec::new();
     for chunk in chunks {
         if let Some(chunk_type) = &req.chunk_type
-            && &chunk.metadata.chunk_type != chunk_type {
-                continue;
-            }
+            && &chunk.metadata.chunk_type != chunk_type
+        {
+            continue;
+        }
         if let Some(importance) = &req.importance
-            && &chunk.metadata.importance != importance {
-                continue;
-            }
+            && &chunk.metadata.importance != importance
+        {
+            continue;
+        }
         if chunk.metadata.pinned && !req.include_pinned {
             continue;
         }
@@ -1389,9 +1534,10 @@ pub async fn prune(
             continue;
         }
         if let Some(cutoff) = cutoff
-            && chunk.created_at > cutoff {
-                continue;
-            }
+            && chunk.created_at > cutoff
+        {
+            continue;
+        }
         victims.push(chunk);
     }
 
@@ -1399,12 +1545,16 @@ pub async fn prune(
     let ids: Vec<String> = victims.iter().map(|c| c.id.clone()).collect();
 
     if req.dry_run {
-        let sample: Vec<PruneSample> = victims.iter().take(20).map(|c| PruneSample {
-            id: c.id.clone(),
-            project: c.project.clone(),
-            created_at: c.created_at,
-            preview: c.document.chars().take(80).collect(),
-        }).collect();
+        let sample: Vec<PruneSample> = victims
+            .iter()
+            .take(20)
+            .map(|c| PruneSample {
+                id: c.id.clone(),
+                project: c.project.clone(),
+                created_at: c.created_at,
+                preview: c.document.chars().take(80).collect(),
+            })
+            .collect();
         return Json(PruneResponse {
             matched,
             deleted: 0,
@@ -1615,11 +1765,7 @@ fn project_from_cwd(cwd: &str) -> String {
     if trimmed.is_empty() {
         return "default".into();
     }
-    let last = trimmed
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or("")
-        .trim();
+    let last = trimmed.rsplit(['/', '\\']).next().unwrap_or("").trim();
     if last.is_empty() {
         "default".into()
     } else {
@@ -1804,17 +1950,18 @@ pub async fn set_collection_meta(
     let mut out = HashMap::new();
     // Validate kind if provided.
     if let Some(k) = req.kind.as_deref()
-        && !matches!(k, "playbook" | "project" | "autolog" | "archive") {
-            out.insert("status".into(), serde_json::Value::String("error".into()));
-            out.insert(
-                "message".into(),
-                serde_json::Value::String(format!(
-                    "invalid kind '{}' — must be playbook|project|autolog|archive",
-                    k
-                )),
-            );
-            return Json(out);
-        }
+        && !matches!(k, "playbook" | "project" | "autolog" | "archive")
+    {
+        out.insert("status".into(), serde_json::Value::String("error".into()));
+        out.insert(
+            "message".into(),
+            serde_json::Value::String(format!(
+                "invalid kind '{}' — must be playbook|project|autolog|archive",
+                k
+            )),
+        );
+        return Json(out);
+    }
     let sys = system.read().await;
     let db = sys.db.write().await;
     match db.upsert_collection_meta(&name, req.kind.as_deref(), req.description.as_deref()) {
@@ -1916,16 +2063,25 @@ pub async fn collection_detail(
             let redacted = redact_text(&c.document);
             let doc_len = redacted.chars().count();
             SearchResultItem {
-            id: c.id,
-            project: c.project,
-            document: redacted.chars().take(600).collect(),
-            doc_len,
-            score: 0.0,
-            timestamp: c.created_at.to_rfc3339(),
-            chunk_type: format!("{:?}", c.metadata.chunk_type),
-            importance: format!("{:?}", c.metadata.importance),
-            category: format!("{:?}", c.metadata.category),
-        }})
+                id: c.id,
+                project: c.project,
+                document: redacted.chars().take(600).collect(),
+                doc_len,
+                score: 0.0,
+                timestamp: c.created_at.to_rfc3339(),
+                chunk_type: format!("{:?}", c.metadata.chunk_type),
+                importance: format!("{:?}", c.metadata.importance),
+                category: format!("{:?}", c.metadata.category),
+                memory_kind: serde_json::to_value(&c.metadata.memory_kind)
+                    .ok()
+                    .and_then(|value| value.as_str().map(str::to_string))
+                    .unwrap_or_else(|| "record".to_string()),
+                confidence: c.metadata.confidence,
+                adapter: c.metadata.adapter.unwrap_or_default(),
+                helpful_count: c.metadata.helpful_count,
+                harmful_count: c.metadata.harmful_count,
+            }
+        })
         .collect();
 
     Json(items).into_response()
@@ -2207,6 +2363,64 @@ pub async fn delete_secret(
     Json(out)
 }
 
+pub async fn operations(
+    State(system): State<Arc<RwLock<MemorySystem>>>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Json<OperationsResponse> {
+    let limit = params
+        .get("limit")
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(20)
+        .clamp(1, 100);
+    let sys = system.read().await;
+    let db = sys.db.read().await;
+    Json(OperationsResponse {
+        summary: db.operations_summary().unwrap_or(OperationsSummary {
+            recalls_24h: 0,
+            helpful_24h: 0,
+            harmful_24h: 0,
+            queued_jobs: 0,
+            running_jobs: 0,
+            failed_jobs: 0,
+            average_recall_ms_24h: 0.0,
+        }),
+        recalls: db.recent_recall_events(limit).unwrap_or_default(),
+        jobs: db.recent_processing_jobs(limit).unwrap_or_default(),
+    })
+}
+
+pub async fn recall_feedback(
+    State(system): State<Arc<RwLock<MemorySystem>>>,
+    Json(req): Json<FeedbackRequest>,
+) -> Json<serde_json::Value> {
+    let outcome = req.outcome.trim().to_lowercase();
+    if !matches!(outcome.as_str(), "helpful" | "harmful" | "ignored") {
+        return Json(serde_json::json!({
+            "status": "error",
+            "message": "outcome must be helpful, harmful, or ignored"
+        }));
+    }
+    let sys = system.read().await;
+    let db = sys.db.write().await;
+    let note = req.note.as_deref().map(redact_text);
+    match db.set_recall_feedback(&req.recall_id, &outcome, note.as_deref()) {
+        Ok(None) => Json(serde_json::json!({
+            "status": "not_found",
+            "recall_id": req.recall_id
+        })),
+        Ok(Some(ids)) => Json(serde_json::json!({
+            "status": "ok",
+            "recall_id": req.recall_id,
+            "outcome": outcome,
+            "memory_ids": ids
+        })),
+        Err(error) => Json(serde_json::json!({
+            "status": "error",
+            "message": error.to_string()
+        })),
+    }
+}
+
 pub async fn stats(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Query(params): Query<HashMap<String, String>>,
@@ -2225,7 +2439,11 @@ pub async fn stats(
     let coll_stats = db.collection_stats(500).unwrap_or_default();
     let collections: Vec<CollectionEntry> = coll_stats
         .iter()
-        .map(|c| CollectionEntry { name: c.name.clone(), chunks: c.chunk_count, text_bytes: c.text_bytes })
+        .map(|c| CollectionEntry {
+            name: c.name.clone(),
+            chunks: c.chunk_count,
+            text_bytes: c.text_bytes,
+        })
         .collect();
 
     let age_buckets = {
@@ -2233,18 +2451,44 @@ pub async fn stats(
         let cut30 = (now - chrono::Duration::days(30)).to_rfc3339();
         let cut90 = (now - chrono::Duration::days(90)).to_rfc3339();
         let cut180 = (now - chrono::Duration::days(180)).to_rfc3339();
-        let (o30, o90, o180) = db.age_buckets_root(&cut30, &cut90, &cut180).unwrap_or_default();
-        AgeBuckets { over_30d: o30, over_90d: o90, over_180d: o180 }
+        let (o30, o90, o180) = db
+            .age_buckets_root(&cut30, &cut90, &cut180)
+            .unwrap_or_default();
+        AgeBuckets {
+            over_30d: o30,
+            over_90d: o90,
+            over_180d: o180,
+        }
     };
 
     let data_dir = &sys.config.data_dir;
-    let db_bytes = std::fs::metadata(data_dir.join("memory.db")).map(|m| m.len()).unwrap_or(0);
+    let db_bytes = std::fs::metadata(data_dir.join("memory.db"))
+        .map(|m| m.len())
+        .unwrap_or(0);
     let text_index_bytes = dir_size(&data_dir.join("text_index"));
     let vector_bytes = dir_size(&data_dir.join("vectors"));
-    let disk = DiskStats { db_bytes, text_index_bytes, vector_bytes };
+    let disk = DiskStats {
+        db_bytes,
+        text_index_bytes,
+        vector_bytes,
+    };
 
-    let root_chunks = coll_stats.iter().find(|c| c.name == "root").map(|c| c.chunk_count).unwrap_or(0);
-    let recommendations = build_recommendations(root_chunks, db_bytes + text_index_bytes + vector_bytes);
+    let root_chunks = coll_stats
+        .iter()
+        .find(|c| c.name == "root")
+        .map(|c| c.chunk_count)
+        .unwrap_or(0);
+    let recommendations =
+        build_recommendations(root_chunks, db_bytes + text_index_bytes + vector_bytes);
+    let operations = db.operations_summary().unwrap_or(OperationsSummary {
+        recalls_24h: 0,
+        helpful_24h: 0,
+        harmful_24h: 0,
+        queued_jobs: 0,
+        running_jobs: 0,
+        failed_jobs: 0,
+        average_recall_ms_24h: 0.0,
+    });
 
     if params.get("format") == Some(&"html".to_string()) {
         let endpoint_rows = r##"
@@ -2331,6 +2575,7 @@ pub async fn stats(
         age_buckets,
         disk,
         recommendations,
+        operations,
     })
     .into_response()
 }
@@ -2342,10 +2587,11 @@ const BASE_HTML: &str = r##"<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%230d5f51'/%3E%3Cpath d='M8 22V9h3l5 7 5-7h3v13h-3v-8l-5 6-5-6v8z' fill='white'/%3E%3C/svg%3E">
 <title>__TITLE__ | Memnest</title>
 <style>
 * { box-sizing: border-box; }
-body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
+body { margin: 0; font-family: "Segoe UI Variable", "Noto Sans KR", ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; }
 a { color: inherit; text-decoration: none; }
 button, input, select { font: inherit; }
 button { cursor: pointer; border: 0; }
@@ -2626,27 +2872,16 @@ svg { display: block; }
   box-shadow: none;
 }
 .gradient-bg {
-  background: #f4f1e8;
-  background-image:
-    url('/assets/memory-atlas.png'),
-    linear-gradient(120deg, rgba(255,255,255,.7), rgba(226,236,220,.72) 48%, rgba(238,224,202,.62)),
-    repeating-linear-gradient(0deg, rgba(24,33,39,.035) 0 1px, transparent 1px 34px),
-    repeating-linear-gradient(90deg, rgba(24,33,39,.035) 0 1px, transparent 1px 34px);
-  background-size: cover, auto, auto, auto;
-  background-position: center, center, center, center;
-  background-attachment: fixed, fixed, fixed, fixed;
+  background: #f5f7f8;
+  background-image: linear-gradient(rgba(21, 35, 41, .035) 1px, transparent 1px);
+  background-size: 100% 32px;
+  color: #172126;
 }
 .dark .gradient-bg {
-  background: #070b0f;
-  background-image:
-    url('/assets/memory-atlas.png'),
-    linear-gradient(120deg, rgba(20,34,31,.88), rgba(8,13,18,.95) 52%, rgba(37,29,22,.84)),
-    repeating-linear-gradient(0deg, rgba(228,220,197,.04) 0 1px, transparent 1px 34px),
-    repeating-linear-gradient(90deg, rgba(228,220,197,.035) 0 1px, transparent 1px 34px);
-  background-size: cover, auto, auto, auto;
-  background-position: center, center, center, center;
-  background-attachment: fixed, fixed, fixed, fixed;
-  background-blend-mode: multiply, normal, normal, normal;
+  background: #101517;
+  background-image: linear-gradient(rgba(235, 244, 241, .035) 1px, transparent 1px);
+  background-size: 100% 32px;
+  color: #e8efec;
 }
 .metric-card:hover {
   transform: translateY(-2px);
@@ -2796,26 +3031,24 @@ svg { display: block; }
 .product-topbar {
   position: relative;
   z-index: 60;
-  width: min(1180px, calc(100% - 32px));
-  height: 62px;
+  width: 100%;
+  height: 58px;
   display: none;
   align-items: center;
   justify-content: space-between;
-  margin: 18px auto 0;
-  padding: 0 10px 0 16px;
-  border-radius: 999px;
-  background: rgba(252,248,236,.68);
-  border: 1px solid rgba(53,49,38,.16);
-  box-shadow: 0 18px 60px rgba(40,38,27,.14), inset 0 1px 0 rgba(255,255,255,.62);
-  backdrop-filter: blur(18px) saturate(1.08);
+  margin: 0;
+  padding: 0 max(20px, calc((100% - 1120px) / 2));
+  background: rgba(248,250,250,.96);
+  border-bottom: 1px solid rgba(23,33,38,.16);
+  box-shadow: none;
 }
 @media (min-width: 768px) {
   .product-topbar { display: flex; }
 }
 .dark .product-topbar {
-  background: rgba(9,13,15,.68);
-  border-color: rgba(229,218,188,.14);
-  box-shadow: 0 18px 60px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.06);
+  background: rgba(16,21,23,.96);
+  border-color: rgba(232,239,236,.14);
+  box-shadow: none;
 }
 .brand-lockup {
   display: flex;
@@ -2826,23 +3059,19 @@ svg { display: block; }
 .topnav {
   display: flex;
   align-items: center;
-  gap: 4px;
-  border-radius: 999px;
-  padding: 4px;
-  background: rgba(255,255,255,.32);
-  border: 1px solid rgba(53,49,38,.09);
+  gap: 2px;
+  padding: 0;
+  background: transparent;
+  border: 0;
 }
-.dark .topnav {
-  background: rgba(255,255,255,.05);
-  border-color: rgba(229,218,188,.09);
-}
+.dark .topnav { background: transparent; border: 0; }
 .top-link {
   height: 38px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 0 14px;
-  border-radius: 999px;
+  border-radius: 3px;
   font-size: 13px;
   color: rgb(71 75 62);
   transition: background .18s ease, color .18s ease, transform .18s ease;
@@ -2852,14 +3081,14 @@ svg { display: block; }
   transform: translateY(-1px);
 }
 .top-link.is-active {
-  background: rgb(53 49 38) !important;
-  color: rgb(250 248 240) !important;
-  box-shadow: 0 1px 2px rgba(53,49,38,.22), inset 0 0 0 1px rgba(255,255,255,.05);
+  background: rgba(13,124,102,.1) !important;
+  color: rgb(10 91 76) !important;
+  box-shadow: inset 0 -2px 0 rgb(13 124 102);
   transform: none;
 }
 .top-link.is-active:hover {
-  background: rgb(53 49 38) !important;
-  color: rgb(250 248 240) !important;
+  background: rgba(13,124,102,.1) !important;
+  color: rgb(10 91 76) !important;
   transform: none;
 }
 .dark .top-link {
@@ -2869,8 +3098,9 @@ svg { display: block; }
   background: rgba(255,255,255,.08);
 }
 .dark .top-link.is-active {
-  background: rgb(245 245 244) !important;
-  color: rgb(28 25 23) !important;
+  background: rgba(111,208,189,.1) !important;
+  color: rgb(111 208 189) !important;
+  box-shadow: inset 0 -2px 0 rgb(111 208 189);
 }
 .top-actions {
   display: flex;
@@ -3676,12 +3906,101 @@ svg { display: block; }
   border: 1px dashed var(--line);
   border-radius: 6px;
 }
+
+/* Operations console: dense, factual, and free of decorative AI imagery. */
+.console { display: grid; gap: 18px; }
+.console-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: end;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(23,33,38,.18);
+}
+.dark .console-header { border-color: rgba(232,239,236,.16); }
+.console-title { margin: 0; font-size: 28px; line-height: 1.15; letter-spacing: -.025em; }
+.console-copy { margin: 6px 0 0; max-width: 64ch; color: #637077; font-size: 13px; line-height: 1.5; }
+.dark .console-copy { color: #9eaaa6; }
+.console-address { text-align: right; font-family: ui-monospace, "Cascadia Code", monospace; font-size: 12px; color: #637077; }
+.console-address strong { display: block; margin-bottom: 4px; color: #0d7c66; font-family: inherit; font-weight: 600; }
+.console-search {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(160px, 240px) auto;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(23,33,38,.18);
+  background: rgba(255,255,255,.72);
+}
+.dark .console-search { background: rgba(22,29,31,.88); border-color: rgba(232,239,236,.16); }
+.console-search input, .console-search select {
+  min-height: 42px;
+  border: 1px solid rgba(23,33,38,.14);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  padding: 0 12px;
+  outline: none;
+}
+.console-search input:focus, .console-search select:focus { border-color: #0d7c66; box-shadow: 0 0 0 2px rgba(13,124,102,.14); }
+.console-search button { min-height: 42px; padding: 0 18px; border-radius: 4px; background: #0d5f51; color: #f3faf7; font-weight: 600; }
+.console-search button:hover { background: #0a4d42; }
+.console-search button:active { transform: translateY(1px); }
+.console-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  border-top: 1px solid rgba(23,33,38,.16);
+  border-bottom: 1px solid rgba(23,33,38,.16);
+}
+.dark .console-metrics { border-color: rgba(232,239,236,.14); }
+.console-metric { padding: 14px 16px; border-left: 1px solid rgba(23,33,38,.12); }
+.console-metric:first-child { border-left: 0; }
+.dark .console-metric { border-color: rgba(232,239,236,.12); }
+.console-metric span { display: block; color: #69767c; font-size: 11px; }
+.console-metric strong { display: block; margin-top: 5px; font: 600 21px/1.2 ui-monospace, "Cascadia Code", monospace; font-variant-numeric: tabular-nums; }
+.console-alerts { display: flex; flex-wrap: wrap; gap: 8px; }
+.console-alert { padding: 7px 10px; border-left: 3px solid #b7791f; background: rgba(183,121,31,.09); font-size: 12px; color: #73531d; }
+.console-alert.ok { border-color: #0d7c66; background: rgba(13,124,102,.08); color: #0b6655; }
+.dark .console-alert { color: #e4bf7a; }
+.dark .console-alert.ok { color: #6fd0bd; }
+.console-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr); gap: 18px; }
+.console-section { min-width: 0; border-top: 2px solid #27373d; }
+.dark .console-section { border-color: #cad5d1; }
+.console-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 0 9px; border-bottom: 1px solid rgba(23,33,38,.14); }
+.dark .console-section-head { border-color: rgba(232,239,236,.14); }
+.console-section-head h2 { margin: 0; font-size: 14px; }
+.console-section-head a { color: #0d7c66; font-size: 12px; }
+.console-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.console-table th { padding: 8px 6px; color: #748087; font-size: 10px; font-weight: 500; text-align: left; border-bottom: 1px solid rgba(23,33,38,.1); }
+.console-table td { padding: 10px 6px; font-size: 12px; vertical-align: top; border-bottom: 1px solid rgba(23,33,38,.08); overflow: hidden; text-overflow: ellipsis; }
+.dark .console-table th, .dark .console-table td { border-color: rgba(232,239,236,.09); }
+.console-table .mono { font-family: ui-monospace, "Cascadia Code", monospace; font-variant-numeric: tabular-nums; }
+.console-table .query { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feedback-actions { white-space: nowrap; }
+.feedback-actions button { padding: 3px 6px; border: 1px solid rgba(23,33,38,.14); border-radius: 3px; background: transparent; color: inherit; font-size: 10px; }
+.feedback-actions button:hover { border-color: #0d7c66; color: #0d7c66; }
+.feedback-actions button:focus-visible { outline: 2px solid #0d7c66; outline-offset: 2px; }
+.state { display: inline-block; padding: 2px 6px; border-radius: 3px; background: #e4e9e7; color: #45525a; font-size: 10px; }
+.state.succeeded, .state.helpful { background: rgba(13,124,102,.12); color: #0b6655; }
+.state.failed, .state.harmful { background: rgba(185,55,55,.12); color: #9b2c2c; }
+.state.running, .state.queued, .state.pending { background: rgba(183,121,31,.12); color: #845b19; }
+.dark .state { background: rgba(255,255,255,.09); color: #d5dfdc; }
+.console-empty { padding: 22px 6px; color: #748087; font-size: 12px; }
+.console-foot-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+@media (max-width: 900px) {
+  .console-header, .console-grid, .console-foot-grid { grid-template-columns: 1fr; }
+  .console-address { text-align: left; }
+  .console-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .console-metric:nth-child(4) { border-left: 0; }
+}
+@media (max-width: 640px) {
+  .console-search { grid-template-columns: 1fr; }
+  .console-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .console-metric:nth-child(odd) { border-left: 0; }
+  .console-title { font-size: 24px; }
+}
 </style>
 </head>
 <body class="gradient-bg text-gray-900 dark:text-gray-100 min-h-screen antialiased">
-<div class="atlas-vignette"></div>
-<canvas id="memory-field" class="memory-canvas"></canvas>
-
 <header class="product-topbar hidden md:flex">
  <a href="/" class="brand-lockup">
   <svg class="atlas-logo" viewBox="0 0 64 64" fill="none" aria-hidden="true">
@@ -3692,7 +4011,7 @@ svg { display: block; }
   </svg>
   <span>
    <span class="block text-sm font-semibold tracking-tight">Memnest</span>
-   <span class="block text-[10px] uppercase tracking-[0.18em] text-stone-500 dark:text-stone-400" data-i18n="brand.subtitle">Memory atlas</span>
+   <span class="block text-[10px] text-stone-500 dark:text-stone-400" data-i18n="brand.subtitle">Local memory</span>
   </span>
  </a>
  <nav class="topnav">
@@ -3746,9 +4065,25 @@ function toggleDark() {
 if (localStorage.getItem('theme') === 'dark') {
  document.documentElement.classList.add('dark');
 }
+async function sendRecallFeedback(recallId, outcome, button) {
+ button.disabled = true;
+ try {
+  var response = await fetch('/feedback', {
+   method: 'POST',
+   headers: { 'content-type': 'application/json' },
+   body: JSON.stringify({ recall_id: recallId, outcome: outcome })
+  });
+  if (!response.ok) throw new Error('request failed');
+  var row = button.closest('tr');
+  var state = row && row.querySelector('.state');
+  if (state) { state.className = 'state ' + outcome; state.textContent = outcome; }
+ } catch (_) {
+  button.disabled = false;
+ }
+}
 var i18n = {
  ko: {
-  'brand.subtitle': 'Memory atlas',
+  'brand.subtitle': '로컬 메모리',
   'nav.dashboard': '대시보드',
   'nav.collections': '컬렉션',
   'nav.search': '검색',
@@ -3790,7 +4125,7 @@ var i18n = {
   'result.emptySuffix': '에 대한 결과가 없습니다'
  },
  en: {
-  'brand.subtitle': 'Memory atlas',
+  'brand.subtitle': 'Local memory',
   'nav.dashboard': 'Dashboard',
   'nav.collections': 'Collections',
   'nav.search': 'Search',
@@ -3870,61 +4205,7 @@ document.querySelectorAll('[data-lang-button]').forEach(function(btn) {
 });
 var initialLang = localStorage.getItem('locale') || (navigator.language || 'en').toLowerCase().split('-')[0];
 setLang(initialLang === 'ko' ? 'ko' : 'en');
-var canvas = document.getElementById('memory-field');
-var ctx = canvas.getContext('2d');
-var nodes = [];
-var pointer = { x: -1000, y: -1000 };
-function resizeField() {
- var dpr = Math.min(window.devicePixelRatio || 1, 2);
- canvas.width = Math.floor(innerWidth * dpr);
- canvas.height = Math.floor(innerHeight * dpr);
- canvas.style.width = innerWidth + 'px';
- canvas.style.height = innerHeight + 'px';
- ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
- var count = Math.max(42, Math.min(120, Math.floor(innerWidth * innerHeight / 14500)));
- nodes = Array.from({ length: count }, function(_, i) {
-  return {
-   x: (i * 89 % innerWidth) + Math.random() * 40,
-   y: (i * 53 % innerHeight) + Math.random() * 40,
-   vx: (Math.random() - .5) * .18,
-   vy: (Math.random() - .5) * .18,
-   r: 1.2 + Math.random() * 2.2
-  };
- });
-}
-function drawField() {
- ctx.clearRect(0, 0, innerWidth, innerHeight);
- var dark = document.documentElement.classList.contains('dark');
- var line = dark ? 'rgba(224,214,184,.16)' : 'rgba(36,54,44,.16)';
- var dot = dark ? 'rgba(164,214,177,.55)' : 'rgba(31,101,74,.46)';
- for (var i = 0; i < nodes.length; i++) {
-  var a = nodes[i];
-  a.x += a.vx; a.y += a.vy;
-  if (a.x < -20) a.x = innerWidth + 20;
-  if (a.x > innerWidth + 20) a.x = -20;
-  if (a.y < -20) a.y = innerHeight + 20;
-  if (a.y > innerHeight + 20) a.y = -20;
-  for (var j = i + 1; j < nodes.length; j++) {
-   var b = nodes[j], dx = a.x - b.x, dy = a.y - b.y, dist = Math.sqrt(dx * dx + dy * dy);
-   if (dist < 118) {
-    ctx.strokeStyle = line.replace(/[\d.]+\)$/, (1 - dist / 118) * .22 + ')');
-    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-   }
-  }
-  var pdx = a.x - pointer.x, pdy = a.y - pointer.y, pd = Math.sqrt(pdx * pdx + pdy * pdy);
-  if (pd < 180) {
-   ctx.strokeStyle = dark ? 'rgba(242,178,90,.24)' : 'rgba(130,83,28,.22)';
-   ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(pointer.x, pointer.y); ctx.stroke();
-  }
-  ctx.fillStyle = dot;
-  ctx.beginPath(); ctx.arc(a.x, a.y, a.r, 0, Math.PI * 2); ctx.fill();
- }
- if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) requestAnimationFrame(drawField);
-}
-window.addEventListener('resize', resizeField);
-window.addEventListener('mousemove', function(e) { pointer.x = e.clientX; pointer.y = e.clientY; });
-resizeField();
-drawField();
+
 </script>
 </body>
 </html>"##;
@@ -3959,148 +4240,253 @@ pub async fn viewer_dashboard(State(system): State<Arc<RwLock<MemorySystem>>>) -
     let db = sys.db.read().await;
 
     let total_chunks = db.chunk_count().unwrap_or(0);
+    let total_sessions = db.summary_count().unwrap_or(0);
     let total_facts = db.fact_count().unwrap_or(0);
     let total_notes = db.note_count().unwrap_or(0);
     let (graph_nodes, _) = db.graph_stats().unwrap_or((0, 0));
-
-    let stats = db.collection_stats(8).unwrap_or_default();
+    let collections = db.collection_stats(8).unwrap_or_default();
     let recent = db.recent_chunks(6).unwrap_or_default();
-    let scope_options = collection_scope_options(&stats, "all");
+    let recalls = db.recent_recall_events(8).unwrap_or_default();
+    let jobs = db.recent_processing_jobs(8).unwrap_or_default();
+    let operations = db.operations_summary().unwrap_or(OperationsSummary {
+        recalls_24h: 0,
+        helpful_24h: 0,
+        harmful_24h: 0,
+        queued_jobs: 0,
+        running_jobs: 0,
+        failed_jobs: 0,
+        average_recall_ms_24h: 0.0,
+    });
+    let now = chrono::Utc::now();
+    let cut30 = (now - chrono::Duration::days(30)).to_rfc3339();
+    let cut90 = (now - chrono::Duration::days(90)).to_rfc3339();
+    let cut180 = (now - chrono::Duration::days(180)).to_rfc3339();
+    let (over_30d, _, _) = db
+        .age_buckets_root(&cut30, &cut90, &cut180)
+        .unwrap_or_default();
+    let root_chunks = collections
+        .iter()
+        .find(|collection| collection.name == "root")
+        .map(|collection| collection.chunk_count)
+        .unwrap_or(0);
+    let root_ratio = if total_chunks == 0 {
+        0.0
+    } else {
+        root_chunks as f64 / total_chunks as f64 * 100.0
+    };
+    let data_dir = &sys.config.data_dir;
+    let disk_bytes = std::fs::metadata(data_dir.join("memory.db"))
+        .map(|metadata| metadata.len())
+        .unwrap_or(0)
+        + dir_size(&data_dir.join("text_index"))
+        + dir_size(&data_dir.join("vectors"));
+    let disk_mb = disk_bytes as f64 / 1_048_576.0;
+    let scope_options = collection_scope_options(&collections, "all");
 
-    let mut collections_html = String::new();
-    for stat in &stats {
-        collections_html.push_str(&format!(
-            r#"<a href="/collection/{}?format=html" class="ledger-row text-stone-800 dark:text-stone-100 transition-colors">
-             <span class="truncate font-medium">{}</span>
-             <span class="text-stone-500 dark:text-stone-400">{}개</span>
-             <span class="text-right text-xs text-stone-500 dark:text-stone-400" data-i18n="action.open">열기</span>
-            </a>"#,
-            html_escape(&stat.name),
-            html_escape(&stat.name),
-            stat.chunk_count
+    let mut recall_rows = String::new();
+    for event in &recalls {
+        recall_rows.push_str(&format!(
+            r#"<tr>
+             <td class="query" title="{}">{}</td>
+             <td>{}</td>
+             <td class="mono">{}</td>
+             <td class="mono">{} ms</td>
+             <td>{}</td>
+             <td><span class="state {}">{}</span></td>
+             <td class="feedback-actions">
+              <button type="button" onclick="sendRecallFeedback('{}','helpful',this)">도움됨</button>
+              <button type="button" onclick="sendRecallFeedback('{}','harmful',this)">문제</button>
+             </td>
+            </tr>"#,
+            html_escape(&event.query),
+            html_escape(&event.query),
+            html_escape(&event.project),
+            event.result_ids.len(),
+            event.duration_ms,
+            html_escape(&event.adapter),
+            html_escape(&event.outcome),
+            html_escape(&event.outcome),
+            html_escape(&event.id),
+            html_escape(&event.id),
         ));
     }
-    if collections_html.is_empty() {
-        collections_html =
-            r#"<div class="px-6 py-10 text-center text-sm text-stone-500" data-i18n="empty.collections">아직 수집된 컬렉션이 없습니다</div>"#
-                .to_string();
+    if recall_rows.is_empty() {
+        recall_rows = r#"<tr><td colspan="7" class="console-empty">아직 기록된 검색이 없습니다. 새 검색부터 후보와 결과를 추적합니다.</td></tr>"#.to_string();
     }
 
-    let mut recent_html = String::new();
+    let mut job_rows = String::new();
+    for job in &jobs {
+        job_rows.push_str(&format!(
+            r#"<tr>
+             <td class="mono" title="{}">{}</td>
+             <td><span class="state {}">{}</span></td>
+             <td>{}</td>
+             <td class="mono">{}</td>
+            </tr>"#,
+            html_escape(&job.target_id),
+            html_escape(&job.target_id.chars().take(18).collect::<String>()),
+            html_escape(&job.state),
+            html_escape(&job.state),
+            html_escape(&job.adapter),
+            job.updated_at.format("%m-%d %H:%M"),
+        ));
+    }
+    if job_rows.is_empty() {
+        job_rows = r#"<tr><td colspan="4" class="console-empty">처리 작업이 없습니다.</td></tr>"#
+            .to_string();
+    }
+
+    let mut collection_rows = String::new();
+    for collection in &collections {
+        collection_rows.push_str(&format!(
+            r#"<tr>
+             <td><a href="/collection/{}?format=html">{}</a></td>
+             <td>{}</td>
+             <td class="mono">{}</td>
+             <td class="mono">{:.1} MB</td>
+            </tr>"#,
+            html_escape(&collection.name),
+            html_escape(&collection.name),
+            html_escape(&collection.kind),
+            collection.chunk_count,
+            collection.text_bytes as f64 / 1_048_576.0,
+        ));
+    }
+
+    let mut recent_rows = String::new();
     for chunk in &recent {
-        recent_html.push_str(&format!(
-            r#"<a href="/collection/{}?format=html" class="group">
-             <div class="flex items-center gap-2 text-[11px] text-stone-500 mb-2">
-              <span class="eyebrow">{}</span>
-              <span class="truncate">{}</span>
-              <span class="ml-auto whitespace-nowrap">{}</span>
-             </div>
-             <div class="text-sm leading-relaxed text-stone-700 dark:text-stone-200 group-hover:text-stone-950 dark:group-hover:text-white transition-colors">{}</div>
-            </a>"#,
+        recent_rows.push_str(&format!(
+            r#"<tr>
+             <td class="query" title="{}">{}</td>
+             <td>{}</td>
+             <td>{:?}</td>
+             <td class="mono">{}</td>
+            </tr>"#,
+            html_escape(&redact_text(&chunk.document)),
+            html_escape(&redact_text(&chunk.document))
+                .chars()
+                .take(110)
+                .collect::<String>(),
             html_escape(&chunk.project),
-            html_escape(&format!("{:?}", chunk.importance)),
-            html_escape(&chunk.project),
+            chunk.importance,
             chunk.created_at.format("%m-%d %H:%M"),
-            html_escape(&redact_text(&chunk.document)).chars().take(220).collect::<String>()
         ));
     }
-    if recent_html.is_empty() {
-        recent_html =
-            r#"<div class="py-10 text-center text-sm text-stone-500" data-i18n="empty.recent">최근 메모리가 없습니다</div>"#
-                .to_string();
-    }
 
+    let active_jobs = operations.queued_jobs + operations.running_jobs;
     let content = format!(
-        r##"<div class="ops-shell">
-         <header class="ops-header">
-         <div>
-           <div class="eyebrow mb-2" data-i18n="dashboard.eyebrow">Workspace memory</div>
-           <h1 class="ops-title" data-i18n="dashboard.title">메모리 운영 콘솔</h1>
-           <p class="ops-subtitle" data-i18n="dashboard.subtitle">저장된 대화와 작업 기록을 검색하고, 컬렉션별 규모와 최근 입력을 확인합니다. 컬렉션은 저장 요청의 project 값으로 묶이며 값이 없으면 default로 들어갑니다.</p>
+        r##"<div class="console">
+         <header class="console-header">
+          <div>
+           <h1 class="console-title">메모리 운영 상태</h1>
+           <p class="console-copy">무엇이 저장되고 검색됐는지, 어떤 기억이 실제 답변에 사용됐는지, 처리 실패와 데이터 편중을 한 화면에서 확인합니다.</p>
+          </div>
+          <div class="console-address">
+           <strong>서비스 정상</strong>
+           http://localhost:{}/<br>
+           {}
           </div>
          </header>
-         <section class="ops-search">
-          <div class="ops-search-inner">
-           <div>
-            <div class="eyebrow mb-2" data-i18n="dashboard.searchTitle">통합 검색</div>
-            <p class="text-sm leading-relaxed text-stone-600 dark:text-stone-300" data-i18n="dashboard.searchHelp">결정, 오류, 설정, 코드 단서를 한 번에 찾습니다.</p>
-           </div>
-           <form method="get" action="/viewer/search">
-            <div class="command-input">
-             <label class="search-field">
-              <span class="field-label" data-i18n="field.query">검색어</span>
-              <input name="q" placeholder="예: 배포 결정, OAuth 오류, PostgreSQL 설정" data-i18n-placeholder="placeholder.search" class="w-full bg-transparent px-2 py-2 text-sm outline-none placeholder:text-stone-500" required>
-             </label>
-             <label>
-              <span class="field-label" data-i18n="field.scope">범위</span>
-              <select name="project" class="scope-select">{}</select>
-             </label>
-             <button class="rounded-2xl bg-stone-950 text-white dark:bg-stone-100 dark:text-stone-950 px-5 py-3 text-sm font-medium" data-i18n="button.search">검색</button>
-            </div>
-           </form>
-          </div>
+
+         <form method="get" action="/viewer/search" class="console-search">
+          <input name="q" aria-label="검색어" placeholder="결정, 오류, 설정, 작업 절차 검색" required>
+          <select name="project" aria-label="컬렉션 범위">{}</select>
+          <button type="submit">메모리 검색</button>
+         </form>
+
+         <section class="console-metrics" aria-label="핵심 지표">
+          <div class="console-metric"><span>전체 메모리</span><strong>{}</strong></div>
+          <div class="console-metric"><span>24시간 검색</span><strong>{}</strong></div>
+          <div class="console-metric"><span>평균 검색 지연</span><strong>{:.0} ms</strong></div>
+          <div class="console-metric"><span>처리 중 작업</span><strong>{}</strong></div>
+          <div class="console-metric"><span>실패 작업</span><strong>{}</strong></div>
+          <div class="console-metric"><span>저장 공간</span><strong>{:.1} MB</strong></div>
          </section>
-         <section class="ops-kpis">
-          <div class="ops-kpi"><div class="metric-label" data-i18n="metric.memories">메모리</div><div class="text-2xl font-semibold mt-2">{}</div></div>
-          <div class="ops-kpi"><div class="metric-label" data-i18n="metric.facts">지식</div><div class="text-2xl font-semibold mt-2">{}</div></div>
-          <div class="ops-kpi"><div class="metric-label" data-i18n="metric.notes">노트</div><div class="text-2xl font-semibold mt-2">{}</div></div>
-          <div class="ops-kpi"><div class="metric-label" data-i18n="metric.graph">그래프</div><div class="text-2xl font-semibold mt-2">{}</div></div>
-         </section>
-         <div class="ops-grid">
-          <section class="work-panel">
-           <div class="work-panel-head">
-            <div>
-             <div class="eyebrow mb-1" data-i18n="panel.collections">컬렉션</div>
-             <div class="text-sm text-stone-500 dark:text-stone-400">project scope</div>
-            </div>
-            <a href="/viewer/collections" class="quiet-chip text-xs" data-i18n="action.open">열기</a>
-           </div>
-           <div class="ledger rounded-none border-0 bg-transparent">
-            <div class="ledger-head">
-             <span data-i18n="panel.collections">컬렉션</span>
-             <span data-i18n="metric.memories">메모리</span>
-             <span class="text-right" data-i18n="action.open">열기</span>
-            </div>
-            {}
+
+         <div class="console-alerts">
+          <div class="console-alert {}">root 집중도 {:.1}% ({}개)</div>
+          <div class="console-alert {}">30일 초과 root 기록 {}개</div>
+          <div class="console-alert {}">그래프 노드 {}개, 사실 {}개</div>
+          <div class="console-alert {}">도움됨 {}, 문제 {}</div>
+         </div>
+
+         <div class="console-grid">
+          <section class="console-section">
+           <div class="console-section-head"><h2>최근 검색과 주입 후보</h2><a href="/operations">JSON 보기</a></div>
+           <div class="overflow-x-auto">
+            <table class="console-table">
+             <thead><tr><th style="width:31%">검색어</th><th>범위</th><th>결과</th><th>지연</th><th>어댑터</th><th>판정</th><th>피드백</th></tr></thead>
+             <tbody>{}</tbody>
+            </table>
            </div>
           </section>
-          <aside class="work-panel">
-           <div class="work-panel-head">
-            <div>
-             <div class="eyebrow mb-1" data-i18n="panel.recent">최근 입력</div>
-             <div class="text-sm text-stone-500 dark:text-stone-400">latest captured context</div>
-            </div>
-            <a href="/viewer/search" class="quiet-chip text-xs" data-i18n="nav.search">검색</a>
+          <section class="console-section">
+           <div class="console-section-head"><h2>처리 작업</h2><a href="/operations">전체 상태</a></div>
+           <div class="overflow-x-auto">
+            <table class="console-table">
+             <thead><tr><th style="width:38%">대상</th><th>상태</th><th>어댑터</th><th>업데이트</th></tr></thead>
+             <tbody>{}</tbody>
+            </table>
            </div>
-           <div class="activity-stream">{}</div>
-           <div class="work-panel-head border-t border-black/10 dark:border-white/10">
-            <div class="eyebrow" data-i18n="panel.health">시스템 상태</div>
-            <a href="/stats?format=html" class="text-xs text-stone-500 hover:text-stone-950 dark:hover:text-white" data-i18n="action.viewSystem">상태와 API 보기</a>
-           </div>
-           <div class="health-list">
-            <div class="inspector-row"><span class="metric-label">graph nodes</span><strong>{}</strong></div>
-            <div class="inspector-row"><span class="metric-label">facts</span><strong>{}</strong></div>
-            <div class="inspector-row"><span class="metric-label">notes</span><strong>{}</strong></div>
-            <div class="inspector-row"><span class="metric-label">collections</span><strong>{}</strong></div>
-           </div>
-          </aside>
+          </section>
          </div>
+
+         <div class="console-foot-grid">
+          <section class="console-section">
+           <div class="console-section-head"><h2>컬렉션 분포</h2><a href="/viewer/collections">관리</a></div>
+           <div class="overflow-x-auto">
+            <table class="console-table">
+             <thead><tr><th>컬렉션</th><th>종류</th><th>메모리</th><th>텍스트</th></tr></thead>
+             <tbody>{}</tbody>
+            </table>
+           </div>
+          </section>
+          <section class="console-section">
+           <div class="console-section-head"><h2>최근 저장</h2><a href="/viewer/search">검색</a></div>
+           <div class="overflow-x-auto">
+            <table class="console-table">
+             <thead><tr><th style="width:48%">내용</th><th>프로젝트</th><th>중요도</th><th>시간</th></tr></thead>
+             <tbody>{}</tbody>
+            </table>
+           </div>
+          </section>
+         </div>
+
+         <footer class="console-copy">
+          세션 {}개, 노트 {}개. 임베딩 모델: {}. 원시 상태는 <a href="/stats">/stats</a>, 연동 기록은 <a href="/operations">/operations</a>에서 확인할 수 있습니다.
+         </footer>
         </div>"##,
+        sys.config.api_port,
+        html_escape(&sys.config.data_dir.display().to_string()),
         scope_options,
         total_chunks,
-        total_facts,
-        total_notes,
+        operations.recalls_24h,
+        operations.average_recall_ms_24h,
+        active_jobs,
+        operations.failed_jobs,
+        disk_mb,
+        if root_ratio > 70.0 { "" } else { "ok" },
+        root_ratio,
+        root_chunks,
+        if over_30d > 10_000 { "" } else { "ok" },
+        over_30d,
+        if graph_nodes == 0 { "" } else { "ok" },
         graph_nodes,
-        collections_html,
-        recent_html,
-        graph_nodes,
         total_facts,
+        if operations.harmful_24h > 0 { "" } else { "ok" },
+        operations.helpful_24h,
+        operations.harmful_24h,
+        recall_rows,
+        job_rows,
+        collection_rows,
+        recent_rows,
+        total_sessions,
         total_notes,
-        stats.len()
+        html_escape(&sys.config.embed_model),
     );
 
     let html = BASE_HTML
-        .replace("__TITLE__", "대시보드")
+        .replace("__TITLE__", "운영 상태")
         .replace("__VERSION__", env!("CARGO_PKG_VERSION"))
         .replace("__ACTIVE_DASHBOARD__", "is-active")
         .replace("__ACTIVE_COLLECTIONS__", "")
@@ -4277,6 +4663,22 @@ pub async fn viewer_search(
         let started = std::time::Instant::now();
         let results =
             run_hybrid_search(system.clone(), &q, &project, 20, false, true, false, None).await;
+        let elapsed_ms = started.elapsed().as_millis();
+        let recall_id = format!("recall_{}", uuid::Uuid::new_v4().simple());
+        let event = RecallEvent {
+            id: recall_id.clone(),
+            query: redact_text(&q),
+            project: project.clone(),
+            result_ids: results.iter().map(|item| item.id.clone()).collect(),
+            duration_ms: elapsed_ms.min(i64::MAX as u128) as i64,
+            adapter: "dashboard".to_string(),
+            outcome: "pending".to_string(),
+            created_at: chrono::Utc::now(),
+        };
+        {
+            let sys = system.read().await;
+            let _ = sys.db.write().await.insert_recall_event(&event);
+        }
 
         for item in &results {
             let highlighted_document = highlight_query_html(&item.document, &q);
@@ -4303,16 +4705,19 @@ pub async fn viewer_search(
             format!(
                 r#"<div class="text-center py-12 text-slate-500" data-empty-query="{}">
                  <div class="text-sm mb-1">'{}'에 대한 결과가 없습니다</div>
+                 <div class="text-xs">recall {}</div>
                 </div>"#,
                 html_escape(&q),
-                html_escape(&q)
+                html_escape(&q),
+                html_escape(&recall_id)
             )
         } else {
             format!(
-                r#"<div class="flex items-center justify-between text-xs text-slate-500 mb-3"><span data-result-count="{}">{}개 결과 · 관련도순</span><span>{}ms</span></div>{}"#,
+                r#"<div class="flex items-center justify-between text-xs text-slate-500 mb-3"><span data-result-count="{}">{}개 결과, 관련도순</span><span>{} ms, recall {}</span></div>{}"#,
                 results.len(),
                 results.len(),
-                started.elapsed().as_millis(),
+                elapsed_ms,
+                html_escape(&recall_id),
                 items
             )
         }
@@ -4457,10 +4862,11 @@ fn highlight_query_html(text: &str, query: &str) -> String {
     let mut merged = Vec::<(usize, usize)>::new();
     for (start, end) in ranges {
         if let Some((_, last_end)) = merged.last_mut()
-            && start <= *last_end {
-                *last_end = (*last_end).max(end);
-                continue;
-            }
+            && start <= *last_end
+        {
+            *last_end = (*last_end).max(end);
+            continue;
+        }
         merged.push((start, end));
     }
 
@@ -4511,6 +4917,22 @@ fn type_bonus(chunk_type: &ChunkType) -> f32 {
     }
 }
 
+/// Closes the feedback loop: memories the caller marked helpful float up, ones
+/// marked harmful sink, so retrieval learns from real use instead of static
+/// heuristics alone. Bounded to ±0.10 (the same order as importance/type
+/// bonuses) and saturating, so a proven-useful memory outranks an untested peer
+/// without letting vote count overwhelm lexical/vector relevance. `k` sets how
+/// many net votes are needed to reach half the cap.
+fn feedback_bonus(helpful: i64, harmful: i64) -> f32 {
+    let net = (helpful - harmful) as f32;
+    if net == 0.0 {
+        return 0.0;
+    }
+    const CAP: f32 = 0.10;
+    const K: f32 = 3.0;
+    CAP * (net / (net.abs() + K))
+}
+
 fn recency_penalty(created_at: chrono::DateTime<chrono::Utc>, rate: f32, cap: f32) -> f32 {
     let days = (chrono::Utc::now() - created_at).num_seconds().max(0) as f32 / 86_400.0;
     (days * rate).min(cap)
@@ -4558,12 +4980,22 @@ fn mmr_select(
 ) -> Vec<SearchResultItem> {
     let limit = n.min(candidates.len());
     if limit <= 1 {
-        return candidates.into_iter().take(limit).map(|(it, _)| it).collect();
+        return candidates
+            .into_iter()
+            .take(limit)
+            .map(|(it, _)| it)
+            .collect();
     }
     let max_rel = candidates.first().map(|(it, _)| it.score).unwrap_or(0.0);
     let min_rel = candidates.last().map(|(it, _)| it.score).unwrap_or(0.0);
     let span = max_rel - min_rel;
-    let norm = |s: f32| if span.abs() <= f32::EPSILON { 1.0 } else { (s - min_rel) / span };
+    let norm = |s: f32| {
+        if span.abs() <= f32::EPSILON {
+            1.0
+        } else {
+            (s - min_rel) / span
+        }
+    };
 
     let mut selected: Vec<(SearchResultItem, Vec<f32>)> = Vec::with_capacity(limit);
     selected.push(candidates.remove(0));

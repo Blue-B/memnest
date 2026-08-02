@@ -38,6 +38,30 @@ pub struct Metadata {
     pub parent_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// Host integration that produced this memory (`pi`, `claude-code`,
+    /// `codex`, `generic-http`, ...). Kept separate from `source` so adapters
+    /// can identify themselves without changing the semantic source label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter_version: Option<String>,
+    /// Product-facing semantic kind. Legacy rows default to `record`.
+    #[serde(default)]
+    pub memory_kind: MemoryKind,
+    /// Optional confidence assigned by an importer or learning layer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f32>,
+    /// Provenance and replacement links used by structured memory workflows.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supersedes: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verified_at: Option<String>,
+    #[serde(default)]
+    pub helpful_count: i64,
+    #[serde(default)]
+    pub harmful_count: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -109,6 +133,18 @@ pub enum MemoryCategory {
     Preference,
     Convention,
     ToolQuirk,
+}
+
+/// Stable cross-platform memory kinds. Adapters may classify memories, but the
+/// core never requires a specific agent runtime.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryKind {
+    #[default]
+    Record,
+    Fact,
+    Rule,
+    Procedure,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -195,6 +231,42 @@ pub struct SearchResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecallEvent {
+    pub id: String,
+    pub query: String,
+    pub project: String,
+    pub result_ids: Vec<String>,
+    pub duration_ms: i64,
+    pub adapter: String,
+    pub outcome: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessingJob {
+    pub id: String,
+    pub operation: String,
+    pub target_id: String,
+    pub state: String,
+    pub canonical_id: Option<String>,
+    pub adapter: String,
+    pub error: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OperationsSummary {
+    pub recalls_24h: usize,
+    pub helpful_24h: usize,
+    pub harmful_24h: usize,
+    pub queued_jobs: usize,
+    pub running_jobs: usize,
+    pub failed_jobs: usize,
+    pub average_recall_ms_24h: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphNode {
     pub id: String,
     pub depth: usize,
@@ -249,6 +321,9 @@ mod tests {
         let json = r#"{"chunk_type":"auto_log","importance":"log","category":"general","session_id":"","truncated":false,"access_count":0,"keywords":[],"sensitive":false}"#;
         let meta: Metadata = serde_json::from_str(json).expect("deserialize");
         assert!(!meta.pinned, "pinned must default to false for legacy rows");
+        assert_eq!(meta.memory_kind, MemoryKind::Record);
+        assert_eq!(meta.helpful_count, 0);
+        assert_eq!(meta.harmful_count, 0);
     }
 
     #[test]
