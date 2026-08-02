@@ -4226,6 +4226,7 @@ var CUSTOM_TYPE = "memnest-autocontext";
 var DISABLE_ENV = "MEMNEST_AUTOCONTEXT_DISABLE";
 var env = globalThis.process?.env ?? {};
 var MEMNEST_URL = env.MEMNEST_URL ?? "http://127.0.0.1:3111";
+var MEMNEST_TOKEN = env.MEMNEST_TOKEN;
 var MODE = String(env.MEMNEST_AUTOCONTEXT_MODE ?? "balanced").toLowerCase();
 var N_RESULTS = Math.max(
   1,
@@ -4356,11 +4357,15 @@ async function searchMemnest(query) {
   try {
     const res = await fetch(`${MEMNEST_URL}/search`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...MEMNEST_TOKEN ? { authorization: `Bearer ${MEMNEST_TOKEN}` } : {}
+      },
       // exclude_reserved: server-side drop of root/default/global/_superseded
       // (memnest >= 0.5.1); EXCLUDE_PROJECTS below still covers custom lists.
       body: JSON.stringify({
         query,
+        adapter: "pi-autocontext",
         n_results: N_RESULTS,
         exclude_reserved: true
       }),
@@ -4541,6 +4546,7 @@ function installAutocontext(pi) {
 var ENV = globalThis.process?.env ?? {};
 var cwd = () => globalThis.process?.cwd?.() ?? "";
 var MEMNEST_URL2 = ENV.MEMNEST_URL ?? "http://127.0.0.1:3111";
+var MEMNEST_TOKEN2 = ENV.MEMNEST_TOKEN;
 var AUTOLOG_ENABLED = ENV.MEMNEST_AUTOLOG === "1";
 var AUTOLOG_MIN_USER_LEN = Number(ENV.MEMNEST_AUTOLOG_MIN_USER_LEN ?? "3");
 var AUTOLOG_MAX_CHARS = Number(ENV.MEMNEST_AUTOLOG_MAX_CHARS ?? "8000");
@@ -4549,7 +4555,10 @@ async function call(path, body, method = "POST") {
   try {
     const init = {
       method,
-      headers: { "Content-Type": "application/json" }
+      headers: {
+        "Content-Type": "application/json",
+        ...MEMNEST_TOKEN2 ? { Authorization: `Bearer ${MEMNEST_TOKEN2}` } : {}
+      }
     };
     if (body !== void 0 && method !== "GET")
       init.body = JSON.stringify(body);
@@ -4581,7 +4590,10 @@ function fireAndForget(path, body) {
   try {
     const p = fetch(`${MEMNEST_URL2}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...MEMNEST_TOKEN2 ? { Authorization: `Bearer ${MEMNEST_TOKEN2}` } : {}
+      },
       body: JSON.stringify(body)
     }).catch(() => {
     });
@@ -4662,6 +4674,7 @@ function installAutoLog(pi) {
           importance: "log",
           session_id: sessionId,
           source: "pi.chat.message",
+          adapter: "pi",
           role: "user",
           input_source: e.source ?? "unknown",
           truncated,
@@ -4686,6 +4699,7 @@ function installAutoLog(pi) {
           importance: "log",
           session_id: sessionId,
           source: "pi.text.complete",
+          adapter: "pi",
           role: "assistant",
           model: msg.model,
           stop_reason: msg.stopReason,
@@ -4731,6 +4745,7 @@ function installAutoLog(pi) {
           importance: e.isError ? "log" : "knowledge",
           session_id: sessionId,
           source: "pi.tool.execute.after",
+          adapter: "pi",
           tool: toolName,
           is_error: !!e.isError,
           truncated,
@@ -4765,6 +4780,8 @@ function installAutoLog(pi) {
           importance: "knowledge",
           session_id: sessionId,
           source: "pi.session.compact",
+          adapter: "pi",
+          memory_kind: "record",
           cwd: currentCwd
         }
       });
@@ -4782,10 +4799,42 @@ function resolveProject(args, ctx) {
   if (inferred !== "default") return inferred;
   return "playbook";
 }
+function resolveMemoryKind(args) {
+  if (args.memory_kind) return args.memory_kind;
+  if (args.importance === "preference" || args.importance === "decision")
+    return "rule";
+  if (!args.importance || args.importance === "knowledge") return "fact";
+  return "record";
+}
 var EmptyParams = typebox_exports.Object({});
 function register(pi) {
   installAutoLog(pi);
   installAutocontext(pi);
+  pi.registerCommand?.("memnest", {
+    description: "Show Memnest status and the dashboard URL",
+    handler: async (_args, ctx) => {
+      const [health, stats] = await Promise.all([
+        call("/health", void 0, "GET"),
+        call("/stats", void 0, "GET")
+      ]);
+      const state = health.isError ? "\uC5F0\uACB0 \uC2E4\uD328" : "\uC815\uC0C1";
+      let dashboard = `${MEMNEST_URL2.replace(/\/$/, "")}/`;
+      let detail = "";
+      try {
+        const h = JSON.parse(health.text);
+        const s = JSON.parse(stats.text);
+        dashboard = h.dashboard_url ?? dashboard;
+        detail = `
+Memories: ${s.total_chunks ?? 0}
+Data: ${h.data_dir ?? "unknown"}`;
+      } catch {
+      }
+      const message = `Memnest ${state}
+Dashboard: ${dashboard}${detail}`;
+      ctx.ui.setStatus("memnest", `Memnest ${state}: ${dashboard}`);
+      ctx.ui.notify(message, health.isError ? "error" : "info");
+    }
+  });
   pi.registerTool({
     name: "memory_remember",
     label: "Memory: remember",
@@ -4811,7 +4860,19 @@ function register(pi) {
             description: "log=routine activity, knowledge=fact (default), decision=deliberate choice (-> playbook), preference=user pref/correction/gotcha (-> playbook)"
           }
         )
-      )
+      ),
+      memory_kind: typebox_exports.Optional(
+        typebox_exports.Union([
+          typebox_exports.Literal("record"),
+          typebox_exports.Literal("fact"),
+          typebox_exports.Literal("rule"),
+          typebox_exports.Literal("procedure")
+        ])
+      ),
+      confidence: typebox_exports.Optional(typebox_exports.Number({ minimum: 0, maximum: 1 })),
+      source_ids: typebox_exports.Optional(typebox_exports.Array(typebox_exports.String())),
+      supersedes: typebox_exports.Optional(typebox_exports.String()),
+      verified_at: typebox_exports.Optional(typebox_exports.String())
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const project = resolveProject(params, ctx);
@@ -4820,7 +4881,13 @@ function register(pi) {
         text: params.text,
         metadata: {
           chunk_type: "manual",
-          importance: params.importance ?? "knowledge"
+          importance: params.importance ?? "knowledge",
+          adapter: "pi",
+          memory_kind: resolveMemoryKind(params),
+          confidence: params.confidence,
+          source_ids: params.source_ids ?? [],
+          supersedes: params.supersedes,
+          verified_at: params.verified_at
         }
       });
       return textResult(`[saved to '${project}'] ${r.text}`, r.isError);
@@ -4887,6 +4954,7 @@ function register(pi) {
       const STUBS = 5;
       const body = {
         query: params.query,
+        adapter: "pi",
         // Extra candidates serve two purposes: one-line stubs after the top
         // results (so rank n+1 is visible, not silently lost), and headroom
         // for the client-side reserved filter against pre-0.5.1 servers that
@@ -4906,6 +4974,7 @@ function register(pi) {
         const results = (Array.isArray(parsed.results) ? parsed.results : []).filter((item) => !crossProject || !excluded.has(item.project)).slice(0, requested + STUBS);
         const flat = (item) => String(item.document ?? "").replace(/\s+/g, " ").trim();
         const lines = [`=== memory search results (${params.query}) ===`];
+        if (parsed.recall_id) lines.push(`recall_id=${parsed.recall_id}`);
         if (results.length === 0) lines.push("no results");
         for (const [index, item] of results.slice(0, requested).entries()) {
           lines.push(
@@ -4933,6 +5002,24 @@ function register(pi) {
       } catch {
         return textResult(r.text);
       }
+    }
+  });
+  pi.registerTool({
+    name: "memory_feedback",
+    label: "Memory: feedback",
+    description: "Record whether a memory recall helped or harmed the task. Use the recall_id returned by memory_search.",
+    parameters: typebox_exports.Object({
+      recall_id: typebox_exports.String(),
+      outcome: typebox_exports.Union([
+        typebox_exports.Literal("helpful"),
+        typebox_exports.Literal("harmful"),
+        typebox_exports.Literal("ignored")
+      ]),
+      note: typebox_exports.Optional(typebox_exports.String())
+    }),
+    async execute(_toolCallId, params) {
+      const r = await call("/feedback", params);
+      return textResult(r.text, r.isError);
     }
   });
   pi.registerTool({
@@ -4992,6 +5079,7 @@ ${c.document ?? ""}`
       const inferred = inferProject(ctx?.cwd);
       const body = {
         query: params.query,
+        adapter: "pi",
         project: params.project ?? (inferred === "default" ? "all" : inferred),
         n_results: params.n_results ?? 3,
         max_notes: params.max_notes ?? 4,

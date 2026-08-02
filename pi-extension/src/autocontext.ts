@@ -23,6 +23,7 @@ const DISABLE_ENV = "MEMNEST_AUTOCONTEXT_DISABLE";
 
 const env = (globalThis as GlobalWithProcess).process?.env ?? {};
 const MEMNEST_URL: string = env.MEMNEST_URL ?? "http://127.0.0.1:3111";
+const MEMNEST_TOKEN = env.MEMNEST_TOKEN;
 const MODE = String(env.MEMNEST_AUTOCONTEXT_MODE ?? "balanced").toLowerCase();
 const N_RESULTS = Math.max(
 	1,
@@ -172,11 +173,15 @@ async function searchMemnest(query: string): Promise<MemResult[]> {
 	try {
 		const res = await fetch(`${MEMNEST_URL}/search`, {
 			method: "POST",
-			headers: { "content-type": "application/json" },
+			headers: {
+				"content-type": "application/json",
+				...(MEMNEST_TOKEN ? { authorization: `Bearer ${MEMNEST_TOKEN}` } : {}),
+			},
 			// exclude_reserved: server-side drop of root/default/global/_superseded
 			// (memnest >= 0.5.1); EXCLUDE_PROJECTS below still covers custom lists.
 			body: JSON.stringify({
 				query,
+				adapter: "pi-autocontext",
 				n_results: N_RESULTS,
 				exclude_reserved: true,
 			}),

@@ -21,6 +21,7 @@ const ENV: Record<string, string | undefined> =
 	(globalThis as any).process?.env ?? {};
 const cwd = () => (globalThis as any).process?.cwd?.() ?? "";
 const MEMNEST_URL = ENV.MEMNEST_URL ?? "http://127.0.0.1:3111";
+const MEMNEST_TOKEN = ENV.MEMNEST_TOKEN;
 
 // AutoLog can be disabled via env var if user wants tool-only mode.
 // Default OFF: autolog transcripts were measured as pure retrieval noise
@@ -49,7 +50,10 @@ async function call(
 	try {
 		const init: RequestInit = {
 			method,
-			headers: { "Content-Type": "application/json" },
+			headers: {
+				"Content-Type": "application/json",
+				...(MEMNEST_TOKEN ? { Authorization: `Bearer ${MEMNEST_TOKEN}` } : {}),
+			},
 		};
 		if (body !== undefined && method !== "GET")
 			init.body = JSON.stringify(body);
@@ -92,7 +96,10 @@ function fireAndForget(path: string, body: unknown): void {
 	try {
 		const p = fetch(`${MEMNEST_URL}${path}`, {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
+			headers: {
+				"Content-Type": "application/json",
+				...(MEMNEST_TOKEN ? { Authorization: `Bearer ${MEMNEST_TOKEN}` } : {}),
+			},
 			body: JSON.stringify(body),
 		}).catch(() => {});
 		inFlight.add(p);
@@ -203,6 +210,7 @@ function installAutoLog(pi: ExtensionAPI): void {
 					importance: "log",
 					session_id: sessionId,
 					source: "pi.chat.message",
+					adapter: "pi",
 					role: "user",
 					input_source: e.source ?? "unknown",
 					truncated,
@@ -232,6 +240,7 @@ function installAutoLog(pi: ExtensionAPI): void {
 					importance: "log",
 					session_id: sessionId,
 					source: "pi.text.complete",
+					adapter: "pi",
 					role: "assistant",
 					model: msg.model,
 					stop_reason: msg.stopReason,
@@ -290,6 +299,7 @@ function installAutoLog(pi: ExtensionAPI): void {
 					importance: e.isError ? "log" : "knowledge",
 					session_id: sessionId,
 					source: "pi.tool.execute.after",
+					adapter: "pi",
 					tool: toolName,
 					is_error: !!e.isError,
 					truncated,
@@ -329,6 +339,8 @@ function installAutoLog(pi: ExtensionAPI): void {
 					importance: "knowledge",
 					session_id: sessionId,
 					source: "pi.session.compact",
+					adapter: "pi",
+					memory_kind: "record",
 					cwd: currentCwd,
 				},
 			});
@@ -363,12 +375,46 @@ function resolveProject(args: any, ctx: any): string {
 	return "playbook";
 }
 
+function resolveMemoryKind(
+	args: any,
+): "record" | "fact" | "rule" | "procedure" {
+	if (args.memory_kind) return args.memory_kind;
+	if (args.importance === "preference" || args.importance === "decision")
+		return "rule";
+	if (!args.importance || args.importance === "knowledge") return "fact";
+	return "record";
+}
+
 const EmptyParams = Type.Object({});
 
 export default function register(pi: ExtensionAPI): void {
 	// Install event hooks first so they apply for the whole session.
 	installAutoLog(pi);
 	installAutocontext(pi);
+
+	pi.registerCommand?.("memnest", {
+		description: "Show Memnest status and the dashboard URL",
+		handler: async (_args: string, ctx: any) => {
+			const [health, stats] = await Promise.all([
+				call("/health", undefined, "GET"),
+				call("/stats", undefined, "GET"),
+			]);
+			const state = health.isError ? "연결 실패" : "정상";
+			let dashboard = `${MEMNEST_URL.replace(/\/$/, "")}/`;
+			let detail = "";
+			try {
+				const h = JSON.parse(health.text);
+				const s = JSON.parse(stats.text);
+				dashboard = h.dashboard_url ?? dashboard;
+				detail = `\nMemories: ${s.total_chunks ?? 0}\nData: ${h.data_dir ?? "unknown"}`;
+			} catch {
+				// Old servers still get the canonical configured URL.
+			}
+			const message = `Memnest ${state}\nDashboard: ${dashboard}${detail}`;
+			ctx.ui.setStatus("memnest", `Memnest ${state}: ${dashboard}`);
+			ctx.ui.notify(message, health.isError ? "error" : "info");
+		},
+	});
 
 	// ─── memory_remember (POST /add) ─────────────────────────────────────────
 	pi.registerTool({
@@ -407,6 +453,18 @@ export default function register(pi: ExtensionAPI): void {
 					},
 				),
 			),
+			memory_kind: Type.Optional(
+				Type.Union([
+					Type.Literal("record"),
+					Type.Literal("fact"),
+					Type.Literal("rule"),
+					Type.Literal("procedure"),
+				]),
+			),
+			confidence: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
+			source_ids: Type.Optional(Type.Array(Type.String())),
+			supersedes: Type.Optional(Type.String()),
+			verified_at: Type.Optional(Type.String()),
 		}),
 		async execute(
 			_toolCallId: string,
@@ -422,6 +480,12 @@ export default function register(pi: ExtensionAPI): void {
 				metadata: {
 					chunk_type: "manual",
 					importance: params.importance ?? "knowledge",
+					adapter: "pi",
+					memory_kind: resolveMemoryKind(params),
+					confidence: params.confidence,
+					source_ids: params.source_ids ?? [],
+					supersedes: params.supersedes,
+					verified_at: params.verified_at,
 				},
 			});
 			return textResult(`[saved to '${project}'] ${r.text}`, r.isError);
@@ -499,6 +563,7 @@ export default function register(pi: ExtensionAPI): void {
 			const STUBS = 5;
 			const body: any = {
 				query: params.query,
+				adapter: "pi",
 				// Extra candidates serve two purposes: one-line stubs after the top
 				// results (so rank n+1 is visible, not silently lost), and headroom
 				// for the client-side reserved filter against pre-0.5.1 servers that
@@ -523,6 +588,7 @@ export default function register(pi: ExtensionAPI): void {
 						.replace(/\s+/g, " ")
 						.trim();
 				const lines = [`=== memory search results (${params.query}) ===`];
+				if (parsed.recall_id) lines.push(`recall_id=${parsed.recall_id}`);
 				if (results.length === 0) lines.push("no results");
 				for (const [index, item] of results.slice(0, requested).entries()) {
 					lines.push(
@@ -553,6 +619,27 @@ export default function register(pi: ExtensionAPI): void {
 			} catch {
 				return textResult(r.text);
 			}
+		},
+	});
+
+	// ─── memory_feedback (POST /feedback) ───────────────────────────────────
+	pi.registerTool({
+		name: "memory_feedback",
+		label: "Memory: feedback",
+		description:
+			"Record whether a memory recall helped or harmed the task. Use the recall_id returned by memory_search.",
+		parameters: Type.Object({
+			recall_id: Type.String(),
+			outcome: Type.Union([
+				Type.Literal("helpful"),
+				Type.Literal("harmful"),
+				Type.Literal("ignored"),
+			]),
+			note: Type.Optional(Type.String()),
+		}),
+		async execute(_toolCallId: string, params: any) {
+			const r = await call("/feedback", params);
+			return textResult(r.text, r.isError);
 		},
 	});
 
@@ -627,6 +714,7 @@ export default function register(pi: ExtensionAPI): void {
 			const inferred = inferProject(ctx?.cwd);
 			const body: any = {
 				query: params.query,
+				adapter: "pi",
 				project: params.project ?? (inferred === "default" ? "all" : inferred),
 				n_results: params.n_results ?? 3,
 				max_notes: params.max_notes ?? 4,

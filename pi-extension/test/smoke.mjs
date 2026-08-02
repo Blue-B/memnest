@@ -35,7 +35,11 @@ if (!existsSync(BUNDLE)) {
 }
 
 const tools = new Map();
-const fakePi = { registerTool: (t) => tools.set(t.name, t) };
+const commands = new Map();
+const fakePi = {
+	registerTool: (t) => tools.set(t.name, t),
+	registerCommand: (name, command) => commands.set(name, command),
+};
 // Tolerate any other pi.* methods the extension may call.
 const noop = () => {};
 const proxy = new Proxy(fakePi, {
@@ -50,11 +54,13 @@ assert("ESM bundle loads", typeof mod.default === "function");
 
 await mod.default(proxy);
 assert("register() called without throwing", true);
+assert("/memnest command registered", commands.has("memnest"));
 
 const EXPECTED = [
 	"memory_remember",
 	"memory_update",
 	"memory_search",
+	"memory_feedback",
 	"memory_get",
 	"memory_context",
 	"memory_stats",
@@ -172,17 +178,42 @@ if (!reachable) {
 		!/"elapsed_ms"|"timestamp"/.test(t4),
 		t4.slice(0, 200),
 	);
+	const recallMatch = t4.match(/recall_id=([\w-]+)/);
+	if (recallMatch) {
+		const feedback = tools.get("memory_feedback");
+		const rf = await feedback.execute(
+			"id",
+			{ recall_id: recallMatch[1], outcome: "ignored" },
+			undefined,
+			noop,
+			{ cwd: process.cwd() },
+		);
+		const tf = rf.content?.[0]?.text ?? "";
+		if (/memnest error 404/.test(tf)) {
+			console.log("  SKIP  memory_feedback live call (old server)");
+		} else {
+			assert("memory_feedback accepts recall_id", /"status":"ok"/.test(tf), tf);
+		}
+	}
 
 	// Full-text escape hatch: take an id from the search output and fetch it.
-	const idMatch = t4.match(/id=([\w-]+)/);
+	const idMatch = t4.match(/(?:^|\n)\[\d+\].*\bid=([\w-]+)/);
 	if (idMatch) {
 		const getTool = tools.get("memory_get");
-		const rg1 = await getTool.execute("id", { id: idMatch[1] }, undefined, noop, {
-			cwd: process.cwd(),
-		});
+		const rg1 = await getTool.execute(
+			"id",
+			{ id: idMatch[1] },
+			undefined,
+			noop,
+			{
+				cwd: process.cwd(),
+			},
+		);
 		const tg = rg1.content?.[0]?.text ?? "";
 		if (/memnest error 404/.test(tg)) {
-			console.log("  SKIP  memory_get live call (server does not expose /chunk yet)");
+			console.log(
+				"  SKIP  memory_get live call (server does not expose /chunk yet)",
+			);
 		} else {
 			assert(
 				"memory_get returns the full document",
