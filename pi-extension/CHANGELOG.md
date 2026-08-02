@@ -2,6 +2,22 @@
 
 All notable changes to `pi-memnest`.
 
+## [0.6.0] - 2026-08-01
+
+### Added
+
+- `memory_feedback` records helpful, harmful, or ignored outcomes for a `recall_id` returned by search.
+- `/memnest` reports local service health, memory count, data directory, and the dashboard URL.
+- Structured `record`, `fact`, `rule`, and `procedure` memory kinds with optional confidence, provenance, replacement, and verification fields.
+- Adapter identity on writes and searches so pi activity is visible in the operations console.
+- `MEMNEST_TOKEN` bearer authentication for normal tool calls and Autocontext.
+
+### Changed
+
+- Total exposed tools: 19 to 20.
+- Preferences and decisions default to rule memories, while knowledge defaults to fact memories.
+- Search output includes `recall_id` without returning the full HTTP envelope.
+
 ## [0.5.2] — 2026-07-11
 
 ### Fixed — retrieval quality guardrails for the 0.5.1 token cuts

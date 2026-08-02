@@ -1,109 +1,161 @@
-<p align="center">
-  <img src="./docs/logo.png" alt="pi-memnest" width="160" />
-</p>
+# pi-memnest
 
-<h1 align="center">pi-memnest</h1>
+<!-- markdownlint-disable MD013 -->
 
-<p align="center">
-  <strong>One persistent memory layer for every AI tool you use — local, encrypted, free.</strong>
-  <br/>
-  <em>18 pi tools • risk-triggered autocontext • AES-GCM secret vault • BM25 + vector hybrid search • no cloud.</em>
-</p>
+A local memnest bridge for pi.
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/pi-memnest"><img src="https://img.shields.io/npm/v/pi-memnest.svg?style=flat&color=blue" alt="npm version" /></a>
-  <a href="https://github.com/Blue-B/memnest/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/pi-memnest.svg?style=flat&color=green" alt="license" /></a>
-  <a href="https://github.com/sponsors/Blue-B"><img src="https://img.shields.io/badge/sponsor-❤-ea4aaa.svg?style=flat" alt="sponsor" /></a>
-</p>
+`pi-memnest` connects [pi](https://github.com/badlogic/pi-mono) to a running [memnest](https://github.com/Blue-B/memnest) HTTP service. It gives pi explicit memory, note, fact, collection, health, and secret tools. It can also retrieve a small memory card before selected prompts and optionally record conversations.
 
----
+This extension does not contain the memory engine. Start the Rust core before installing it.
 
-**pi-memnest** bridges [pi](https://github.com/badlogic/pi-mono) to a locally
-running [memnest](https://github.com/Blue-B/memnest) memory server. Memories
-you write from Claude Desktop, Cursor, Cline, pi, or curl all land in the
-**same SQLite database** at `~/.memnest/memory.db` — and stay searchable
-across every session of every tool, forever, for $0.
+## Requirements
+
+- Node.js 20 or newer for building the extension
+- pi
+- a memnest HTTP service, normally at `http://127.0.0.1:3111`
+
+`pi-memnest` is not currently available from the public npm registry. Install it from a memnest source checkout.
+
+## Install from source
+
+Start the core service first. From the repository root:
 
 ```bash
-# 30-second demo
-pi install npm:pi-memnest                  # in pi
-memory_remember text="Project X uses port 8317 for CLIProxy"
-memory_search   query="CLIProxy port"          # → returns the chunk above
-memory_context  query="Project X deployment"   # notes + facts + memories
-memory_update   id=manual_... text="Project X uses port 8320"
-secret_set      key=github_pat value=ghp_...   # AES-256-GCM encrypted on disk
+cd core
+cargo build --release
+./target/release/memnest --data-dir ~/.memnest
 ```
 
-## Install
-
-Memnest must be running (default endpoint `http://127.0.0.1:3111`, override
-with `MEMNEST_URL`). Then:
+In another terminal, build and install the extension:
 
 ```bash
-pi install npm:pi-memnest        # from npm
-pi install /path/to/pi-memnest   # or from a local checkout (auto-builds)
+cd /path/to/memnest/pi-extension
+npm install
+pi install .
 ```
 
-## Tools (18)
+The extension uses `MEMNEST_URL` when set, otherwise it connects to `http://127.0.0.1:3111`. Set `MEMNEST_TOKEN` when the core requires bearer authentication.
 
-All backed by the memnest HTTP API:
+Check the connection and reveal the dashboard URL from pi:
+
+```text
+/memnest
+```
+
+The command reports service health, memory count, the active data directory, and the canonical dashboard link.
+
+## Tools
+
+The current extension registers 20 tools.
+
+### Memories and context
 
 | Tool | Purpose |
-| ---- | ------- |
-| `memory_remember`   | save a memory chunk (auto-routes preference/decision to `playbook`) |
-| `memory_update`     | correct an existing memory by id and refresh indexes |
-| `memory_search`     | hybrid BM25 + vector search |
-| `memory_context`    | prompt-ready notes + facts + retrieved memories |
-| `memory_stats`      | server statistics |
-| `memory_sessions`   | recent session summaries |
-| `memory_facts_list` | structured fact triples |
-| `note_set` / `note_get` / `notes_list` / `note_delete` | core KV memory blocks |
-| `secret_set` / `secret_get` / `secret_list` / `secret_delete` | AES-GCM encrypted credentials |
-| `collections_list`  | enumerate project buckets |
-| `memory_health`     | server liveness probe |
-| `memnest_autocontext_status` | inspect automatic memory retrieval and test a live query |
+| --- | --- |
+| `memory_remember` | Save a memory and route it to a project collection. Preference and decision memories default to `playbook`. |
+| `memory_update` | Correct an existing memory by id and refresh its indexes. |
+| `memory_search` | Search with BM25 and vector retrieval. Results include a `recall_id` for outcome tracking. |
+| `memory_feedback` | Mark a recall as helpful, harmful, or ignored. |
+| `memory_get` | Fetch the full text of a memory returned as a truncated excerpt. |
+| `memory_context` | Build a character-bounded prompt block from memories, notes, and facts. |
+| `memory_stats` | Read store statistics. |
+| `memory_sessions` | List recent session summaries. |
+| `memory_facts_list` | List structured subject, predicate, object facts. |
 
-Other MCP clients (Claude Desktop, Cursor, Cline, …) don't need this
-extension — they register `memnest --mcp` directly, see the
-[root README](../README.md#connect-your-client).
+### Notes, secrets, and collections
 
-## Autocontext — tiny memory cards when they matter
+| Tool | Purpose |
+| --- | --- |
+| `note_set`, `note_get`, `notes_list`, `note_delete` | Manage small key-value notes. |
+| `secret_set`, `secret_get`, `secret_list`, `secret_delete` | Manage values in the AES-256-GCM secret vault. |
+| `collections_list` | List project collections and counts. |
+| `memory_health` | Check whether the server is reachable. |
+| `memnest_autocontext_status` | Inspect Autocontext state or preview a live retrieval. |
 
-Not a large startup memory dump: the default `balanced` mode only retrieves
-memory on high-risk prompts (previous attempts, credentials, impossibility
-claims, money or project strategy).
+Ordinary memories are not encrypted at rest. Use the secret tools for credentials, and keep the core data directory and `master.key` private.
 
-- `MEMNEST_AUTOCONTEXT_MODE`: `balanced` (default) · `aggressive` (adds first-turn/topic-shift lane) · `off`.
-- Tunables: `MEMNEST_AUTOCONTEXT_N`, `_TOP`, `_MAX_INJECTIONS`, `_MIN_SCORE`, `_EXCLUDE`.
-- Inspect counters or preview a retrieval with `memnest_autocontext_status`.
+## Basic use
 
-## AutoLog — passive memory capture
+```text
+memory_remember text="Project X deploys on port 8320" project="project-x" memory_kind="fact" confidence=1
+memory_search query="Project X deployment port" project="project-x"
+memory_feedback recall_id="recall_..." outcome="helpful"
+memory_context query="Project X deployment" project="project-x"
+memory_update id="manual_..." text="Project X now deploys on port 8420"
+```
 
-Event hooks automatically send user inputs and the assistant's final messages
-to memnest as you work (skips thinking content, short noise, and memnest's own
-tool calls). Fire-and-forget: never blocks the agent loop; pending writes are
-drained on session end. Disable with `MEMNEST_AUTOLOG=0`.
+The core records each save in `/operations`, completes embedding and indexing, and then acknowledges the write. A semantically deduplicated id remains resolvable to the canonical memory. The first operation can take longer while the core downloads its embedding model.
+
+## Structured memory
+
+`memory_remember` supports four portable kinds:
+
+- `record` for historical turns and outcomes
+- `fact` for stable project or environment knowledge
+- `rule` for preferences, decisions, and guardrails
+- `procedure` for reusable verified workflows
+
+Optional `confidence`, `source_ids`, `supersedes`, and `verified_at` fields preserve provenance without tying the data model to pi. The core HTTP and MCP contracts expose the same fields to other platform adapters.
+
+## Autocontext
+
+Autocontext is enabled in `balanced` mode by default. It does not inject a full memory dump at session start. Before a substantive high-risk prompt, it can retrieve a small card when the prompt refers to areas such as:
+
+- previous attempts or remembered context
+- credentials, accounts, authentication, or plans
+- claims that something is absent or impossible
+- money, promotion, or project strategy
+
+Use `MEMNEST_AUTOCONTEXT_MODE=aggressive` to add the general first-turn and topic-shift lane. Use `MEMNEST_AUTOCONTEXT_MODE=off` to disable retrieval.
+
+Common controls:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MEMNEST_AUTOCONTEXT_MODE` | `balanced` | `balanced`, `aggressive`, or `off`. |
+| `MEMNEST_AUTOCONTEXT_TOP` | `2` | Maximum results included in one card. |
+| `MEMNEST_AUTOCONTEXT_MAX_INJECTIONS` | `4` | Maximum cards in one session. |
+| `MEMNEST_AUTOCONTEXT_MIN_SCORE` | `0.12` | Minimum score for the general lane. |
+| `MEMNEST_AUTOCONTEXT_RISK_MIN_SCORE` | `0.12` | Minimum score for a risk-triggered card. |
+| `MEMNEST_AUTOCONTEXT_EXCLUDE` | `_superseded,default,root,global` | Collections excluded from automatic retrieval. |
+
+Run `memnest_autocontext_status` to see the active mode, counters, and a test retrieval.
+
+## AutoLog
+
+AutoLog is off by default. Enable it explicitly:
+
+```bash
+MEMNEST_AUTOLOG=1 pi
+```
+
+When enabled, lifecycle hooks send user messages and assistant final messages to memnest without blocking the agent loop. Thinking content, short noise, and memnest's own tool calls are skipped. Pending writes are drained when the session ends.
+
+Tool-result capture remains off unless `MEMNEST_AUTOLOG_TOOLS=1` is set. Tool results are higher volume and are truncated before storage.
+
+AutoLog records with log importance have a 30-day core retention period by default. Configure that policy on the core with `MEMNEST_TTL_AUTOLOG_DAYS`.
 
 ## Development
 
 ```bash
-npm install     # runs `prepare` -> `npm run build`
-npm run build   # esbuild src/index.ts -> dist/index.mjs
+npm install
+npm run build
+npm run smoke
 ```
 
-pi loads the pre-built ESM bundle `dist/index.mjs` (not `src/index.ts`): the
-bundle inlines everything except the host-provided
-`@earendil-works/pi-coding-agent`, which avoids jiti/typebox resolution
-failures under the Bun-compiled pi binary.
+`npm install` runs the `prepare` script and builds `dist/index.mjs`. pi loads that bundled ESM file rather than `src/index.ts`.
 
-## Links
+An end-to-end MCP check is also available when its prerequisites are running:
 
-- [Root README](https://github.com/Blue-B/memnest#readme) — engine install, client registration, deployment, security, troubleshooting.
-- [CHANGELOG.md](./CHANGELOG.md) — release notes.
-- [memnest-journal](https://github.com/Blue-B/memnest) — mirror the memory DB to a git-backed markdown repo (diff, revert, PR-review).
+```bash
+npm run e2e
+```
 
-Issues and PRs welcome at [github.com/Blue-B/memnest](https://github.com/Blue-B/memnest/issues).
-If this saves you cloud-memory bills, consider [sponsoring](https://github.com/sponsors/Blue-B).
+## Related documentation
+
+- [memnest root README](../README.md) for engine setup, lifecycle, service installation, backup, and security
+- [CHANGELOG.md](./CHANGELOG.md) for extension changes
+- [memnest-journal](../journal/README.md) for the optional Markdown audit mirror
 
 ## License
 
