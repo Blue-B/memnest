@@ -55,6 +55,14 @@ const LEARN_DIR =
 const SCRATCHPAD_FILE = path.join(LEARN_DIR, "SCRATCHPAD.md");
 const DAILY_DIR = path.join(LEARN_DIR, "daily");
 const CAPTURE_EVERY_TURNS = Number(process.env.MEMNEST_CAPTURE_TURNS ?? 10);
+const LEARN_INJECT = process.env.MEMNEST_LEARN_INJECT !== "0";
+const LEARN_RULE_MIN_SCORE = Number(
+	process.env.MEMNEST_LEARN_RULE_MIN_SCORE ?? "0.12",
+);
+const LEARN_RULE_TOP = Math.max(
+	1,
+	Number(process.env.MEMNEST_LEARN_RULE_TOP ?? "2") || 2,
+);
 // Background LLM budget: cap automatic capture/skill/user-model calls so they
 // can't compete with the user's real work. Manual tools are NOT gated.
 const LLM_MAX_CALLS = Number(process.env.MEMNEST_LLM_MAX_CALLS ?? 24);
@@ -188,9 +196,7 @@ async function buildInjection(prompt: string): Promise<string> {
 		warn(e); /* user model unavailable — degrade */
 	}
 	// 2) open scratchpad items (working memory)
-	const open = parseScratchpad(readSafe(SCRATCHPAD_FILE)).filter(
-		(i) => !i.done,
-	);
+	const open = parseScratchpad(readSafe(SCRATCHPAD_FILE)).filter((i) => !i.done);
 	if (open.length > 0) {
 		parts.push("open_tasks:");
 		for (const i of open) parts.push(`- [ ] ${i.text}`);
@@ -204,16 +210,17 @@ async function buildInjection(prompt: string): Promise<string> {
 	// kept re-correcting the same thing). Searching playbook directly guarantees
 	// the rules are always injected, isolated from autolog noise.
 	try {
-		const rules = await client.search(
-			prompt || "user corrections and preferences",
-			{
+		const rules = (
+			await client.search(prompt || "user corrections and preferences", {
 				project: "playbook",
-				nResults: 4,
-			},
-		);
+				nResults: Math.max(4, LEARN_RULE_TOP * 2),
+			})
+		)
+			.filter((r) => r.score >= LEARN_RULE_MIN_SCORE)
+			.slice(0, LEARN_RULE_TOP);
 		if (rules.length > 0) {
 			parts.push(
-				"learned_rules (you were corrected on these before — follow them):",
+				"learned_rules (relevant prior corrections; verify before applying):",
 			);
 			for (const r of rules) {
 				parts.push(`- ${r.document.replace(/\s+/g, " ").trim().slice(0, 260)}`);
@@ -240,34 +247,36 @@ async function buildInjection(prompt: string): Promise<string> {
 }
 
 export default function (pi: ExtensionAPI) {
-	// session_start: reset per-session transcript state (avoid cross-session
-	// contamination — a new session must not re-extract the previous one's turns)
-	// and prime the snapshot.
+	// session_start resets transcript state for automatic capture. Snapshot
+	// building is optional, but capture/learning hooks below stay active.
 	pi.on("session_start", async () => {
 		ensureDirs();
 		recentTurns = [];
 		turnCounter = 0;
-		await snapshot.refresh("session_start", () => buildInjection(""));
+		if (LEARN_INJECT)
+			await snapshot.refresh("session_start", () => buildInjection(""));
 	});
 
-	// before_agent_start: inject the byte-stable memory block
-	pi.on(
-		"before_agent_start",
-		async (event: { prompt?: string; systemPrompt: string }) => {
-			const { text, reason, takenAt } = await snapshot.get(() =>
-				buildInjection(event.prompt ?? ""),
-			);
-			if (!text.trim()) return;
-			const header = [
-				"\n\n## Memory (memnest-learn)",
-				`(snapshot:${reason} @ ${takenAt}; NOT new user input — call memory_search for the latest state)`,
-				"<memnest_memory>",
-				text,
-				"</memnest_memory>",
-			].join("\n");
-			return { systemPrompt: event.systemPrompt + header };
-		},
-	);
+	// before_agent_start: inject the byte-stable memory block only when enabled.
+	if (LEARN_INJECT) {
+		pi.on(
+			"before_agent_start",
+			async (event: { prompt?: string; systemPrompt: string }) => {
+				const { text, reason, takenAt } = await snapshot.get(() =>
+					buildInjection(event.prompt ?? ""),
+				);
+				if (!text.trim()) return;
+				const header = [
+					"\n\n## Memory (memnest-learn)",
+					`(snapshot:${reason} @ ${takenAt}; NOT new user input — call memory_search for the latest state)`,
+					"<memnest_memory>",
+					text,
+					"</memnest_memory>",
+				].join("\n");
+				return { systemPrompt: event.systemPrompt + header };
+			},
+		);
+	}
 
 	// agent_end: also capture what the ASSISTANT said, so failures/insights the
 	// model discovered (but the user never restated) are visible to extraction.
@@ -506,9 +515,7 @@ export default function (pi: ExtensionAPI) {
 			if (params.action === "update") {
 				const needle = params.query ?? params.title ?? "";
 				if (!needle || !params.body)
-					return toolText(
-						"query (which skill) and body (what to add) are required",
-					);
+					return toolText("query (which skill) and body (what to add) are required");
 				const hits = await client.search(needle, {
 					project: SKILL_PROJECT,
 					nResults: 1,
@@ -529,9 +536,7 @@ export default function (pi: ExtensionAPI) {
 			});
 			if (hits.length === 0) return toolText("No matching skills.");
 			return toolText(
-				hits
-					.map((h, i) => `[${i + 1}] ${h.document.slice(0, 400)}`)
-					.join("\n\n"),
+				hits.map((h, i) => `[${i + 1}] ${h.document.slice(0, 400)}`).join("\n\n"),
 			);
 		},
 	});

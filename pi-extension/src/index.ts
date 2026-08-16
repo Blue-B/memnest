@@ -55,8 +55,7 @@ async function call(
 				...(MEMNEST_TOKEN ? { Authorization: `Bearer ${MEMNEST_TOKEN}` } : {}),
 			},
 		};
-		if (body !== undefined && method !== "GET")
-			init.body = JSON.stringify(body);
+		if (body !== undefined && method !== "GET") init.body = JSON.stringify(body);
 		const res = await fetch(`${MEMNEST_URL}${path}`, init);
 		const text = await res.text();
 		if (!res.ok)
@@ -118,20 +117,9 @@ async function drainInFlight(timeoutMs = 3000): Promise<void> {
 }
 
 /**
- * Extract a flat text representation from an AgentMessage content array.
- * Handles user (string | content[]), assistant (text/thinking/toolCall), and toolResult.
+ * Extract final user/assistant text from an AgentMessage content array.
+ * Tool calls and thinking are intentionally excluded from AutoLog.
  */
-function toolCallText(c: any): string {
-	try {
-		const args = c.arguments ?? c.input ?? {};
-		const argStr =
-			typeof args === "string" ? args : JSON.stringify(args).slice(0, 400);
-		return `[toolCall ${c.name ?? "?"}(${argStr})]`;
-	} catch {
-		return `[toolCall ${c.name ?? "?"}]`;
-	}
-}
-
 function messageToText(message: any): string {
 	if (!message) return "";
 	const content = message.content;
@@ -149,9 +137,6 @@ function messageToText(message: any): string {
 				break;
 			case "image":
 				parts.push(`[image ${c.mimeType ?? ""}]`);
-				break;
-			case "toolCall":
-				parts.push(toolCallText(c));
 				break;
 			default:
 				break;
@@ -285,10 +270,7 @@ function installAutoLog(pi: ExtensionAPI): void {
 				}
 			}
 			if (!resultText) return;
-			const { text: clipped, truncated } = truncate(
-				resultText,
-				AUTOLOG_MAX_CHARS,
-			);
+			const { text: clipped, truncated } = truncate(resultText, AUTOLOG_MAX_CHARS);
 			const label = e.isError ? "Tool error" : "Tool result";
 
 			fireAndForget("/add", {
@@ -430,8 +412,7 @@ export default function register(pi: ExtensionAPI): void {
 			"Reserved buckets ('root','default','global') are rejected for manual writes.",
 		parameters: Type.Object({
 			text: Type.String({
-				description:
-					"Free-form memory content. Be specific and self-contained.",
+				description: "Free-form memory content. Be specific and self-contained.",
 			}),
 			project: Type.Optional(
 				Type.String({
@@ -568,10 +549,7 @@ export default function register(pi: ExtensionAPI): void {
 				// results (so rank n+1 is visible, not silently lost), and headroom
 				// for the client-side reserved filter against pre-0.5.1 servers that
 				// ignore exclude_reserved.
-				n_results: Math.max(
-					requested + STUBS,
-					crossProject ? requested * 3 : 0,
-				),
+				n_results: Math.max(requested + STUBS, crossProject ? requested * 3 : 0),
 				exclude_reserved: crossProject,
 			};
 			if (params.project) body.project = params.project;
@@ -606,9 +584,7 @@ export default function register(pi: ExtensionAPI): void {
 					);
 				}
 				if (results.length > requested) {
-					lines.push(
-						"more (one-line stubs; re-query or memory_get for detail):",
-					);
+					lines.push("more (one-line stubs; re-query or memory_get for detail):");
 					for (const [index, item] of results.slice(requested).entries()) {
 						lines.push(
 							`[${requested + index + 1}] project=${item.project} score=${Number(item.score ?? 0).toFixed(4)} id=${item.id} ${flat(item).slice(0, 80)}`,
