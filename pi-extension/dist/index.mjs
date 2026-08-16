@@ -4609,15 +4609,6 @@ async function drainInFlight(timeoutMs = 3e3) {
     new Promise((resolve) => setTimeout(resolve, timeoutMs))
   ]);
 }
-function toolCallText(c) {
-  try {
-    const args = c.arguments ?? c.input ?? {};
-    const argStr = typeof args === "string" ? args : JSON.stringify(args).slice(0, 400);
-    return `[toolCall ${c.name ?? "?"}(${argStr})]`;
-  } catch {
-    return `[toolCall ${c.name ?? "?"}]`;
-  }
-}
 function messageToText(message) {
   if (!message) return "";
   const content = message.content;
@@ -4634,9 +4625,6 @@ function messageToText(message) {
         break;
       case "image":
         parts.push(`[image ${c.mimeType ?? ""}]`);
-        break;
-      case "toolCall":
-        parts.push(toolCallText(c));
         break;
       default:
         break;

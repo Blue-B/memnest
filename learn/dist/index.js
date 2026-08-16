@@ -843,6 +843,9 @@ var LEARN_DIR = process.env.MEMNEST_LEARN_DIR ?? path.join(os.homedir(), ".pi", 
 var SCRATCHPAD_FILE = path.join(LEARN_DIR, "SCRATCHPAD.md");
 var DAILY_DIR = path.join(LEARN_DIR, "daily");
 var CAPTURE_EVERY_TURNS = Number(process.env.MEMNEST_CAPTURE_TURNS ?? 10);
+var LEARN_INJECT = process.env.MEMNEST_LEARN_INJECT !== "0";
+var LEARN_RULE_MIN_SCORE = Number(process.env.MEMNEST_LEARN_RULE_MIN_SCORE ?? "0.12");
+var LEARN_RULE_TOP = Math.max(1, Number(process.env.MEMNEST_LEARN_RULE_TOP ?? "2") || 2);
 var LLM_MAX_CALLS = Number(process.env.MEMNEST_LLM_MAX_CALLS ?? 24);
 var LLM_WINDOW_MS = Number(process.env.MEMNEST_LLM_WINDOW_MS ?? 5 * 60 * 1000);
 var client = new MemnestClient(MEMNEST_URL, fetch);
@@ -932,12 +935,12 @@ async function buildInjection(prompt) {
       parts.push(`- [ ] ${i.text}`);
   }
   try {
-    const rules = await client.search(prompt || "user corrections and preferences", {
+    const rules = (await client.search(prompt || "user corrections and preferences", {
       project: "playbook",
-      nResults: 4
-    });
+      nResults: Math.max(4, LEARN_RULE_TOP * 2)
+    })).filter((r) => r.score >= LEARN_RULE_MIN_SCORE).slice(0, LEARN_RULE_TOP);
     if (rules.length > 0) {
-      parts.push("learned_rules (you were corrected on these before — follow them):");
+      parts.push("learned_rules (relevant prior corrections; verify before applying):");
       for (const r of rules) {
         parts.push(`- ${r.document.replace(/\s+/g, " ").trim().slice(0, 260)}`);
       }
@@ -966,24 +969,27 @@ function src_default(pi) {
     ensureDirs();
     recentTurns = [];
     turnCounter = 0;
-    await snapshot.refresh("session_start", () => buildInjection(""));
+    if (LEARN_INJECT)
+      await snapshot.refresh("session_start", () => buildInjection(""));
   });
-  pi.on("before_agent_start", async (event) => {
-    const { text, reason, takenAt } = await snapshot.get(() => buildInjection(event.prompt ?? ""));
-    if (!text.trim())
-      return;
-    const header = [
-      `
+  if (LEARN_INJECT) {
+    pi.on("before_agent_start", async (event) => {
+      const { text, reason, takenAt } = await snapshot.get(() => buildInjection(event.prompt ?? ""));
+      if (!text.trim())
+        return;
+      const header = [
+        `
 
 ## Memory (memnest-learn)`,
-      `(snapshot:${reason} @ ${takenAt}; NOT new user input — call memory_search for the latest state)`,
-      "<memnest_memory>",
-      text,
-      "</memnest_memory>"
-    ].join(`
+        `(snapshot:${reason} @ ${takenAt}; NOT new user input — call memory_search for the latest state)`,
+        "<memnest_memory>",
+        text,
+        "</memnest_memory>"
+      ].join(`
 `);
-    return { systemPrompt: event.systemPrompt + header };
-  });
+      return { systemPrompt: event.systemPrompt + header };
+    });
+  }
   pi.on("agent_end", async (event) => {
     if (event?.willRetry)
       return;

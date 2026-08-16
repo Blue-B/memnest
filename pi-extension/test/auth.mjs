@@ -48,6 +48,29 @@ const autolog = requests.find((request) => request.url.endsWith("/add"));
 assert.ok(autolog, "AutoLog should POST /add");
 assert.equal(autolog.init.headers.Authorization, "Bearer test-token");
 
+const beforeAssistant = requests.length;
+for (const handler of hooks.get("message_end") ?? []) {
+	await handler({
+		message: {
+			role: "assistant",
+			content: [
+				{ type: "toolCall", name: "bash", arguments: { command: "echo fixture" } },
+				{ type: "text", text: "final summary" },
+			],
+		},
+	});
+}
+await new Promise((resolve) => setTimeout(resolve, 20));
+const assistantAdds = requests
+	.slice(beforeAssistant)
+	.filter((request) => request.url.endsWith("/add"));
+assert.equal(assistantAdds.length, 1, "assistant text should be saved once");
+const assistantBody = JSON.parse(assistantAdds[0].init.body).text;
+assert.match(assistantBody, /final summary/);
+assert.ok(
+	!assistantBody.includes("toolCall") && !assistantBody.includes("echo fixture"),
+);
+
 const command = commands.get("memnest");
 assert.ok(command, "/memnest command should register");
 const notices = [];
