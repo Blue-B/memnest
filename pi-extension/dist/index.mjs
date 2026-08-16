@@ -4300,6 +4300,10 @@ var RISK_RULES = [
   {
     label: "money",
     re: /돈|수익|크몽|외주|토스|홍보|광고|매출|iap|과금|프로모션|promotion|monetization|유저\s*(획득|유입)|사용자\s*(확보|유입)/i
+  },
+  {
+    label: "config",
+    re: /설정|세팅|셋업|config|settings|환경\s*변수|옵션|프로필|profile|임계값|threshold|기본값/i
   }
 ];
 function isSubstantive(prompt) {
@@ -4382,9 +4386,7 @@ async function searchMemnest(query) {
 }
 function formatBlock(results, reason, options) {
   const threshold = options.strong ? RISK_MIN_SCORE : MIN_SCORE;
-  const kept = results.filter(
-    (r) => typeof r.document === "string" && r.document.trim().length > 0
-  ).filter((r) => !(r.project && EXCLUDE_PROJECTS.has(r.project))).filter((r) => (typeof r.score === "number" ? r.score : 1) >= threshold).slice(0, TOP_INJECT);
+  const kept = results.filter((r) => typeof r.document === "string" && r.document.trim().length > 0).filter((r) => !(r.project && EXCLUDE_PROJECTS.has(r.project))).filter((r) => (typeof r.score === "number" ? r.score : 1) >= threshold).slice(0, TOP_INJECT);
   if (kept.length === 0) return null;
   const lines = kept.map((r, i) => {
     const proj = r.project ? `[${r.project}]` : "";
@@ -4560,8 +4562,7 @@ async function call(path, body, method = "POST") {
         ...MEMNEST_TOKEN2 ? { Authorization: `Bearer ${MEMNEST_TOKEN2}` } : {}
       }
     };
-    if (body !== void 0 && method !== "GET")
-      init.body = JSON.stringify(body);
+    if (body !== void 0 && method !== "GET") init.body = JSON.stringify(body);
     const res = await fetch(`${MEMNEST_URL2}${path}`, init);
     const text = await res.text();
     if (!res.ok)
@@ -4720,10 +4721,7 @@ function installAutoLog(pi) {
         }
       }
       if (!resultText) return;
-      const { text: clipped, truncated } = truncate(
-        resultText,
-        AUTOLOG_MAX_CHARS
-      );
+      const { text: clipped, truncated } = truncate(resultText, AUTOLOG_MAX_CHARS);
       const label = e.isError ? "Tool error" : "Tool result";
       fireAndForget("/add", {
         project: "root",
@@ -4947,10 +4945,7 @@ Dashboard: ${dashboard}${detail}`;
         // results (so rank n+1 is visible, not silently lost), and headroom
         // for the client-side reserved filter against pre-0.5.1 servers that
         // ignore exclude_reserved.
-        n_results: Math.max(
-          requested + STUBS,
-          crossProject ? requested * 3 : 0
-        ),
+        n_results: Math.max(requested + STUBS, crossProject ? requested * 3 : 0),
         exclude_reserved: crossProject
       };
       if (params.project) body.project = params.project;
@@ -4977,9 +4972,7 @@ Dashboard: ${dashboard}${detail}`;
           );
         }
         if (results.length > requested) {
-          lines.push(
-            "more (one-line stubs; re-query or memory_get for detail):"
-          );
+          lines.push("more (one-line stubs; re-query or memory_get for detail):");
           for (const [index, item] of results.slice(requested).entries()) {
             lines.push(
               `[${requested + index + 1}] project=${item.project} score=${Number(item.score ?? 0).toFixed(4)} id=${item.id} ${flat(item).slice(0, 80)}`
