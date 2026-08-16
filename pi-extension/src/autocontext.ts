@@ -103,6 +103,10 @@ const RISK_RULES: Array<{ label: string; re: RegExp }> = [
 		label: "money",
 		re: /돈|수익|크몽|외주|토스|홍보|광고|매출|iap|과금|프로모션|promotion|monetization|유저\s*(획득|유입)|사용자\s*(확보|유입)/i,
 	},
+	{
+		label: "config",
+		re: /설정|세팅|셋업|config|settings|환경\s*변수|옵션|프로필|profile|임계값|threshold|기본값/i,
+	},
 ];
 
 interface MemResult {
@@ -204,9 +208,7 @@ function formatBlock(
 ): string | null {
 	const threshold = options.strong ? RISK_MIN_SCORE : MIN_SCORE;
 	const kept = results
-		.filter(
-			(r) => typeof r.document === "string" && r.document.trim().length > 0,
-		)
+		.filter((r) => typeof r.document === "string" && r.document.trim().length > 0)
 		.filter((r) => !(r.project && EXCLUDE_PROJECTS.has(r.project)))
 		.filter((r) => (typeof r.score === "number" ? r.score : 1) >= threshold)
 		.slice(0, TOP_INJECT);
@@ -247,8 +249,7 @@ function riskSearchQuery(prompt: string, labels: string[]): string {
 }
 
 export function installAutocontext(pi: ExtensionAPI): void {
-	const disabled =
-		env[DISABLE_ENV] === "1" || MODE === "off" || MODE === "none";
+	const disabled = env[DISABLE_ENV] === "1" || MODE === "off" || MODE === "none";
 
 	let lastSeenQuery: string | null = null;
 	let lastInjectedTokens: Set<string> | null = null;
@@ -271,9 +272,7 @@ export function installAutocontext(pi: ExtensionAPI): void {
 	if (!disabled) {
 		pi.on("before_agent_start", async (event: unknown) => {
 			const e =
-				event && typeof event === "object"
-					? (event as { prompt?: unknown })
-					: {};
+				event && typeof event === "object" ? (event as { prompt?: unknown }) : {};
 			const prompt: string = typeof e.prompt === "string" ? e.prompt : "";
 			if (!isSubstantive(prompt)) {
 				lastSkipReason = "not-substantive";
