@@ -54,7 +54,7 @@ jobs:
       - name: Build dist/index.mjs
         run: npm run build
 
-      - name: Verify bundle loads and 19 tools register
+      - name: Verify bundle loads and 20 tools register
         run: |
           if [ "${{ matrix.runtime }}" = "bun" ]; then
             bun test/smoke.mjs

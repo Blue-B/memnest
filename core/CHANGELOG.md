@@ -1,0 +1,82 @@
+# Changelog
+
+All notable changes to `memnest`, the Rust engine.
+
+## [0.2.0] - 2026-08-17
+
+First version to expose MCP over HTTP and to record memory without a per-host
+extension. No release has been tagged yet, so every change below is still
+reached by building from a checkout.
+
+Release scope: archives are published for Linux x86_64 and aarch64. No Windows
+archive is published, because nothing consumes one. `scripts/install.sh` refuses
+a non-Linux host, and `scripts/install-windows.ps1` registers a binary you have
+already built rather than downloading one.
+
+### Added
+
+- **MCP over Streamable HTTP.** `POST /mcp` answers `initialize`, `tools/list`,
+  and `tools/call` with a single JSON response, so one running service covers
+  the HTTP API, the dashboard, and MCP clients on the same port instead of each
+  client spawning its own writer against the data directory. Notifications get
+  202 with no body, `GET /mcp` is 405, and the route inherits the existing
+  bearer authentication and security headers. The stdio transport is unchanged.
+- **`memnest hook`.** Reads a host's prompt hook payload on stdin, asks the
+  running service for a context pack, and answers in the shape that host
+  expects: Claude Code's nested envelope when the payload looks like one of its
+  events, plain text otherwise, or whatever `--format` pins. It never blocks a
+  prompt, so an unreachable or slow service means no output, exit 0, and a line
+  on stderr.
+- **`memnest watch`.** Follows the session transcripts a host already writes and
+  stores the turns it finds, currently Claude Code and pi, recognised by line
+  shape rather than path. Tool calls, tool results, and reasoning blocks are
+  dropped. Progress is a byte offset per file in `watch-state.json`, advanced
+  only after a turn is stored, so a restart neither repeats nor loses one.
+  `--backfill` imports existing history instead of following from the end.
+- `recall_events` and `processing_jobs` tables with 90 day retention, holding
+  redacted queries and status metadata only, never memory bodies or secrets.
+- `/operations` and `/feedback` endpoints, a `recall_id` on every search, and
+  adapter identity on writes and searches.
+- Structured `record`, `fact`, `rule`, and `procedure` memory kinds with
+  confidence, source ids, supersedes, and verified_at. Legacy metadata stays
+  readable through serde defaults.
+
+### Changed
+
+- **`/add` returns `succeeded` or `deduplicated` instead of `queued`**, because
+  the write is now complete before the response is sent. API consumers that
+  matched on `queued` need updating.
+- The dashboard renders English by default. Roughly 60 console, collection, and
+  search strings had been hardcoded Korean, so the existing language toggle only
+  ever translated the navigation bar. Both languages now render fully.
+- The dashboard was rebuilt as an operations console covering recalls, latency,
+  job state, failures, feedback, collection skew, and storage health.
+- Helpful and harmful counts feed the ranking score through a saturating bonus
+  bounded to the same scale as the importance and type bonuses.
+- An unknown MCP method returns a JSON-RPC `-32601` error rather than an error
+  object nested inside `result`, and `initialize` echoes a supported
+  `protocolVersion` when the client asks for one.
+- The default data directory moves to `~/.memnest` but keeps using an existing
+  `~/.factory/memories` store, so an upgrade never hides existing data or the
+  vault master key behind a new path.
+- `scripts/install.sh` explains how to build from source when no release has
+  been published yet.
+
+### Fixed
+
+- Semantic dedup no longer acknowledges an id that is never persisted. Aliases
+  map the acknowledged id to the canonical memory, and `get_chunk` resolves
+  them.
+- A crash can no longer lose an already confirmed write, and jobs left queued or
+  running by a restart are marked failed instead of appearing active forever.
+- Context budgets count Unicode characters instead of UTF-8 bytes, which had
+  been truncating Korean and other non-Latin text early.
+- Feedback is idempotent and transactional: repeating an outcome does not double
+  count, and changing it reverses the previous counter.
+- `memnest status` probes the configured host rather than a fixed `127.0.0.1`,
+  and brackets IPv6 hosts when printing the dashboard URL.
+
+## [0.1.0] - earlier
+
+Initial monorepo version: HTTP API, stdio MCP server, hybrid BM25 and vector
+search, SQLite storage, and the secret vault.
