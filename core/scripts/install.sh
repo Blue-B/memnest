@@ -21,10 +21,17 @@ EOF
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --user) MODE="user" ;;
-    --system) MODE="system" ;;
-    -h|--help) usage; exit 0 ;;
-    *) echo "unknown argument: $1" >&2; usage; exit 2 ;;
+  --user) MODE="user" ;;
+  --system) MODE="system" ;;
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  *)
+    echo "unknown argument: $1" >&2
+    usage
+    exit 2
+    ;;
   esac
   shift
 done
@@ -33,14 +40,20 @@ OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 
 case "$ARCH" in
-  x86_64) TARGET_ARCH="x86_64" ;;
-  aarch64|arm64) TARGET_ARCH="aarch64" ;;
-  *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+x86_64) TARGET_ARCH="x86_64" ;;
+aarch64 | arm64) TARGET_ARCH="aarch64" ;;
+*)
+  echo "unsupported architecture: $ARCH" >&2
+  exit 1
+  ;;
 esac
 
 case "$OS" in
-  linux) TARGET="${TARGET_ARCH}-unknown-linux-gnu" ;;
-  *) echo "unsupported OS: $OS" >&2; exit 1 ;;
+linux) TARGET="${TARGET_ARCH}-unknown-linux-gnu" ;;
+*)
+  echo "unsupported OS: $OS" >&2
+  exit 1
+  ;;
 esac
 
 if [ "$VERSION" = "latest" ]; then
@@ -48,6 +61,8 @@ if [ "$VERSION" = "latest" ]; then
   VERSION="$(curl -fsSL "$API_URL" | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
   if [ -z "$VERSION" ]; then
     echo "failed to determine latest version" >&2
+    echo "if no release is published yet, build from source instead:" >&2
+    echo "  git clone ${REPO} && cd memnest/core && cargo build --release" >&2
     exit 1
   fi
 fi
