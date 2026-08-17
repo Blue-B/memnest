@@ -96,6 +96,9 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
         .route("/stats", get(api::stats))
         .route("/operations", get(api::operations))
         .route("/feedback", post(api::recall_feedback))
+        // MCP over Streamable HTTP: same auth and security layers as every other
+        // route, so one service covers the API, the dashboard, and MCP clients.
+        .route("/mcp", post(mcp::http_endpoint))
         .nest_service("/assets", ServeDir::new("static"))
         .route("/", get(api::viewer_dashboard))
         .route("/viewer/collections", get(api::viewer_collections))
