@@ -110,14 +110,18 @@ memnest --data-dir ~/.memnest --restore-dir ~/memnest-backup --force
 ```bash
 memnest status                                   # service state and dashboard URL
 memnest dashboard                                # canonical clickable dashboard URL
-memnest --data-dir ~/.memnest                    # HTTP API and dashboard
+memnest --data-dir ~/.memnest                    # HTTP API, dashboard, and MCP over POST /mcp
 memnest --mcp --data-dir ~/.memnest              # stdio MCP server
+memnest hook                                     # answer a host prompt hook with a context pack
+memnest watch                                    # follow session transcripts and store new turns
 memnest --doctor --data-dir ~/.memnest           # environment and store checks
 memnest --warmup-embedding --data-dir ~/.memnest # download the model ahead of first use
 memnest --help
 ```
 
 Common options: `--host`, `--port`, `--data-dir`, `--backup-dir`, `--restore-dir`, `--import-jsonl`, `--import-facts-json`.
+
+`hook` reads a host's hook payload on stdin and writes the reply on stdout, choosing the shape from the payload unless `--format` pins it. It never blocks a prompt: an unreachable service means no output and exit 0. `watch` follows the transcript directories a host already writes, currently Claude Code and pi, and keeps a byte offset per file in `<data-dir>/watch-state.json` so a restart neither repeats nor loses a turn. It follows new files from the end unless `--backfill` asks for existing history. Both talk to the service over HTTP and take `--url`, falling back to `MEMNEST_URL`. See the README for the host configuration each one needs.
 
 `--viewer-port` is deprecated. The dashboard is served on `--port` alongside the API.
 

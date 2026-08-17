@@ -99,14 +99,17 @@ Optional `confidence`, `source_ids`, `supersedes`, and `verified_at` fields pres
 
 ## Autocontext
 
-Autocontext is enabled in `balanced` mode by default. It does not inject a full memory dump at session start. Before a substantive high-risk prompt, it can retrieve a small card when the prompt refers to areas such as:
+Autocontext is enabled in `balanced` mode by default. It does not inject a full memory dump at session start. Before a substantive prompt, it retrieves a small card only when the prompt carries a risk signal. Five rules define those signals, and each one matches English and Korean:
 
-- previous attempts or remembered context
-- credentials, accounts, authentication, or plans
-- claims that something is absent or impossible
-- money, promotion, or project strategy
+| Rule | Prompt refers to |
+| --- | --- |
+| `memory` | Earlier work, something remembered, forgotten, or discussed before. |
+| `credential` | Accounts, logins, keys, tokens, authentication, subscriptions, or plans. |
+| `absence` | A claim that something is missing, broken, unsupported, or impossible. |
+| `money` | Revenue, pricing, billing, promotion, or user growth. |
+| `config` | Settings, environment variables, options, defaults, or thresholds. |
 
-Use `MEMNEST_AUTOCONTEXT_MODE=aggressive` to add the general first-turn and topic-shift lane. Use `MEMNEST_AUTOCONTEXT_MODE=off` to disable retrieval.
+A prompt that matches none of them gets no card in this mode. Use `MEMNEST_AUTOCONTEXT_MODE=aggressive` to add the general first-turn and topic-shift lane, which injects on every topic change instead. Use `MEMNEST_AUTOCONTEXT_MODE=off` to disable retrieval.
 
 Common controls:
 
@@ -134,6 +137,15 @@ When enabled, lifecycle hooks send user messages and assistant final messages to
 Tool-result capture remains off unless `MEMNEST_AUTOLOG_TOOLS=1` is set. Tool results are higher volume and are truncated before storage.
 
 AutoLog records with log importance have a 30-day core retention period by default. Configure that policy on the core with `MEMNEST_TTL_AUTOLOG_DAYS`.
+
+## Outside pi
+
+Autocontext and AutoLog need hooks into a host's session events, which MCP does not describe; it covers tool calls a model chooses to make. Those two behaviours therefore used to require an extension, and pi was the only host that had one. The core now provides them directly, so another host is not left with tools alone:
+
+- `memnest hook` reads a host's prompt hook payload on stdin and answers with a context pack, in the shape that host expects.
+- `memnest watch` follows the session transcripts a host already writes and stores the turns it finds, with no host configuration.
+
+See [automatic memory](../README.md#automatic-memory) in the root README. Inside pi this extension remains the fuller surface, since it adds the 20 tools above and the `/memnest` command.
 
 ## Development
 
