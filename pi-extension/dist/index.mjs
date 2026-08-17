@@ -4282,28 +4282,47 @@ var TRIVIAL = /* @__PURE__ */ new Set([
   "\u3131\u3131",
   "\uB3D9\uC758",
   "\uB9DE\uC544",
-  "\uC88B\uC544"
+  "\uC88B\uC544",
+  "sure",
+  "thx",
+  "ty",
+  "got it",
+  "nice",
+  "cool",
+  "done",
+  "k",
+  "kk",
+  "yep",
+  "yeah",
+  "nope",
+  "perfect",
+  "sounds good",
+  "looks good",
+  "makes sense",
+  "go ahead",
+  "keep going",
+  "thank you"
 ]);
 var RISK_RULES = [
   {
     label: "memory",
-    re: /전에|이전|기억|까먹|잊어|잊었|했었|시도|말했잖|또\s*(말|까먹)|맥락|찾아봤/i
+    re: /전에|이전|기억|까먹|잊어|잊었|했었|시도|말했잖|또\s*(말|까먹)|맥락|찾아봤|\b(remember(ed|s)?|recall(ed|s)?|forget(s)?|forgot(ten)?|previous(ly)?|earlier|before|again)\b|\blast\s+(time|session|conversation|chat|week|month)\b|\b(we|you|i)\s+(said|told|discussed|talked|agreed|decided|mentioned|tried)\b|\bas\s+(i|we)\s+(said|mentioned)\b|\bcontext\b/i
   },
   {
     label: "credential",
-    re: /계정|로그인|비밀키|시크릿|secret|api\s*key|토큰|token|인증|oauth|구독|플랜|plan/i
+    re: /계정|로그인|비밀키|시크릿|api\s*key|토큰|인증|구독|플랜|\b(secrets?|tokens?|oauth|plans?|planning|accounts?|logins?|passwords?|passphrase|credentials?|auth|authn|authz|authentication|authorization|subscriptions?|bearer|2fa|mfa|sso)\b|\blog\s*in\b|\bsign\s*(in|up)\b|\bapi[_\s-]*keys?\b|\b(ssh|private|access|secret)\s+keys?\b/i
   },
   {
     label: "absence",
-    re: /없다|없어|없음|없는|없나요|안\s*되|안됨|불가능|못\s*하|지원\s*안|처음|모르겠/i
+    re: /없다|없어|없음|없는|없나요|안\s*되|안됨|불가능|못\s*하|지원\s*안|처음|모르겠|\b(cannot|cant|missing|broken|unavailable|unsupported|impossible|fails?|failed|failing|deprecated)\b|\bcan['’]t\b|\b(does|do|did|doesn['’]t|don['’]t|didn['’]t|isn['’]t|wasn['’]t|won['’]t)\s+(not\s+)?(work|working|exist|support|supported)\b|\bnot\s+(work|working|supported|available|possible|found|exist)\b|\bno\s+longer\b|\bnever\s+work(s|ed)?\b/i
   },
   {
     label: "money",
-    re: /돈|수익|크몽|외주|토스|홍보|광고|매출|iap|과금|프로모션|promotion|monetization|유저\s*(획득|유입)|사용자\s*(확보|유입)/i
+    re: /돈|수익|크몽|외주|토스|홍보|광고|매출|과금|프로모션|유료|결제|\b(iap|promotions?|monetiz(e|ed|ing|ation)|revenue|profits?|pricing|prices?|billing|payments?|paid|subscriptions?|marketing|ads?|advertising|churn|conversion|freemium|paywall|refunds?|costs?)\b|\buser\s+(acquisition|growth|retention)\b|유저\s*(획득|유입)|사용자\s*(확보|유입)/i
   },
   {
     label: "config",
-    re: /설정|세팅|셋업|config|settings|환경\s*변수|옵션|프로필|profile|임계값|threshold|기본값/i
+    re: /설정|세팅|셋업|환경\s*변수|옵션|프로필|임계값|기본값|\b(re)?config(s|ure|ured|uring|uration)?\b|\b(settings?|setup|profiles?|thresholds?|defaults?|options?|flags?|parameters?|preferences?|toggles?|ports?|timeouts?)\b|\bset\s+up\b|\benv(ironment)?\s*(vars?|variables?)\b|\.env\b/i
   }
 ];
 function isSubstantive(prompt) {
@@ -4317,7 +4336,7 @@ function normQuery(prompt) {
   return prompt.trim().replace(/\s+/g, " ").toLowerCase().slice(0, 240);
 }
 function topicTokens(prompt) {
-  const raw = prompt.toLowerCase().match(/[a-z0-9가-힣_]{2,}/g) ?? [];
+  const raw = prompt.toLowerCase().match(/[\p{L}\p{N}_]{2,}/gu) ?? [];
   const stop = /* @__PURE__ */ new Set([
     "the",
     "and",
