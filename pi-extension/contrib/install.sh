@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-shot installer for the memnest memory stack on Linux/macOS/WSL.
-#   curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/contrib/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/pi-extension/contrib/install.sh | bash
 set -euo pipefail
 
 NEED=(curl tar git)
@@ -56,10 +56,14 @@ else
 	echo "       start manually: memnest &"
 fi
 
-# 3. install pi-memnest extension (if pi is present)
+# 3. install pi-memnest extension from source (if pi is present)
+# pi-memnest is not published to npm yet, so build it from a checkout.
 if command -v pi >/dev/null 2>&1; then
 	echo "[3/3] installing pi-memnest extension ..."
-	pi install npm:pi-memnest || npm install -g pi-memnest
+	tmp_ext="$(mktemp -d)"
+	git clone --depth 1 https://github.com/Blue-B/memnest "$tmp_ext/memnest"
+	(cd "$tmp_ext/memnest/pi-extension" && npm install && pi install .)
+	rm -rf "$tmp_ext"
 else
 	echo "[3/3] pi not installed, skipping extension"
 fi
@@ -72,5 +76,5 @@ sleep 1
 curl -fsS http://127.0.0.1:3111/health || echo "  (server may need a few more seconds)"
 echo
 echo "Next steps:"
-echo "  - Register memnest --mcp in your AI client: see https://github.com/Blue-B/memnest#connect-your-client"
-echo "  - Mirror to a git repo: npm i -g memnest-journal && pjournal init ~/memory-journal"
+echo "  - Register memnest --mcp in your AI client: see https://github.com/Blue-B/memnest#connect-your-agent"
+echo "  - Mirror to a git repo: npm install -g ./journal && pjournal init ~/memory-journal"
