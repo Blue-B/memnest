@@ -78,7 +78,7 @@ flowchart LR
     CORE --> D["~/.memnest<br/>SQLite, BM25, 벡터"]
 ```
 
-MCP 툴 24개는 어느 호스트에서든 똑같이 동작한다. pi 확장에만 있는 건 딱 세 가지다. 프롬프트 전 자동 컨텍스트 주입, 대화 자동 기록(AutoLog), 그리고 `/memnest` 커맨드. MCP는 모델이 스스로 부르는 툴 호출만 규정하고 호스트 세션 이벤트 훅은 주지 않아서, 이 셋은 호스트별로 따로 짜야 한다.
+MCP 툴 24개는 어느 호스트에서든 똑같이 동작한다. MCP는 모델이 스스로 부르는 툴 호출만 규정하고 호스트 세션 이벤트 훅은 주지 않기 때문에, 자동 주입과 자동 기록은 확장 대신 서브커맨드 두 개가 맡는다. `memnest hook`과 `memnest watch`이고 아래 [자동 메모리](#자동-메모리)에서 설명한다. pi 확장은 같은 동작에 `/memnest` 커맨드를 더한 것이다.
 
 ### pi, 네이티브 확장
 
@@ -118,6 +118,28 @@ cd memnest/pi-extension && npm install && pi install .
 ```
 
 각 벤더 문서에서 확인한 호스트는 Claude Code, Cursor, Cline, Kilo Code(`kilo.jsonc`의 `mcp` 키), DeepSeek Harness(`@deepseek-ai/dsh-mcp-client`), Grok Build(`grok mcp add`), 그리고 omp([oh-my-pi](https://github.com/can1357/oh-my-pi))다. omp는 확장 매니페스트가 `mcpServers` 필드를 받아서 등록되지만, 번들된 `@oh-my-pi/pi-mnemopi` 엔진이 이미 같은 역할을 한다. 설정 파일 위치는 호스트마다 다르다.
+
+## 자동 메모리
+
+검색은 에이전트가 검색하기로 마음먹어야 도움이 된다. 서브커맨드 두 개가 호스트별 확장 없이 그 간극을 메운다.
+
+**`memnest hook`은 프롬프트 직전에 컨텍스트를 주입한다.** 호스트가 주는 훅 페이로드를 stdin으로 읽고, 돌고 있는 서비스에서 컨텍스트 팩을 받아, 그 호스트가 기대하는 모양으로 답한다. Claude Code라면 설정 세 줄이다.
+
+```json
+{ "hooks": { "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "memnest hook" }] }] } }
+```
+
+출력 형식은 페이로드 모양을 보고 정하므로, command 훅이 stdout을 프롬프트에 붙이는 호스트라면 같은 명령이 그대로 통한다. 명시하고 싶으면 `--format`으로 고정한다. 프롬프트를 막는 일은 없다. 서비스가 죽었거나 느리면 아무것도 출력하지 않고 exit 0으로 끝나며 이유는 stderr로만 남긴다.
+
+**`memnest watch`는 호스트 설정 없이 대화를 기록한다.** 호스트가 이미 남기고 있는 세션 트랜스크립트를 따라가며 대화를 저장한다. 현재 Claude Code와 pi 형식을 지원한다.
+
+```bash
+memnest watch                  # 알려진 트랜스크립트 디렉터리 감시
+memnest watch --once           # 한 번만 훑기, cron에 걸기 좋다
+memnest watch --backfill       # 새 대화만이 아니라 기존 기록도 가져오기
+```
+
+도구 호출과 결과, 추론 블록은 건너뛴다. 저장소에 기계 동작이 아니라 대화가 남게 하려는 것이다. 진행 위치는 `<data-dir>/watch-state.json`에 파일별 바이트 오프셋으로 기록되고, 그래서 재시작해도 같은 대화를 두 번 저장하지 않는다. 오프셋은 저장에 성공한 뒤에만 전진한다. 동작을 보려면 `RUST_LOG=info`를 붙인다.
 
 ### 그 외 전부
 

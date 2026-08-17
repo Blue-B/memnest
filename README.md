@@ -78,7 +78,7 @@ flowchart LR
     CORE --> D["~/.memnest<br/>SQLite, BM25, vectors"]
 ```
 
-All 24 MCP tools behave the same in every host. The pi extension adds exactly three things on top: automatic context injection before a prompt, automatic conversation logging (AutoLog), and the `/memnest` command. MCP defines tool calls the model decides to make, not hooks into a host's session events, so those three have to be written once per host.
+All 24 MCP tools behave the same in every host. MCP defines tool calls the model decides to make, not hooks into a host's session events, so injection and logging come from two subcommands instead: `memnest hook` and `memnest watch`, described under [automatic memory](#automatic-memory) below. The pi extension bundles the same behaviour plus the `/memnest` command.
 
 ### pi, native extension
 
@@ -118,6 +118,28 @@ Two transports, and the HTTP one is preferred.
 ```
 
 Verified from vendor docs: Claude Code, Cursor, Cline, Kilo Code (`kilo.jsonc` `mcp` key), DeepSeek Harness (`@deepseek-ai/dsh-mcp-client`), Grok Build (`grok mcp add`), and omp ([oh-my-pi](https://github.com/can1357/oh-my-pi)), whose extension manifests take an `mcpServers` field, though its bundled `@oh-my-pi/pi-mnemopi` engine already covers the same ground. Each host keeps that config in its own file.
+
+## Automatic memory
+
+Searching only helps when the agent decides to search. These two subcommands close that gap without a per-host extension.
+
+**`memnest hook` injects context before a prompt.** It reads the host's hook payload on stdin, asks the running service for a context pack, and writes the reply in the shape that host expects. Claude Code takes it in three lines:
+
+```json
+{ "hooks": { "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "memnest hook" }] }] } }
+```
+
+The payload shape decides the reply, so any host whose command hook appends stdout works with the same command; `--format` pins it when you would rather be explicit. It never blocks a prompt: if the service is down or slow it prints nothing, exits 0, and reports the reason on stderr.
+
+**`memnest watch` records conversations with no host configuration at all.** It follows the session transcripts your host already writes, currently Claude Code and pi, and stores the turns it finds.
+
+```bash
+memnest watch                  # follow the known transcript directories
+memnest watch --once           # single pass, useful in a cron job
+memnest watch --backfill       # import existing history, not just new turns
+```
+
+Tool calls, tool results, and reasoning blocks are skipped, so the store gets the conversation rather than the machinery. Progress lives in `<data-dir>/watch-state.json` as a byte offset per file, which is what keeps a restart from storing the same turn twice, and an offset only advances once the turn is stored. Pass `RUST_LOG=info` to see what it is doing.
 
 ### Everything else
 
