@@ -2,10 +2,68 @@ use crate::MemorySystem;
 use crate::models::{ChunkType, Importance, MemoryKind, Metadata, ProcessingJob, RecallEvent};
 use crate::redaction::redact_text;
 use anyhow::Result;
+use axum::{
+    body::Bytes,
+    extract::State,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
 use serde_json::{Value, json};
 use std::io::{self, BufRead, Write};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+/// Revision reported when the client asks for one we do not know. Unchanged from
+/// the stdio-only implementation so existing clients see the same handshake.
+const DEFAULT_PROTOCOL_VERSION: &str = "2024-11-05";
+const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2024-11-05", "2025-03-26", "2025-06-18"];
+
+/// Handle one JSON-RPC message, independent of the transport that carried it.
+///
+/// Returns `None` for notifications, which take no reply: either an MCP
+/// `notifications/*` method or any message sent without an `id`.
+pub async fn dispatch(system: Arc<RwLock<MemorySystem>>, req: &Value) -> Option<Value> {
+    let method = req.get("method").and_then(Value::as_str).unwrap_or("");
+    if method.starts_with("notifications/") {
+        return None;
+    }
+    let id = req.get("id")?.clone();
+
+    let result = match method {
+        "initialize" => {
+            let version = req
+                .get("params")
+                .and_then(|p| p.get("protocolVersion"))
+                .and_then(Value::as_str)
+                .filter(|v| SUPPORTED_PROTOCOL_VERSIONS.contains(v))
+                .unwrap_or(DEFAULT_PROTOCOL_VERSION);
+            json!({
+                "protocolVersion": version,
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "memnest", "version": env!("CARGO_PKG_VERSION")}
+            })
+        }
+        "tools/list" => json!({"tools": tools()}),
+        "tools/call" => {
+            let params = req.get("params").cloned().unwrap_or_default();
+            match call_tool(system, &params).await {
+                Ok(text) => json!({"content":[{"type":"text","text":text}]}),
+                Err(e) => {
+                    json!({"content":[{"type":"text","text":format!("error: {}", e)}],"isError":true})
+                }
+            }
+        }
+        "shutdown" => Value::Null,
+        _ => {
+            return Some(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": {"code": -32601, "message": format!("method not found: {}", method)}
+            }));
+        }
+    };
+    Some(json!({"jsonrpc":"2.0","id":id,"result":result}))
+}
 
 pub async fn run_stdio(system: Arc<RwLock<MemorySystem>>) -> Result<()> {
     let stdin = io::stdin();
@@ -25,39 +83,70 @@ pub async fn run_stdio(system: Arc<RwLock<MemorySystem>>) -> Result<()> {
                 continue;
             }
         };
-        let id = req.get("id").cloned().unwrap_or(Value::Null);
-        let method = req.get("method").and_then(Value::as_str).unwrap_or("");
-        if method == "shutdown" {
-            write_response(&mut stdout, json!({"jsonrpc":"2.0","id":id,"result":null}))?;
+        let is_shutdown = req.get("method").and_then(Value::as_str) == Some("shutdown");
+        if let Some(response) = dispatch(system.clone(), &req).await {
+            write_response(&mut stdout, response)?;
+        }
+        if is_shutdown {
             break;
         }
-        if method.starts_with("notifications/") {
-            continue;
-        }
-        let result = match method {
-            "initialize" => json!({
-                "protocolVersion": "2024-11-05",
-                "capabilities": {"tools": {}},
-                "serverInfo": {"name": "memnest", "version": env!("CARGO_PKG_VERSION")}
-            }),
-            "tools/list" => json!({"tools": tools()}),
-            "tools/call" => {
-                let params = req.get("params").cloned().unwrap_or_default();
-                match call_tool(system.clone(), &params).await {
-                    Ok(text) => json!({"content":[{"type":"text","text":text}]}),
-                    Err(e) => {
-                        json!({"content":[{"type":"text","text":format!("error: {}", e)}],"isError":true})
-                    }
-                }
-            }
-            _ => json!({"error": format!("unknown method: {}", method)}),
-        };
-        write_response(
-            &mut stdout,
-            json!({"jsonrpc":"2.0","id":id,"result":result}),
-        )?;
     }
     Ok(())
+}
+
+/// MCP Streamable HTTP endpoint. Takes one JSON-RPC message or a batch and answers
+/// with a single JSON body; a notification-only post gets 202 with no content.
+/// No SSE upgrade is offered, which the spec allows for a stateless server.
+pub async fn http_endpoint(
+    State(system): State<Arc<RwLock<MemorySystem>>>,
+    body: Bytes,
+) -> Response {
+    let parsed: Value = match serde_json::from_slice(&body) {
+        Ok(value) => value,
+        Err(e) => return json_rpc_error(StatusCode::BAD_REQUEST, -32700, e.to_string()),
+    };
+
+    let responses = match &parsed {
+        Value::Object(_) => dispatch(system, &parsed).await.into_iter().collect(),
+        Value::Array(batch) if !batch.is_empty() => {
+            let mut out = Vec::new();
+            for message in batch {
+                if let Some(response) = dispatch(system.clone(), message).await {
+                    out.push(response);
+                }
+            }
+            out
+        }
+        _ => {
+            return json_rpc_error(
+                StatusCode::BAD_REQUEST,
+                -32600,
+                "expected a JSON-RPC object or a non-empty batch".to_string(),
+            );
+        }
+    };
+
+    if responses.is_empty() {
+        return StatusCode::ACCEPTED.into_response();
+    }
+    let body = if parsed.is_array() {
+        Value::Array(responses)
+    } else {
+        responses.into_iter().next().unwrap_or(Value::Null)
+    };
+    (StatusCode::OK, axum::Json(body)).into_response()
+}
+
+fn json_rpc_error(status: StatusCode, code: i32, message: String) -> Response {
+    (
+        status,
+        axum::Json(json!({
+            "jsonrpc": "2.0",
+            "id": Value::Null,
+            "error": {"code": code, "message": message}
+        })),
+    )
+        .into_response()
 }
 
 fn write_response(stdout: &mut io::Stdout, value: Value) -> Result<()> {
@@ -938,5 +1027,133 @@ fn project_from_cwd(cwd: &str) -> String {
         "default".into()
     } else {
         last.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Transport-independent checks on `dispatch`, the shared entry point behind
+    //! both stdio and `POST /mcp`.
+    use super::*;
+    use crate::server::api::retrieval_eval::build_system;
+
+    #[tokio::test]
+    async fn dispatch_handles_protocol_methods() {
+        let (_tmp, system) = build_system().await;
+
+        let init = dispatch(
+            system.clone(),
+            &json!({"jsonrpc":"2.0","id":1,"method":"initialize"}),
+        )
+        .await
+        .expect("initialize is a request, not a notification");
+        assert_eq!(init["jsonrpc"], "2.0");
+        assert_eq!(init["id"], 1);
+        assert_eq!(init["result"]["protocolVersion"], DEFAULT_PROTOCOL_VERSION);
+        assert_eq!(init["result"]["serverInfo"]["name"], "memnest");
+        assert!(init["result"]["capabilities"]["tools"].is_object());
+
+        // A revision we know is echoed back so Streamable HTTP clients negotiate.
+        let negotiated = dispatch(
+            system.clone(),
+            &json!({"jsonrpc":"2.0","id":2,"method":"initialize",
+                    "params":{"protocolVersion":"2025-06-18"}}),
+        )
+        .await
+        .expect("initialize returns a response");
+        assert_eq!(negotiated["result"]["protocolVersion"], "2025-06-18");
+
+        // An unknown revision falls back instead of parroting it.
+        let unknown_version = dispatch(
+            system.clone(),
+            &json!({"jsonrpc":"2.0","id":3,"method":"initialize",
+                    "params":{"protocolVersion":"1999-01-01"}}),
+        )
+        .await
+        .expect("initialize returns a response");
+        assert_eq!(
+            unknown_version["result"]["protocolVersion"],
+            DEFAULT_PROTOCOL_VERSION
+        );
+
+        let listed = dispatch(
+            system.clone(),
+            &json!({"jsonrpc":"2.0","id":4,"method":"tools/list"}),
+        )
+        .await
+        .expect("tools/list returns a response");
+        let listed_tools = listed["result"]["tools"]
+            .as_array()
+            .expect("tools is an array");
+        assert_eq!(listed_tools.len(), tools().len());
+        assert!(
+            listed_tools
+                .iter()
+                .any(|t| t["name"] == "memory_search" && t["inputSchema"].is_object())
+        );
+
+        let unknown = dispatch(
+            system.clone(),
+            &json!({"jsonrpc":"2.0","id":5,"method":"does/not/exist"}),
+        )
+        .await
+        .expect("an unknown method still owes the caller a reply");
+        assert_eq!(unknown["id"], 5);
+        assert_eq!(unknown["error"]["code"], -32601);
+        assert!(unknown.get("result").is_none());
+
+        // Notifications take no reply, which is what lets POST /mcp answer 202.
+        assert!(
+            dispatch(
+                system.clone(),
+                &json!({"jsonrpc":"2.0","method":"notifications/initialized"})
+            )
+            .await
+            .is_none()
+        );
+        assert!(
+            dispatch(system, &json!({"jsonrpc":"2.0","method":"tools/list"}))
+                .await
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_executes_tool_calls() {
+        let (_tmp, system) = build_system().await;
+
+        let called = dispatch(
+            system.clone(),
+            &json!({"jsonrpc":"2.0","id":7,"method":"tools/call",
+                    "params":{"name":"memory_stats","arguments":{}}}),
+        )
+        .await
+        .expect("tools/call returns a response");
+        assert_eq!(called["id"], 7);
+        assert!(called["result"]["isError"].is_null());
+        let text = called["result"]["content"][0]["text"]
+            .as_str()
+            .expect("tool result carries text content");
+        let stats: Value = serde_json::from_str(text).expect("memory_stats returns JSON");
+        assert_eq!(stats["total_chunks"], 0);
+
+        // A failing tool is reported as a result with isError, never as a
+        // JSON-RPC error, so the session survives a bad call.
+        let failed = dispatch(
+            system,
+            &json!({"jsonrpc":"2.0","id":8,"method":"tools/call",
+                    "params":{"name":"memory_get","arguments":{"id":"nope_missing"}}}),
+        )
+        .await
+        .expect("tools/call returns a response");
+        assert_eq!(failed["id"], 8);
+        assert_eq!(failed["result"]["isError"], true);
+        assert!(failed.get("error").is_none());
+        assert!(
+            failed["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("chunk not found")
+        );
     }
 }
