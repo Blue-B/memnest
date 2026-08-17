@@ -17,18 +17,18 @@ const DEFAULT_COLLECTION_META: &[(&str, &str, &str)] = &[
     (
         "playbook",
         "playbook",
-        "프로젝트 구분 없는 수동 저장소. 교훈·선호·결정을 어디서든 검색한다.",
+        "Cross-project manual store. Lessons, preferences, and decisions, searchable from anywhere.",
     ),
     (
         "root",
         "project",
-        "프로젝트 cwd를 판별할 수 없을 때 쓰이는 루트 버킷. 도구 호출 로그가 이곳으로 온다.",
+        "Root bucket used when the project cwd cannot be determined. Tool-call logs land here.",
     ),
-    ("default", "project", "cwd 메타가 아예 없을 때의 폴백."),
+    ("default", "project", "Fallback for writes that carry no cwd metadata at all."),
     (
         "global",
         "project",
-        "구버전 자리. 이제 교훈은 playbook으로.",
+        "Legacy bucket. Lessons now go to playbook.",
     ),
 ];
 

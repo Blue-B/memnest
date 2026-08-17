@@ -1997,10 +1997,10 @@ pub async fn collection_detail(
         for chunk in &chunks {
             let imp = format!("{:?}", chunk.metadata.importance);
             let typ = match chunk.metadata.chunk_type {
-                ChunkType::Manual => "수동",
-                ChunkType::AutoLog => "자동",
-                ChunkType::Filtered => "필터링",
-                ChunkType::Consolidated => "통합",
+                ChunkType::Manual => "manual",
+                ChunkType::AutoLog => "autolog",
+                ChunkType::Filtered => "filtered",
+                ChunkType::Consolidated => "consolidated",
             };
             items_html.push_str(&format!(
                 r#"<div class="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4 mb-3">
@@ -2019,7 +2019,7 @@ pub async fn collection_detail(
 
         if items_html.is_empty() {
             items_html =
-                r#"<div class="text-center py-12 text-gray-500 text-sm">메모리가 없습니다</div>"#
+                r#"<div class="text-center py-12 text-gray-500 text-sm" data-i18n="empty.recent">No memories</div>"#
                     .to_string();
         }
 
@@ -2027,12 +2027,13 @@ pub async fn collection_detail(
             r##"<div class="flex items-center justify-between mb-6">
              <div>
               <h1 class="text-xl font-semibold tracking-tight">{}</h1>
-              <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{}개 메모리</p>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5" data-memory-count="{}">{} memories</p>
              </div>
-             <a href="/viewer/collections" class="quiet-chip text-xs">컬렉션</a>
+             <a href="/viewer/collections" class="quiet-chip text-xs" data-i18n="nav.collections">Collections</a>
             </div>
             {}"##,
             name,
+            chunks.len(),
             chunks.len(),
             items_html
         );
@@ -2493,23 +2494,23 @@ pub async fn stats(
     if params.get("format") == Some(&"html".to_string()) {
         let endpoint_rows = r##"
           <div class="endpoint-row">
-           <span class="metric-label">GET</span><code class="text-sm">/health</code><span class="text-xs text-stone-500">서비스 상태 확인</span>
+           <span class="metric-label">GET</span><code class="text-sm">/health</code><span class="text-xs text-stone-500">service health</span>
           </div>
           <div class="endpoint-row">
-           <span class="metric-label">GET</span><code class="text-sm">/collections</code><span class="text-xs text-stone-500">컬렉션 목록</span>
+           <span class="metric-label">GET</span><code class="text-sm">/collections</code><span class="text-xs text-stone-500">collection list</span>
           </div>
           <div class="endpoint-row">
-           <span class="metric-label">GET</span><code class="text-sm">/facts?n=100</code><span class="text-xs text-stone-500">저장된 지식</span>
+           <span class="metric-label">GET</span><code class="text-sm">/facts?n=100</code><span class="text-xs text-stone-500">stored facts</span>
           </div>
           <div class="endpoint-row">
-           <span class="metric-label">POST</span><code class="text-sm">/search</code><span class="text-xs text-stone-500">메모리 검색</span>
+           <span class="metric-label">POST</span><code class="text-sm">/search</code><span class="text-xs text-stone-500">memory search</span>
           </div>
         "##;
         let content = format!(
             r##"<section class="panel hero-panel p-6 md:p-8 mb-5">
              <div class="eyebrow mb-3">System</div>
-             <h1 class="text-3xl md:text-5xl font-semibold tracking-tight max-w-3xl leading-tight" data-i18n="system.title">운영 상태와 연동 경로.</h1>
-             <p class="text-sm md:text-base text-slate-600 dark:text-slate-300 mt-4 max-w-2xl leading-relaxed" data-i18n="system.subtitle">현재 저장 규모와 외부 연동에 필요한 경로를 확인합니다. 자동화에서 필요한 원시 응답은 디버그 링크로만 열어 둡니다.</p>
+             <h1 class="text-3xl md:text-5xl font-semibold tracking-tight max-w-3xl leading-tight" data-i18n="system.title">Status and integration paths.</h1>
+             <p class="text-sm md:text-base text-slate-600 dark:text-slate-300 mt-4 max-w-2xl leading-relaxed" data-i18n="system.subtitle">Review current storage volume and the endpoints needed for integration. Raw responses are kept under a debug link.</p>
              <div class="signal-line mt-7 mb-5 w-full max-w-xl"></div>
              <div class="grid grid-cols-2 md:grid-cols-6 gap-3">
               <div><div class="metric-label">chunks</div><div class="text-2xl font-semibold mt-1">{}</div></div>
@@ -2525,9 +2526,9 @@ pub async fn stats(
               <div class="flex items-start justify-between gap-4 mb-4">
                <div>
                 <div class="eyebrow mb-2">Endpoint catalog</div>
-                <h2 class="text-xl font-semibold tracking-tight" data-i18n="system.endpoints">연동 경로</h2>
+                <h2 class="text-xl font-semibold tracking-tight" data-i18n="system.endpoints">Endpoint catalog</h2>
                </div>
-               <a href="/stats" class="quiet-chip text-xs" data-i18n="system.debug">디버그 JSON</a>
+               <a href="/stats" class="quiet-chip text-xs" data-i18n="system.debug">Debug JSON</a>
               </div>
               {}
              </section>
@@ -2538,7 +2539,7 @@ pub async fn stats(
                <pre class="text-xs overflow-x-auto rounded-xl bg-stone-950 text-stone-100 p-4">curl -s -X POST http://127.0.0.1:3111/search \
   -H 'content-type: application/json' \
   -d '{{"query":"memnest","project":"all","n_results":10}}'</pre>
-               <p class="text-xs leading-relaxed text-slate-500 dark:text-slate-400">컬렉션 범위는 요청의 project 값으로 지정합니다. 전체 검색은 project를 all로 보냅니다.</p>
+               <p class="text-xs leading-relaxed text-slate-500 dark:text-slate-400" data-i18n="system.scopeHint">Collection scope comes from the request's project value. Send project=all to search everything.</p>
               </div>
              </section>
             </div>"##,
@@ -2583,7 +2584,7 @@ pub async fn stats(
 // ── Viewer HTML ──────────────────────────────────────────────
 
 const BASE_HTML: &str = r##"<!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -4015,9 +4016,9 @@ svg { display: block; }
   </span>
  </a>
  <nav class="topnav">
-  <a href="/" class="top-link __ACTIVE_DASHBOARD__" data-i18n="nav.dashboard">대시보드</a>
-  <a href="/viewer/collections" class="top-link __ACTIVE_COLLECTIONS__" data-i18n="nav.collections">컬렉션</a>
-  <a href="/viewer/search" class="top-link __ACTIVE_SEARCH__" data-i18n="nav.search">검색</a>
+  <a href="/" class="top-link __ACTIVE_DASHBOARD__" data-i18n="nav.dashboard">Dashboard</a>
+  <a href="/viewer/collections" class="top-link __ACTIVE_COLLECTIONS__" data-i18n="nav.collections">Collections</a>
+  <a href="/viewer/search" class="top-link __ACTIVE_SEARCH__" data-i18n="nav.search">Search</a>
   <a href="/stats?format=html" class="top-link">System</a>
  </nav>
  <div class="top-actions">
@@ -4025,20 +4026,20 @@ svg { display: block; }
    <button type="button" data-lang-button="ko">KR</button>
    <button type="button" data-lang-button="en">EN</button>
   </div>
-  <a href="/stats?format=html" class="status-pill"><span class="status-dot"></span><span data-i18n="status.ok">서비스 정상</span></a>
-  <button onclick="toggleDark()" title="테마 전환" class="w-9 h-9 rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-white/40 dark:hover:bg-white/10 transition-colors"><span class="dark:hidden text-sm">◐</span><span class="hidden dark:inline text-sm text-amber-500">◑</span></button>
+  <a href="/stats?format=html" class="status-pill"><span class="status-dot"></span><span data-i18n="status.ok">Operational</span></a>
+  <button onclick="toggleDark()" title="toggle theme" class="w-9 h-9 rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-white/40 dark:hover:bg-white/10 transition-colors"><span class="dark:hidden text-sm">◐</span><span class="hidden dark:inline text-sm text-amber-500">◑</span></button>
  </div>
 </header>
 
 <!-- Mobile Header -->
 <div class="md:hidden fixed top-0 left-0 right-0 h-14 glass-strong z-40 flex items-center justify-between px-4">
- <div class="flex items-center gap-2"><svg class="w-7 h-7 text-stone-700 dark:text-stone-200" viewBox="0 0 64 64" fill="none"><path d="M9 34c8-18 29-27 45-15" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M20 28c3-6 11-9 17-6 7 3 8 12 2 17-6 5-17 2-19-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="47" cy="17" r="4" fill="currentColor" opacity=".55"/></svg><span class="text-sm font-semibold">Memnest</span><span class="ml-2 text-xs text-stone-500" data-i18n="status.ok">서비스 정상</span></div>
+ <div class="flex items-center gap-2"><svg class="w-7 h-7 text-stone-700 dark:text-stone-200" viewBox="0 0 64 64" fill="none"><path d="M9 34c8-18 29-27 45-15" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M20 28c3-6 11-9 17-6 7 3 8 12 2 17-6 5-17 2-19-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="47" cy="17" r="4" fill="currentColor" opacity=".55"/></svg><span class="text-sm font-semibold">Memnest</span><span class="ml-2 text-xs text-stone-500" data-i18n="status.ok">Operational</span></div>
  <button onclick="document.getElementById('mob').classList.toggle('hidden')" class="p-2 text-gray-500" aria-label="menu"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none"><path d="M5 7h14M5 12h14M5 17h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
 </div>
 <div id="mob" class="hidden md:hidden fixed top-14 left-0 right-0 glass z-30 p-3 space-y-1">
- <a href="/" class="block px-3 py-2 rounded-md text-sm text-gray-600 dark:text-gray-400 hover:bg-white/5" data-i18n="nav.dashboard">대시보드</a>
- <a href="/viewer/collections" class="block px-3 py-2 rounded-md text-sm text-gray-600 dark:text-gray-400 hover:bg-white/5" data-i18n="nav.collections">컬렉션</a>
- <a href="/viewer/search" class="block px-3 py-2 rounded-md text-sm text-gray-600 dark:text-gray-400 hover:bg-white/5" data-i18n="nav.search">검색</a>
+ <a href="/" class="block px-3 py-2 rounded-md text-sm text-gray-600 dark:text-gray-400 hover:bg-white/5" data-i18n="nav.dashboard">Dashboard</a>
+ <a href="/viewer/collections" class="block px-3 py-2 rounded-md text-sm text-gray-600 dark:text-gray-400 hover:bg-white/5" data-i18n="nav.collections">Collections</a>
+ <a href="/viewer/search" class="block px-3 py-2 rounded-md text-sm text-gray-600 dark:text-gray-400 hover:bg-white/5" data-i18n="nav.search">Search</a>
  <a href="/stats?format=html" class="block px-3 py-2 rounded-md text-sm text-gray-600 dark:text-gray-400 hover:bg-white/5">System</a>
  <div class="locale-switch mt-2">
   <button type="button" data-lang-button="ko">KR</button>
@@ -4122,7 +4123,53 @@ var i18n = {
   'unit.items': '개',
   'unit.memories': '개 메모리',
   'result.order': '관련도순',
-  'result.emptySuffix': '에 대한 결과가 없습니다'
+  'result.emptySuffix': '에 대한 결과가 없습니다',
+  'console.title': '메모리 운영 상태',
+  'console.subtitle': '무엇이 저장되고 검색됐는지, 어떤 기억이 실제 답변에 사용됐는지, 처리 실패와 데이터 편중을 한 화면에서 확인합니다.',
+  'console.searchPlaceholder': '결정, 오류, 설정, 작업 절차 검색',
+  'console.totalMemories': '전체 메모리',
+  'console.searches24h': '24시간 검색',
+  'console.avgLatency': '평균 검색 지연',
+  'console.activeJobs': '처리 중 작업',
+  'console.failedJobs': '실패 작업',
+  'console.storage': '저장 공간',
+  'console.rootShare': 'root 집중도',
+  'console.staleRoot': '30일 초과 root 기록',
+  'console.graphNodes': '그래프 노드 / 사실',
+  'console.verdicts': '도움됨 / 문제',
+  'console.recentSearches': '최근 검색과 주입 후보',
+  'console.viewJson': 'JSON 보기',
+  'console.jobs': '처리 작업',
+  'console.allStatus': '전체 상태',
+  'console.distribution': '컬렉션 분포',
+  'console.manage': '관리',
+  'console.recentSaves': '최근 저장',
+  'console.helpful': '도움됨',
+  'console.harmful': '문제',
+  'console.noRecalls': '아직 기록된 검색이 없습니다. 새 검색부터 후보와 결과를 추적합니다.',
+  'console.noJobs': '처리 작업이 없습니다.',
+  'console.colQuery': '검색어',
+  'console.colScope': '범위',
+  'console.colResults': '결과',
+  'console.colLatency': '지연',
+  'console.colAdapter': '어댑터',
+  'console.colVerdict': '판정',
+  'console.colFeedback': '피드백',
+  'console.colTarget': '대상',
+  'console.colState': '상태',
+  'console.colAdapter2': '어댑터',
+  'console.colUpdated': '업데이트',
+  'console.colCollection': '컬렉션',
+  'console.colKind': '종류',
+  'console.colMemories': '메모리',
+  'console.colText': '텍스트',
+  'console.colContent': '내용',
+  'console.colProject': '프로젝트',
+  'console.colImportance': '중요도',
+  'console.colTime': '시간',
+  'console.footSessions': '세션',
+  'console.footNotes': '노트',
+  'console.footModel': '임베딩 모델'
  },
  en: {
   'brand.subtitle': 'Local memory',
@@ -4164,7 +4211,50 @@ var i18n = {
   'unit.items': '',
   'unit.memories': ' memories',
   'result.order': 'sorted by relevance',
-  'result.emptySuffix': 'returned no results'
+  'result.emptySuffix': 'returned no results',
+  'console.title': 'Memory operations',
+  'console.subtitle': 'What got stored, what got searched, which memories were actually used in an answer, plus failed jobs and data skew, on one screen.',
+  'console.searchPlaceholder': 'Search decisions, errors, settings, procedures',
+  'console.totalMemories': 'Total memories',
+  'console.searches24h': 'Searches, 24h',
+  'console.avgLatency': 'Average latency',
+  'console.activeJobs': 'Jobs in flight',
+  'console.failedJobs': 'Failed jobs',
+  'console.storage': 'Storage',
+  'console.rootShare': 'Root share',
+  'console.staleRoot': 'Root records older than 30 days',
+  'console.graphNodes': 'Graph nodes / facts',
+  'console.verdicts': 'Helpful / harmful',
+  'console.recentSearches': 'Recent searches and injection candidates',
+  'console.viewJson': 'View JSON',
+  'console.jobs': 'Processing jobs',
+  'console.allStatus': 'All status',
+  'console.distribution': 'Collection distribution',
+  'console.manage': 'Manage',
+  'console.recentSaves': 'Recently stored',
+  'console.helpful': 'Helpful',
+  'console.harmful': 'Harmful',
+  'console.noRecalls': 'No searches recorded yet. Candidates and results are tracked from the next search on.',
+  'console.noJobs': 'No processing jobs.',
+  'console.colQuery': 'Query',
+  'console.colScope': 'Scope',
+  'console.colResults': 'Results',
+  'console.colLatency': 'Latency',
+  'console.colAdapter': 'Adapter',
+  'console.colVerdict': 'Verdict',
+  'console.colFeedback': 'Feedback',
+  'console.colTarget': 'Target',
+  'console.colState': 'State',
+  'console.colAdapter2': 'Adapter',
+  'console.colUpdated': 'Updated',
+  'console.colCollection': 'Collection',
+  'console.colKind': 'Kind',
+  'console.colMemories': 'Memories',
+  'console.colText': 'Text',
+  'console.colContent': 'Content',
+  'console.colProject': 'Project',
+  'console.colImportance': 'Importance',
+  'console.colTime': 'Time'
  }
 };
 function setLang(lang) {
@@ -4213,7 +4303,7 @@ setLang(initialLang === 'ko' ? 'ko' : 'en');
 fn collection_scope_options(stats: &[CollectionStat], selected: &str) -> String {
     let all_selected = if selected == "all" { " selected" } else { "" };
     let mut options = format!(
-        r#"<option value="all"{} data-i18n="scope.all">전체 컬렉션</option>"#,
+        r#"<option value="all"{} data-i18n="scope.all">All collections</option>"#,
         all_selected
     );
     for stat in stats {
@@ -4223,7 +4313,7 @@ fn collection_scope_options(stats: &[CollectionStat], selected: &str) -> String 
             ""
         };
         options.push_str(&format!(
-            r#"<option value="{}"{} data-scope-name="{}" data-scope-count="{}">{} · {}개</option>"#,
+            r#"<option value="{}"{} data-scope-name="{}" data-scope-count="{}">{} · {} memories</option>"#,
             html_escape(&stat.name),
             selected_attr,
             html_escape(&stat.name),
@@ -4294,8 +4384,8 @@ pub async fn viewer_dashboard(State(system): State<Arc<RwLock<MemorySystem>>>) -
              <td>{}</td>
              <td><span class="state {}">{}</span></td>
              <td class="feedback-actions">
-              <button type="button" onclick="sendRecallFeedback('{}','helpful',this)">도움됨</button>
-              <button type="button" onclick="sendRecallFeedback('{}','harmful',this)">문제</button>
+              <button type="button" data-i18n="console.helpful" onclick="sendRecallFeedback('{}','helpful',this)">Helpful</button>
+              <button type="button" data-i18n="console.harmful" onclick="sendRecallFeedback('{}','harmful',this)">Harmful</button>
              </td>
             </tr>"#,
             html_escape(&event.query),
@@ -4311,7 +4401,7 @@ pub async fn viewer_dashboard(State(system): State<Arc<RwLock<MemorySystem>>>) -
         ));
     }
     if recall_rows.is_empty() {
-        recall_rows = r#"<tr><td colspan="7" class="console-empty">아직 기록된 검색이 없습니다. 새 검색부터 후보와 결과를 추적합니다.</td></tr>"#.to_string();
+        recall_rows = r#"<tr><td colspan="7" class="console-empty" data-i18n="console.noRecalls">No searches recorded yet. Candidates and results are tracked from the next search on.</td></tr>"#.to_string();
     }
 
     let mut job_rows = String::new();
@@ -4332,7 +4422,7 @@ pub async fn viewer_dashboard(State(system): State<Arc<RwLock<MemorySystem>>>) -
         ));
     }
     if job_rows.is_empty() {
-        job_rows = r#"<tr><td colspan="4" class="console-empty">처리 작업이 없습니다.</td></tr>"#
+        job_rows = r#"<tr><td colspan="4" class="console-empty" data-i18n="console.noJobs">No processing jobs.</td></tr>"#
             .to_string();
     }
 
@@ -4378,53 +4468,53 @@ pub async fn viewer_dashboard(State(system): State<Arc<RwLock<MemorySystem>>>) -
         r##"<div class="console">
          <header class="console-header">
           <div>
-           <h1 class="console-title">메모리 운영 상태</h1>
-           <p class="console-copy">무엇이 저장되고 검색됐는지, 어떤 기억이 실제 답변에 사용됐는지, 처리 실패와 데이터 편중을 한 화면에서 확인합니다.</p>
+           <h1 class="console-title" data-i18n="console.title">Memory operations</h1>
+           <p class="console-copy" data-i18n="console.subtitle">What got stored, what got searched, which memories were actually used in an answer, plus failed jobs and data skew, on one screen.</p>
           </div>
           <div class="console-address">
-           <strong>서비스 정상</strong>
+           <strong data-i18n="status.ok">Operational</strong>
            http://localhost:{}/<br>
            {}
           </div>
          </header>
 
          <form method="get" action="/viewer/search" class="console-search">
-          <input name="q" aria-label="검색어" placeholder="결정, 오류, 설정, 작업 절차 검색" required>
-          <select name="project" aria-label="컬렉션 범위">{}</select>
-          <button type="submit">메모리 검색</button>
+          <input name="q" aria-label="query" data-i18n-placeholder="console.searchPlaceholder" placeholder="Search decisions, errors, settings, procedures" required>
+          <select name="project" aria-label="collection scope">{}</select>
+          <button type="submit" data-i18n="button.search">Search</button>
          </form>
 
-         <section class="console-metrics" aria-label="핵심 지표">
-          <div class="console-metric"><span>전체 메모리</span><strong>{}</strong></div>
-          <div class="console-metric"><span>24시간 검색</span><strong>{}</strong></div>
-          <div class="console-metric"><span>평균 검색 지연</span><strong>{:.0} ms</strong></div>
-          <div class="console-metric"><span>처리 중 작업</span><strong>{}</strong></div>
-          <div class="console-metric"><span>실패 작업</span><strong>{}</strong></div>
-          <div class="console-metric"><span>저장 공간</span><strong>{:.1} MB</strong></div>
+         <section class="console-metrics" aria-label="key metrics">
+          <div class="console-metric"><span data-i18n="console.totalMemories">Total memories</span><strong>{}</strong></div>
+          <div class="console-metric"><span data-i18n="console.searches24h">Searches, 24h</span><strong>{}</strong></div>
+          <div class="console-metric"><span data-i18n="console.avgLatency">Average latency</span><strong>{:.0} ms</strong></div>
+          <div class="console-metric"><span data-i18n="console.activeJobs">Jobs in flight</span><strong>{}</strong></div>
+          <div class="console-metric"><span data-i18n="console.failedJobs">Failed jobs</span><strong>{}</strong></div>
+          <div class="console-metric"><span data-i18n="console.storage">Storage</span><strong>{:.1} MB</strong></div>
          </section>
 
          <div class="console-alerts">
-          <div class="console-alert {}">root 집중도 {:.1}% ({}개)</div>
-          <div class="console-alert {}">30일 초과 root 기록 {}개</div>
-          <div class="console-alert {}">그래프 노드 {}개, 사실 {}개</div>
-          <div class="console-alert {}">도움됨 {}, 문제 {}</div>
+          <div class="console-alert {}"><span data-i18n="console.rootShare">Root share</span> {:.1}% ({})</div>
+          <div class="console-alert {}"><span data-i18n="console.staleRoot">Root records older than 30 days</span> {}</div>
+          <div class="console-alert {}"><span data-i18n="console.graphNodes">Graph nodes / facts</span> {} / {}</div>
+          <div class="console-alert {}"><span data-i18n="console.verdicts">Helpful / harmful</span> {} / {}</div>
          </div>
 
          <div class="console-grid">
           <section class="console-section">
-           <div class="console-section-head"><h2>최근 검색과 주입 후보</h2><a href="/operations">JSON 보기</a></div>
+           <div class="console-section-head"><h2 data-i18n="console.recentSearches">Recent searches and injection candidates</h2><a href="/operations" data-i18n="console.viewJson">View JSON</a></div>
            <div class="overflow-x-auto">
             <table class="console-table">
-             <thead><tr><th style="width:31%">검색어</th><th>범위</th><th>결과</th><th>지연</th><th>어댑터</th><th>판정</th><th>피드백</th></tr></thead>
+             <thead><tr><th style="width:31%" data-i18n="console.colQuery">Query</th><th data-i18n="console.colScope">Scope</th><th data-i18n="console.colResults">Results</th><th data-i18n="console.colLatency">Latency</th><th data-i18n="console.colAdapter">Adapter</th><th data-i18n="console.colVerdict">Verdict</th><th data-i18n="console.colFeedback">Feedback</th></tr></thead>
              <tbody>{}</tbody>
             </table>
            </div>
           </section>
           <section class="console-section">
-           <div class="console-section-head"><h2>처리 작업</h2><a href="/operations">전체 상태</a></div>
+           <div class="console-section-head"><h2 data-i18n="console.jobs">Processing jobs</h2><a href="/operations" data-i18n="console.allStatus">All status</a></div>
            <div class="overflow-x-auto">
             <table class="console-table">
-             <thead><tr><th style="width:38%">대상</th><th>상태</th><th>어댑터</th><th>업데이트</th></tr></thead>
+             <thead><tr><th style="width:38%" data-i18n="console.colTarget">Target</th><th data-i18n="console.colState">State</th><th data-i18n="console.colAdapter2">Adapter</th><th data-i18n="console.colUpdated">Updated</th></tr></thead>
              <tbody>{}</tbody>
             </table>
            </div>
@@ -4433,19 +4523,19 @@ pub async fn viewer_dashboard(State(system): State<Arc<RwLock<MemorySystem>>>) -
 
          <div class="console-foot-grid">
           <section class="console-section">
-           <div class="console-section-head"><h2>컬렉션 분포</h2><a href="/viewer/collections">관리</a></div>
+           <div class="console-section-head"><h2 data-i18n="console.distribution">Collection distribution</h2><a href="/viewer/collections" data-i18n="console.manage">Manage</a></div>
            <div class="overflow-x-auto">
             <table class="console-table">
-             <thead><tr><th>컬렉션</th><th>종류</th><th>메모리</th><th>텍스트</th></tr></thead>
+             <thead><tr><th data-i18n="console.colCollection">Collection</th><th data-i18n="console.colKind">Kind</th><th data-i18n="console.colMemories">Memories</th><th data-i18n="console.colText">Text</th></tr></thead>
              <tbody>{}</tbody>
             </table>
            </div>
           </section>
           <section class="console-section">
-           <div class="console-section-head"><h2>최근 저장</h2><a href="/viewer/search">검색</a></div>
+           <div class="console-section-head"><h2 data-i18n="console.recentSaves">Recently stored</h2><a href="/viewer/search" data-i18n="nav.search">Search</a></div>
            <div class="overflow-x-auto">
             <table class="console-table">
-             <thead><tr><th style="width:48%">내용</th><th>프로젝트</th><th>중요도</th><th>시간</th></tr></thead>
+             <thead><tr><th style="width:48%" data-i18n="console.colContent">Content</th><th data-i18n="console.colProject">Project</th><th data-i18n="console.colImportance">Importance</th><th data-i18n="console.colTime">Time</th></tr></thead>
              <tbody>{}</tbody>
             </table>
            </div>
@@ -4453,7 +4543,7 @@ pub async fn viewer_dashboard(State(system): State<Arc<RwLock<MemorySystem>>>) -
          </div>
 
          <footer class="console-copy">
-          세션 {}개, 노트 {}개. 임베딩 모델: {}. 원시 상태는 <a href="/stats">/stats</a>, 연동 기록은 <a href="/operations">/operations</a>에서 확인할 수 있습니다.
+          <span data-i18n="console.footSessions">Sessions</span> {} · <span data-i18n="console.footNotes">Notes</span> {} · <span data-i18n="console.footModel">Embedding model</span> {} · <a href="/stats">/stats</a> · <a href="/operations">/operations</a>
          </footer>
         </div>"##,
         sys.config.api_port,
@@ -4486,7 +4576,7 @@ pub async fn viewer_dashboard(State(system): State<Arc<RwLock<MemorySystem>>>) -
     );
 
     let html = BASE_HTML
-        .replace("__TITLE__", "운영 상태")
+        .replace("__TITLE__", "Operations")
         .replace("__VERSION__", env!("CARGO_PKG_VERSION"))
         .replace("__ACTIVE_DASHBOARD__", "is-active")
         .replace("__ACTIVE_COLLECTIONS__", "")
@@ -4561,7 +4651,7 @@ pub async fn viewer_collections(State(system): State<Arc<RwLock<MemorySystem>>>)
         ));
     }
     if rows.is_empty() {
-        rows = r#"<div class="col-empty">컬렉션이 없습니다</div>"#.to_string();
+        rows = r#"<div class="col-empty" data-i18n="empty.collections">No collections yet</div>"#.to_string();
     }
 
     // Summary strip: totals + kind breakdown
@@ -4588,17 +4678,17 @@ pub async fn viewer_collections(State(system): State<Arc<RwLock<MemorySystem>>>)
           <div class="col-metric">
            <span class="col-metric-label">Manual</span>
            <span class="col-metric-value num">{manual}</span>
-           <span class="col-metric-sub">직접 저장한 고신호 메모</span>
+           <span class="col-metric-sub">high-signal notes you saved yourself</span>
           </div>
           <div class="col-metric">
            <span class="col-metric-label">Auto</span>
            <span class="col-metric-value num num-muted">{autolog}</span>
-           <span class="col-metric-sub">도구 호출이 남긴 로그</span>
+           <span class="col-metric-sub">logs left behind by tool calls</span>
           </div>
           <div class="col-metric">
            <span class="col-metric-label">Total</span>
            <span class="col-metric-value num">{total}</span>
-           <span class="col-metric-sub">manual 비중 {pct}%</span>
+           <span class="col-metric-sub">manual share {pct}%</span>
           </div>
          </div>
          <div class="col-summary-bar" aria-hidden="true">
@@ -4617,10 +4707,10 @@ pub async fn viewer_collections(State(system): State<Arc<RwLock<MemorySystem>>>)
     let content = format!(
         r##"<header class="col-header">
          <div>
-          <h1 class="col-title" data-i18n="collections.title">컬렉션</h1>
-          <p class="col-subtitle" data-i18n="collections.subtitle">cwd 이름으로 자동 분류된 버킷들. <em class="col-key col-key-pb">playbook</em>만 예외로, 어디서든 검색하는 cross-project 메모다.</p>
+          <h1 class="col-title" data-i18n="collections.title">Collections</h1>
+          <p class="col-subtitle" data-i18n="collections.subtitle">Buckets auto-named after your cwd. Only <em class="col-key col-key-pb">playbook</em> is the exception, a cross-project notebook searched from anywhere.</p>
          </div>
-         <a href="/viewer/search" class="col-search-link" data-i18n="nav.search">검색</a>
+         <a href="/viewer/search" class="col-search-link" data-i18n="nav.search">Search</a>
         </header>
         {summary}
         <div class="col-grid">
@@ -4631,7 +4721,7 @@ pub async fn viewer_collections(State(system): State<Arc<RwLock<MemorySystem>>>)
     );
 
     let html = BASE_HTML
-        .replace("__TITLE__", "컬렉션")
+        .replace("__TITLE__", "Collections")
         .replace("__VERSION__", env!("CARGO_PKG_VERSION"))
         .replace("__ACTIVE_DASHBOARD__", "")
         .replace("__ACTIVE_COLLECTIONS__", "is-active")
@@ -4704,7 +4794,7 @@ pub async fn viewer_search(
         if results.is_empty() {
             format!(
                 r#"<div class="text-center py-12 text-slate-500" data-empty-query="{}">
-                 <div class="text-sm mb-1">'{}'에 대한 결과가 없습니다</div>
+                 <div class="text-sm mb-1">'{}' returned no results</div>
                  <div class="text-xs">recall {}</div>
                 </div>"#,
                 html_escape(&q),
@@ -4713,7 +4803,7 @@ pub async fn viewer_search(
             )
         } else {
             format!(
-                r#"<div class="flex items-center justify-between text-xs text-slate-500 mb-3"><span data-result-count="{}">{}개 결과, 관련도순</span><span>{} ms, recall {}</span></div>{}"#,
+                r#"<div class="flex items-center justify-between text-xs text-slate-500 mb-3"><span data-result-count="{}">{} results · sorted by relevance</span><span>{} ms, recall {}</span></div>{}"#,
                 results.len(),
                 results.len(),
                 elapsed_ms,
@@ -4722,29 +4812,29 @@ pub async fn viewer_search(
             )
         }
     } else {
-        r#"<div class="text-center py-12 text-slate-500 text-sm" data-i18n="search.empty">검색어를 입력하세요</div>"#
+        r#"<div class="text-center py-12 text-slate-500 text-sm" data-i18n="search.empty">Enter a search query</div>"#
             .to_string()
     };
 
     let content = format!(
         r##"<div class="flex items-center justify-between mb-6">
          <div>
-          <h1 class="text-xl font-semibold tracking-tight" data-i18n="search.title">검색</h1>
-          <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5" data-i18n="search.subtitle">검색어를 입력하고 필요한 컬렉션만 좁혀 봅니다.</p>
+          <h1 class="text-xl font-semibold tracking-tight" data-i18n="search.title">Search</h1>
+          <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5" data-i18n="search.subtitle">Enter a query and narrow it to a collection when needed.</p>
          </div>
-         <a href="/viewer/collections" class="quiet-chip text-xs" data-i18n="search.collections">컬렉션 보기</a>
+         <a href="/viewer/collections" class="quiet-chip text-xs" data-i18n="search.collections">View collections</a>
         </div>
         <form method="get" action="/viewer/search" class="mb-6">
          <div class="command-input">
           <label class="search-field">
-           <span class="field-label" data-i18n="field.query">검색어</span>
-           <input type="text" name="q" value="{}" placeholder="예: 배포 결정, OAuth 오류, PostgreSQL 설정" data-i18n-placeholder="placeholder.search" class="w-full bg-transparent px-2 py-2 text-sm outline-none placeholder:text-stone-500" required>
+           <span class="field-label" data-i18n="field.query">Query</span>
+           <input type="text" name="q" value="{}" placeholder="e.g. deployment decision, OAuth error, PostgreSQL config" data-i18n-placeholder="placeholder.search" class="w-full bg-transparent px-2 py-2 text-sm outline-none placeholder:text-stone-500" required>
           </label>
           <label>
-           <span class="field-label" data-i18n="field.scope">범위</span>
+           <span class="field-label" data-i18n="field.scope">Scope</span>
            <select name="project" class="scope-select">{}</select>
           </label>
-          <button type="submit" class="rounded-2xl bg-slate-950 dark:bg-white text-white dark:text-slate-950 px-5 py-3 text-sm font-medium hover:opacity-90 transition-opacity" data-i18n="button.search">검색</button>
+          <button type="submit" class="rounded-2xl bg-slate-950 dark:bg-white text-white dark:text-slate-950 px-5 py-3 text-sm font-medium hover:opacity-90 transition-opacity" data-i18n="button.search">Search</button>
          </div>
         </form>
         {}"##,
@@ -4754,7 +4844,7 @@ pub async fn viewer_search(
     );
 
     let html = BASE_HTML
-        .replace("__TITLE__", "검색")
+        .replace("__TITLE__", "Search")
         .replace("__VERSION__", env!("CARGO_PKG_VERSION"))
         .replace("__ACTIVE_DASHBOARD__", "")
         .replace("__ACTIVE_COLLECTIONS__", "")
@@ -5027,7 +5117,7 @@ fn mmr_select(
 }
 
 #[cfg(test)]
-mod retrieval_eval {
+pub(crate) mod retrieval_eval {
     //! Offline retrieval-quality baseline over a small hand-labeled corpus.
     //!
     //! Runs the *real* `run_hybrid_search` path (BM25 + vector + RRF + composite
@@ -5189,7 +5279,7 @@ mod retrieval_eval {
         }
     }
 
-    async fn build_system() -> (tempfile::TempDir, Arc<RwLock<MemorySystem>>) {
+    pub(crate) async fn build_system() -> (tempfile::TempDir, Arc<RwLock<MemorySystem>>) {
         let tmp = tempfile::tempdir().expect("tempdir");
         link_model_cache(tmp.path());
         let mut cfg = Config::default();
