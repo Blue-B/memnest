@@ -1,17 +1,34 @@
 #!/usr/bin/env node
-// End-to-end smoke: assumes a running memnest server at MEMNEST_URL
-// (defaults to 127.0.0.1:3111) and a populated sqlite at MEMNEST_DB.
+// End-to-end smoke against a scratch memnest instance.
+//
+// MEMNEST_URL and MEMNEST_DB have no defaults on purpose. This test stores
+// memories, so defaulting to 127.0.0.1:3111 and ~/.memnest/memory.db would
+// leave test collections in whatever store the developer actually uses.
+//
 // Exits 0 if all assertions pass, non-zero otherwise.
 
 import { spawnSync } from "node:child_process";
 import { rmSync, existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
-import { tmpdir, homedir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 
 const CLI = join(import.meta.dirname, "..", "bin", "cli.mjs");
-const URL = process.env.MEMNEST_URL || "http://127.0.0.1:3111";
-const DB = process.env.MEMNEST_DB || join(homedir(), ".memnest", "memory.db");
+const URL = process.env.MEMNEST_URL;
+const DB = process.env.MEMNEST_DB;
+if (!URL || !DB) {
+  console.error(
+    [
+      "smoke: set MEMNEST_URL and MEMNEST_DB to a scratch instance first.",
+      "This test stores memories, so it must not run against your own store.",
+      "",
+      "  memnest --data-dir /tmp/memnest-smoke --port 3150 &",
+      "  MEMNEST_URL=http://127.0.0.1:3150 \\",
+      "    MEMNEST_DB=/tmp/memnest-smoke/memory.db npm run smoke",
+    ].join("\n"),
+  );
+  process.exit(2);
+}
 const DIR = join(tmpdir(), `pj-smoke-${Date.now()}`);
 
 let ok = 0, fail = 0;
@@ -86,7 +103,7 @@ if (existsSync(newPath)) {
   writeFileSync(newPath, fm + "\n" + marker + " " + body.replace(/^\n+/, ""));
   r = cli("import");
   assert("import exits 0", r.code === 0, r.err);
-  assert("import reports 1 file applied", /chunks_applied\":\s*1/.test(r.out), r.out);
+  assert("import reports 1 file applied", /chunks_applied":\s*1/.test(r.out), r.out);
 
   let hit = false;
   let sj = null;
