@@ -5,6 +5,7 @@ pub mod embedding;
 pub mod eval;
 pub mod facts;
 pub mod graph;
+pub mod hook;
 pub mod index;
 pub mod lifecycle;
 pub mod models;
@@ -12,6 +13,7 @@ pub mod redaction;
 pub mod search;
 pub mod server;
 pub mod storage;
+pub mod watch;
 
 use anyhow::Result;
 use std::path::Path;

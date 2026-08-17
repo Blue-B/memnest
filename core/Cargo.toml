@@ -32,6 +32,10 @@ tower-http = { version = "0.6", features = ["fs", "cors"] }
 # MCP
 rmcp = { version = "1.6", features = ["server", "transport-io"], optional = true }
 
+# HTTP client for `memnest hook`, which talks to a running service instead of
+# opening the data directory. Already in the tree via fastembed's hf-hub.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

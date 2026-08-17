@@ -1,5 +1,6 @@
 use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
+use memnest::hook::HookFormat;
 use memnest::models::{ChunkType, Fact, FactHistory, Importance, MemoryChunk, Metadata};
 use memnest::redaction::redact_text;
 use memnest::{MemorySystem, config::Config};
@@ -63,6 +64,40 @@ enum CliCommand {
     Status,
     /// Print the canonical dashboard URL. Terminals usually render it as a clickable link.
     Dashboard,
+    /// Answer a host's prompt hook with a context pack, for automatic injection
+    /// without a per-host extension. Reads the hook payload on stdin and writes
+    /// the reply on stdout; never fails, so it cannot block a prompt.
+    Hook {
+        /// Address of the running service. Defaults to MEMNEST_URL, then http://127.0.0.1:3111.
+        #[arg(long)]
+        url: Option<String>,
+        /// Reply shape. `auto` reads it from the payload.
+        #[arg(long, value_enum, default_value_t = HookFormat::Auto)]
+        format: HookFormat,
+        /// Give up on the service after this long and inject nothing.
+        #[arg(long, default_value_t = 2000)]
+        timeout_ms: u64,
+    },
+    /// Follow local session transcripts and store new turns automatically, so
+    /// any host that writes one gets AutoLog without an extension.
+    Watch {
+        /// Address of the running service. Defaults to MEMNEST_URL, then http://127.0.0.1:3111.
+        #[arg(long)]
+        url: Option<String>,
+        /// Transcript directory to follow. Repeatable; defaults to the known
+        /// Claude Code and pi locations.
+        #[arg(long = "path")]
+        paths: Vec<String>,
+        /// Make one pass and exit instead of following.
+        #[arg(long)]
+        once: bool,
+        /// Seconds between passes.
+        #[arg(long, default_value_t = 5)]
+        interval: u64,
+        /// Import existing history instead of following from the end.
+        #[arg(long)]
+        backfill: bool,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -117,14 +152,37 @@ async fn main() -> anyhow::Result<()> {
     }
 
     if let Some(command) = &cli.command {
-        let dashboard_url = format!(
-            "http://{}:{}/",
-            canonical_display_host(&config.api_host),
-            config.api_port
-        );
-        let reachable = service_reachable(&config.api_host, config.api_port);
         match command {
+            // Runs on every prompt, so it stays off the paths that probe the
+            // service, open the data directory, or load the embedder.
+            CliCommand::Hook {
+                url,
+                format,
+                timeout_ms,
+            } => {
+                memnest::hook::run(url.as_deref(), *format, *timeout_ms).await;
+            }
+            // Talks to the service over HTTP like any other adapter, so it also
+            // stays off the paths that open the data directory.
+            CliCommand::Watch {
+                url,
+                paths,
+                once,
+                interval,
+                backfill,
+            } => {
+                memnest::watch::run(
+                    url.as_deref(),
+                    paths,
+                    &config.data_dir,
+                    *once,
+                    *interval,
+                    *backfill,
+                )
+                .await?;
+            }
             CliCommand::Status => {
+                let reachable = service_reachable(&config.api_host, config.api_port);
                 println!("memnest v{}", env!("CARGO_PKG_VERSION"));
                 println!(
                     "service: {}",
@@ -134,10 +192,10 @@ async fn main() -> anyhow::Result<()> {
                         "not reachable"
                     }
                 );
-                println!("dashboard: {dashboard_url}");
+                println!("dashboard: {}", dashboard_url(&config));
                 println!("data dir: {}", config.data_dir.display());
             }
-            CliCommand::Dashboard => println!("{dashboard_url}"),
+            CliCommand::Dashboard => println!("{}", dashboard_url(&config)),
         }
         return Ok(());
     }
@@ -270,6 +328,14 @@ async fn shutdown_signal() {
 #[cfg(not(unix))]
 async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
+}
+
+fn dashboard_url(config: &Config) -> String {
+    format!(
+        "http://{}:{}/",
+        canonical_display_host(&config.api_host),
+        config.api_port
+    )
 }
 
 fn canonical_display_host(host: &str) -> String {
