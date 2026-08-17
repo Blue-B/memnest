@@ -26,7 +26,15 @@ cd memnest/core && cargo build --release
 ./target/release/memnest --data-dir ~/.memnest
 ```
 
-서비스와 대시보드 주소는 **`http://127.0.0.1:3111`** 이다. 포트를 외울 필요는 없고 `memnest status`를 치면 상태와 대시보드 링크, 데이터 디렉터리를 알려준다.
+서비스와 대시보드 주소는 **`http://127.0.0.1:3111`** 이다.
+
+이 문서는 이후로 바이너리를 이름으로 부른다. `PATH`에 올려두면 된다.
+
+```bash
+install -m755 target/release/memnest ~/.local/bin/memnest
+```
+
+그러면 `memnest status`로 상태와 대시보드 링크, 데이터 디렉터리를 볼 수 있다.
 
 아직 npm이나 crates.io에 배포하지 않아서 설치는 전부 체크아웃 기준이다. 새로 설치하면 `~/.memnest`를 쓰고, 기존에 `~/.factory/memories`가 있으면 옮기기 전까지 그대로 쓴다. 빌드 결과물은 실행 파일 하나(리눅스 x86_64 기준 35MB, ONNX 런타임까지 정적 링크)라 사이드카 데몬이나 별도 런타임이 필요 없다. 대신 첫 실행 때 임베딩 모델 intfloat/multilingual-e5-base를 `~/.memnest/models`로 내려받고, 그게 1.1GB다.
 

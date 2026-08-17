@@ -26,7 +26,15 @@ cd memnest/core && cargo build --release
 ./target/release/memnest --data-dir ~/.memnest
 ```
 
-Service and dashboard: **`http://127.0.0.1:3111`**. Or ask the binary: `memnest status` prints health, the dashboard link, and the data directory.
+Service and dashboard: **`http://127.0.0.1:3111`**.
+
+The rest of this page calls the binary by name, which needs it on your `PATH`:
+
+```bash
+install -m755 target/release/memnest ~/.local/bin/memnest
+```
+
+Then `memnest status` prints health, the dashboard link, and the data directory.
 
 Nothing is published to npm or crates.io yet, so every install is from a checkout. New installs use `~/.memnest`, and an existing `~/.factory/memories` store keeps being used until you migrate. The build produces one executable (35 MB on linux x86_64, ONNX runtime statically linked), so there is no sidecar daemon or separate runtime to install. The first run downloads the embedding model intfloat/multilingual-e5-base into `~/.memnest/models`, which is 1.1 GB.
 

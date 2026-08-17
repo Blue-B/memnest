@@ -4,7 +4,7 @@ Memnest is distributed as a Rust binary and includes third-party Rust dependenci
 
 ## Release gate
 
-Before publishing a paid build, run:
+Before cutting a release, run:
 
 ```bash
 python3 scripts/check-licenses.py

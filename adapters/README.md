@@ -1,13 +1,15 @@
 # Memnest adapters
 
-Memnest keeps the core platform-neutral. Any agent can use the HTTP API or the stdio MCP server. An adapter only translates host lifecycle events into those stable operations.
+Memnest keeps the core platform-neutral. Any agent can use the HTTP API or the MCP server, over Streamable HTTP or stdio. An adapter only translates host lifecycle events into those stable operations.
 
 ## Supported surfaces
 
 | Surface | Intended use |
 | --- | --- |
-| HTTP | Long-running local service shared by several clients. |
-| stdio MCP | Tool access from MCP-compatible agents and editors. |
+| HTTP API | Long-running local service shared by several clients. |
+| MCP over Streamable HTTP | `POST /mcp` on the same port as the API and dashboard, so several hosts share one process and one store. |
+| MCP over stdio | Tool access for a client that spawns its own child process. |
+| `memnest hook`, `memnest watch` | Core subcommands that give any host prompt-time injection and transcript capture without an extension. |
 | `pi-extension/` | First-class pi tools, Autocontext, optional AutoLog, and `/memnest` status command. |
 | `adapters/generic-http/` | Dependency-free JSONL reference adapter for other hosts. |
 
@@ -53,7 +55,17 @@ node adapters/generic-http/test.mjs
 
 ## MCP clients
 
-Build the core and point any MCP-compatible client at the same executable and data directory:
+Two transports carry the same tools, and the HTTP one is preferred. Point the client at the running service:
+
+```json
+{
+  "mcpServers": {
+    "memnest": { "url": "http://127.0.0.1:3111/mcp" }
+  }
+}
+```
+
+A client that only spawns child processes uses stdio instead:
 
 ```json
 {
@@ -66,7 +78,9 @@ Build the core and point any MCP-compatible client at the same executable and da
 }
 ```
 
-This is the recommended integration path for Claude Code, Codex, OpenCode, Cursor, and similar clients when they support local stdio MCP. Use the generic HTTP adapter when a host exposes lifecycle hooks but not MCP.
+A spawned process owns the data directory for as long as it runs, so two stdio clients, or one stdio client alongside the dashboard service, means two writers on the same files. The HTTP transport avoids that because every client talks to the one service.
+
+Either shape suits Claude Code, Codex, OpenCode, Cursor, and similar clients. When a host exposes lifecycle hooks but not MCP, reach for `memnest hook` and `memnest watch` first; write an adapter when the host needs operations those two do not cover, such as feedback or structured writes.
 
 ## Contribution checklist
 
