@@ -113,19 +113,24 @@ assert(
 	acText.slice(0, 200),
 );
 
-// Live server round-trip (skipped gracefully if 3111 is down).
-const URL = process.env.MEMNEST_URL ?? "http://127.0.0.1:3111";
+// Live server round-trip. MEMNEST_URL has no default because these calls store
+// memories, and a default of 127.0.0.1:3111 would write test collections into
+// whatever store the developer actually uses.
+const URL = process.env.MEMNEST_URL;
+if (!URL) {
+	console.log(
+		"\n(MEMNEST_URL not set, skipping live calls)\n" +
+			"  memnest --data-dir /tmp/memnest-smoke --port 3150 &\n" +
+			"  MEMNEST_URL=http://127.0.0.1:3150 npm run smoke",
+	);
+}
 let reachable = false;
 try {
 	const r = await fetch(`${URL}/health`);
 	reachable = r.ok;
 } catch {}
 
-if (!reachable) {
-	console.log(
-		`\n(memnest server not reachable at ${URL} — skipping live calls)`,
-	);
-} else {
+if (reachable) {
 	const health = tools.get("memory_health");
 	const r1 = await health.execute("id", {}, undefined, noop, {
 		cwd: process.cwd(),
@@ -250,6 +255,10 @@ if (!reachable) {
 			`got ${t5.length} chars`,
 		);
 	}
+} else {
+	console.log(
+		`\n(memnest server not reachable at ${URL} — skipping live calls)`,
+	);
 }
 
 console.log(`\nsmoke: ${ok} passed, ${fail} failed`);
