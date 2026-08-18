@@ -12,7 +12,6 @@ import { MemnestClient } from "../src/memnest-client.js";
 import { captureMemories } from "../src/capture.js";
 import { improveSkills } from "../src/skills.js";
 import { updateUserModel } from "../src/user-model.js";
-import { reinforce, detectOutcomeSignal } from "../src/reinforce.js";
 import type { LlmComplete, TranscriptTurn } from "../src/types.js";
 
 const URL = process.env.MEMNEST_URL ?? "http://127.0.0.1:3199";
@@ -90,19 +89,6 @@ async function main() {
   await sleep(1500);
   const facets = await client.search("user preferences package manager language", { project: "_user_model", nResults: 10 });
   for (const f of facets) console.log(`  • ${f.document.slice(0, 180)}`);
-
-  // ── 4. REINFORCEMENT quality (no LLM — signal + neighbour pick) ───────────
-  hr("4) REINFORCE — judge: does a recurrence complaint hit the RIGHT failure?");
-  const complaint = "ugh the dev server is still dying, that port 5173 thing is back again";
-  const sig = detectOutcomeSignal(complaint);
-  console.log(`signal for "${complaint.slice(0, 50)}…" => ${sig}`);
-  const r = await reinforce(client, sig, complaint, { project: "qtest", maxDistance: 0.6 });
-  console.log(`reinforced:`, JSON.stringify(r));
-  if (r.id) {
-    const back = await client.search("dev server port EADDRINUSE stale", { project: "qtest", nResults: 5 });
-    const hit = back.find((x) => x.id === r.id);
-    console.log(`  -> survivor now: [${hit?.importance}] ${hit?.document.slice(0, 160)}`);
-  }
 
   console.log(`\n=== done. real model calls: ${calls} ===`);
 }
