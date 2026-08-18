@@ -18,7 +18,7 @@ export const USER_MODEL_PROJECT = "_user_model";
 // fix the user happened to state ("to clear EADDRINUSE, lsof + kill the PID")
 // got tagged correction and polluted the who-you-are model. Genuine user
 // preferences already surface as `preference`; corrections still drive normal
-// memory + reinforcement, just not the user model.
+// memory, just not the user model.
 const FACET_CATS = new Set<MemoryCategory>(["preference"]);
 
 export function isUserFacet(m: LearnedMemory): boolean {

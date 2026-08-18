@@ -1,5 +1,5 @@
-// Live integration for the closed-loop additions (reinforce / skill-improve /
-// user-model) against a REAL throwaway memnest engine over HTTP with
+// Live integration for the closed-loop additions (skill-improve / user-model)
+// against a REAL throwaway memnest engine over HTTP with
 // deterministic stub LLMs. NOT part of `bun test`. Run against a throwaway
 // engine (own port + data dir) — never the live store:
 //   MEMNEST_URL=http://127.0.0.1:3199 bun run test/loop.integration.live.ts
@@ -9,7 +9,6 @@
 // exact embedding threshold of one model build.
 
 import { MemnestClient } from "../src/memnest-client.js";
-import { reinforce } from "../src/reinforce.js";
 import { improveSkills } from "../src/skills.js";
 import { updateUserModel, userModelContext } from "../src/user-model.js";
 import type { LearnedMemory, LlmComplete } from "../src/types.js";
@@ -42,38 +41,7 @@ async function waitForSearch(
 async function main() {
   console.log(`=== memnest-learn CLOSED-LOOP live integration vs ${URL} ===`);
 
-  // ── #1 Outcome reinforcement ────────────────────────────────────────────────
-  const P = "ltest";
-  await client.add({
-    text: "The dev server crashes with EADDRINUSE because port 5173 is already bound by a stale process.",
-    project: P,
-    category: "failure",
-    importance: "knowledge",
-  });
-  await waitForSearch("dev server EADDRINUSE port already bound", P, (d) =>
-    d.some((x) => x.document.includes("EADDRINUSE")),
-  );
-
-  const r1 = await reinforce(client, "recurrence", "the dev server still crashes, that port is bound again", {
-    project: P,
-    maxDistance: 0.6,
-  });
-  check("reinforce matched the recurring failure", r1.matched && r1.action === "reinforced", JSON.stringify(r1));
-  check("reinforce bumped importance to decision", r1.newImportance === "decision", `imp=${r1.newImportance}`);
-
-  await sleep(1500);
-  const afterR1 = await waitForSearch("dev server EADDRINUSE port", P, (d) =>
-    d.some((x) => x.document.includes("[recurred ×1]")),
-  );
-  check("recurrence marker persisted on the survivor", afterR1.some((x) => x.document.includes("[recurred ×1]")));
-
-  const r2 = await reinforce(client, "recurrence", "still broken — same EADDRINUSE on that bound port", {
-    project: P,
-    maxDistance: 0.6,
-  });
-  check("second recurrence increments the counter", r2.recurred === 2, `recurred=${r2.recurred}`);
-
-  // ── #2 Skill self-improvement ───────────────────────────────────────────────
+  // ── #1 Skill self-improvement ───────────────────────────────────────────────
   const draftLlm: LlmComplete = async ({ user }) =>
     user.startsWith("CURRENT SKILL")
       ? "# Free a bound dev-server port\n1. lsof -i :5173 to find the stale PID\n2. kill it\n3. restart the dev server\n4. if it recurs, add a predev port-cleanup script"
@@ -100,7 +68,7 @@ async function main() {
   const refined = await client.search("free bound dev server port", { project: "_skills", nResults: 10 });
   check("refined skill carries the new step", refined.some((x) => x.document.includes("port-cleanup script")));
 
-  // ── #4 User model deepening ─────────────────────────────────────────────────
+  // ── #2 User model deepening ─────────────────────────────────────────────────
   const umLlm: LlmComplete = async () => "User prefers Bun over npm/pnpm as the package manager for all projects.";
   const facts: LearnedMemory[] = [
     { category: "preference", text: "User wants explanations written in Korean." },

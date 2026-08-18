@@ -29,7 +29,6 @@ import { MemorySnapshot } from "./kv-snapshot.js";
 import { captureMemories, extractMessageText } from "./capture.js";
 import { consolidateByEmbedding } from "./consolidate.js";
 import { LlmBudget } from "./budget.js";
-import { detectOutcomeSignal, reinforce } from "./reinforce.js";
 import { improveSkills, SKILL_PROJECT } from "./skills.js";
 import { updateUserModel, userModelContext } from "./user-model.js";
 import type { LearnedMemory } from "./types.js";
@@ -145,8 +144,8 @@ function backgroundLlm(ctx: ExtensionContext): LlmComplete | null {
 }
 
 // ── learning fan-out: route freshly-captured memories into the loops ─────────
-// skill self-improvement (#2) + user-model deepening (#4). Best-effort; the
-// outcome-reinforcement loop (#1) runs separately off the input signal.
+// skill self-improvement + user-model deepening. Best-effort: a failure in
+// either must not take down the capture pass that fed them.
 async function learnFromMemories(
 	memories: LearnedMemory[],
 	llm: LlmComplete,
@@ -274,7 +273,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	);
 
-	// input: track turns, outcome reinforcement, periodic background capture
+	// input: track turns, start the periodic background capture pass
 	pi.on(
 		"input",
 		async (event: { source?: string; text: string }, ctx: ExtensionContext) => {
@@ -287,21 +286,6 @@ export default function (pi: ExtensionAPI) {
 
 			const llm = backgroundLlm(ctx);
 			const project = currentProject();
-
-			// outcome reinforcement (#1): the closed loop. "still broken" raises the
-			// matching failure memory; "works now" validates the one that helped. Give
-			// the neighbour search a few turns of context, not just this short line, so
-			// "still broken" matches the right failure instead of any nearest memory.
-			const signal = detectOutcomeSignal(text);
-			if (signal) {
-				const contextText = [
-					...recentTurns.slice(-3).map((t) => t.text),
-					text,
-				].join("\n");
-				// Reinforcement adjusts stored salience only; no snapshot rebuild
-				// mid-session (see cache note above).
-				reinforce(client, signal, contextText).catch(warn);
-			}
 
 			if (
 				llm &&

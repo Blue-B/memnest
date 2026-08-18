@@ -436,103 +436,6 @@ class LlmBudget {
   }
 }
 
-// src/reinforce.ts
-var LADDER = ["log", "knowledge", "decision", "preference"];
-function bumpImportance(cur, cap = "preference") {
-  const i = LADDER.indexOf(cur.toLowerCase());
-  const capIdx = LADDER.indexOf(cap);
-  if (i < 0)
-    return "knowledge";
-  return LADDER[Math.min(i + 1, capIdx)];
-}
-var MARKER_RE = /\s*\[recurred [×x](\d+)\]\s*$/i;
-function recurrenceCount(text) {
-  const m = MARKER_RE.exec(text);
-  return m ? Number(m[1]) : 0;
-}
-function withRecurrenceMarker(text, n) {
-  return `${text.replace(MARKER_RE, "").trimEnd()} [recurred ×${n}]`;
-}
-var RECURRENCE_PATTERNS = [
-  /still\b[^.!?]*\b(broken|not working|fails?|failing|happening|the same|dying|crashing|crashes|down|there|here|wrong|bad)/i,
-  /same (error|issue|problem|bug|thing)( again)?/i,
-  /(did|does|doesn'?t|didn'?t) ?n'?t? (work|fix)/i,
-  /not fixed/i,
-  /\b(is|it'?s|it is|are|they'?re|thing'?s|that'?s) back\b/i,
-  /\bback again\b/i,
-  /\b(happening|crashing|dying|failing|broke|broken|error) again\b/i,
-  /keeps? (happening|coming back|dying|crashing|failing|breaking)/i,
-  /여전히/,
-  /아직(도| 안|$)/,
-  /또 (안|같은|터|죽|에러|발생|그)/,
-  /다시[^.!?]*(죽|안|에러|터|발생)/,
-  /재발/,
-  /안 ?(고쳐|됐|돼|되|풀렸)/,
-  /그대로(네|야|다|임|\s|$)/,
-  /똑같(이|은|네|아)/
-];
-var SUCCESS_PATTERNS = [
-  /(works|working|fine) now/i,
-  /(that|it) (works|worked|fixed it|did it)/i,
-  /\bfixed( it)?\b/i,
-  /됐(어|다|네|음)/,
-  /(잘|이제) ?(돼|된다|됨|작동)/,
-  /고쳐졌/,
-  /해결(됐|했|돼|된)/,
-  /성공(했|이|\s|$)/
-];
-function detectOutcomeSignal(text) {
-  const t = text.trim();
-  if (!t)
-    return null;
-  if (RECURRENCE_PATTERNS.some((re) => re.test(t)))
-    return "recurrence";
-  if (SUCCESS_PATTERNS.some((re) => re.test(t)))
-    return "success";
-  return null;
-}
-var NEIGHBOR_DOC_LIMIT = 8000;
-var RECUR_CATS = new Set(["failure", "correction", "tool_quirk"]);
-var SUCCESS_CATS = new Set(["failure", "correction", "insight", "tool_quirk", "convention"]);
-async function reinforce(client, signal, contextText, opts = {}) {
-  if (!signal)
-    return { matched: false };
-  const text = contextText.trim();
-  if (!text)
-    return { matched: false };
-  const maxDistance = opts.maxDistance ?? (signal === "recurrence" ? 0.22 : 0.2);
-  const ns = await client.neighbors({
-    text,
-    k: opts.k ?? 8,
-    maxDistance,
-    project: opts.project ?? "all"
-  });
-  if (ns.length === 0)
-    return { matched: false };
-  const want = signal === "recurrence" ? RECUR_CATS : SUCCESS_CATS;
-  const hit = ns.find((n) => want.has((n.category || "").toLowerCase()));
-  if (!hit)
-    return { matched: false };
-  if (signal === "recurrence") {
-    const newImportance2 = bumpImportance(hit.importance, "decision");
-    if (hit.document.length >= NEIGHBOR_DOC_LIMIT) {
-      await client.update(hit.id, { importance: newImportance2 });
-      return { matched: true, id: hit.id, action: "reinforced", newImportance: newImportance2 };
-    }
-    const n = recurrenceCount(hit.document) + 1;
-    await client.update(hit.id, {
-      text: withRecurrenceMarker(hit.document, n),
-      importance: newImportance2
-    });
-    return { matched: true, id: hit.id, action: "reinforced", newImportance: newImportance2, recurred: n };
-  }
-  const newImportance = bumpImportance(hit.importance, "decision");
-  if (newImportance !== (hit.importance || "").toLowerCase()) {
-    await client.update(hit.id, { importance: newImportance });
-  }
-  return { matched: true, id: hit.id, action: "validated", newImportance };
-}
-
 // src/skills.ts
 var SKILL_PROJECT = "_skills";
 var PROCEDURAL_CATS = new Set([
@@ -909,15 +812,6 @@ function src_default(pi) {
     turnCounter++;
     const llm = backgroundLlm(ctx);
     const project = currentProject();
-    const signal = detectOutcomeSignal(text);
-    if (signal) {
-      const contextText = [
-        ...recentTurns.slice(-3).map((t) => t.text),
-        text
-      ].join(`
-`);
-      reinforce(client, signal, contextText).catch(warn);
-    }
     if (llm && turnCounter % CAPTURE_EVERY_TURNS === 0 && recentTurns.length > 0 && !bgInFlight) {
       bgInFlight = true;
       const slice = recentTurns.slice(-40);
