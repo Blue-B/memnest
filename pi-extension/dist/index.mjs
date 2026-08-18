@@ -4822,7 +4822,7 @@ function register(pi) {
         call("/health", void 0, "GET"),
         call("/stats", void 0, "GET")
       ]);
-      const state = health.isError ? "\uC5F0\uACB0 \uC2E4\uD328" : "\uC815\uC0C1";
+      const state = health.isError ? "unreachable" : "ok";
       let dashboard = `${MEMNEST_URL2.replace(/\/$/, "")}/`;
       let detail = "";
       try {

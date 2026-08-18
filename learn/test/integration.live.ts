@@ -7,7 +7,7 @@
 // It never touches the live palimpsest (different port + data dir).
 
 import { MemnestClient } from "../src/memnest-client.js";
-import { captureCorrection, captureMemories } from "../src/capture.js";
+import { captureMemories } from "../src/capture.js";
 import { consolidateByEmbedding } from "../src/consolidate.js";
 import type { LlmComplete } from "../src/types.js";
 
@@ -95,13 +95,21 @@ async function main() {
   check("retired duplicate moved to _superseded (non-destructive)", supersededBucket.length >= 1, `superseded=${supersededBucket.length}`);
   check("retired duplicate gone from its project", !afterNormal.some((x) => res.superseded > 0 && x.project === "_superseded"));
 
-  // --- D. correction fast-path ---
-  const cid = await captureCorrection("Actually, use pnpm not npm here.", client, "itest");
-  check("correction captured", !!cid);
-  const corr = await waitForSearch("pnpm npm package manager", "itest", (d) =>
+  // --- D. corrections from the periodic pass land in `playbook`, the only
+  // bucket buildInjection's learned_rules slot reads back.
+  const corrLlm: LlmComplete = async () =>
+    JSON.stringify([{ category: "correction", text: "Use pnpm here, not npm." }]);
+  const corrCap = await captureMemories([{ role: "user", text: "use pnpm" }], corrLlm, client, {
+    project: "itest",
+  });
+  check("correction captured", corrCap.written.length === 1, `written=${corrCap.written.length}`);
+  const corr = await waitForSearch("pnpm npm package manager", "playbook", (d) =>
     d.some((x) => x.category === "Correction"),
   );
-  check("correction stored with Correction category", corr.some((x) => x.category === "Correction"));
+  check(
+    "correction routed to playbook with Correction category",
+    corr.some((x) => x.category === "Correction"),
+  );
 
   console.log(`\n=== ${failures === 0 ? "ALL CHECKS PASSED" : failures + " CHECK(S) FAILED"} ===`);
   process.exit(failures === 0 ? 0 : 1);

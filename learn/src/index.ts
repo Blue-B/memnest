@@ -9,7 +9,7 @@
 // Hooks (surface verified against jayzeng/pi-memory + chandra447/pi-hermes):
 //   session_start          -> build the byte-stable injection snapshot
 //   before_agent_start     -> inject snapshot (memnest /context + working memory)
-//   input                  -> turn counter + correction fast-path
+//   input                  -> turn counter + periodic background capture
 //   session_before_compact -> write handoff, refresh snapshot
 //   session_shutdown       -> final capture flush
 // Tools: scratchpad (checklist), skill (procedural how-to, stored in memnest).
@@ -26,12 +26,7 @@ import { Type } from "@sinclair/typebox";
 
 import { MemnestClient } from "./memnest-client.js";
 import { MemorySnapshot } from "./kv-snapshot.js";
-import {
-	captureCorrection,
-	captureMemories,
-	extractMessageText,
-	looksLikeCorrection,
-} from "./capture.js";
+import { captureMemories, extractMessageText } from "./capture.js";
 import { consolidateByEmbedding } from "./consolidate.js";
 import { LlmBudget } from "./budget.js";
 import { detectOutcomeSignal, reinforce } from "./reinforce.js";
@@ -147,24 +142,6 @@ function backgroundLlm(ctx: ExtensionContext): LlmComplete | null {
 	const llm = makeLlm(ctx);
 	if (!llm) return null;
 	return async (input) => (budget.allow() ? llm(input) : "");
-}
-
-/**
- * Correction-path LLM. Still budget-gated (a frustrated user must not be able to
- * spam the model), but on exhaustion it THROWS instead of returning "". That
- * difference matters: captureCorrection treats a thrown judge as "unavailable"
- * and stores the raw complaint for high-confidence signals, so a strong
- * correction is never silently dropped just because periodic capture spent the
- * window's budget. A genuine semantic NONE (the model returns "NONE") still
- * vetoes, so everyday particles stay filtered.
- */
-function correctionLlm(ctx: ExtensionContext): LlmComplete | null {
-	const llm = makeLlm(ctx);
-	if (!llm) return null;
-	return async (input) => {
-		if (!budget.allow()) throw new Error("correction llm budget exhausted");
-		return llm(input);
-	};
 }
 
 // ── learning fan-out: route freshly-captured memories into the loops ─────────
@@ -297,7 +274,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	);
 
-	// input: track turns, correction fast-path, periodic background capture
+	// input: track turns, outcome reinforcement, periodic background capture
 	pi.on(
 		"input",
 		async (event: { source?: string; text: string }, ctx: ExtensionContext) => {
@@ -309,48 +286,7 @@ export default function (pi: ExtensionAPI) {
 			turnCounter++;
 
 			const llm = backgroundLlm(ctx);
-			const corrLlm = correctionLlm(ctx);
 			const project = currentProject();
-
-			if (looksLikeCorrection(text)) {
-				// Distil the complaint into an actionable lesson (not the raw words),
-				// store it immediately, surface it on the snapshot, and let the user SEE
-				// that learning happened — the fast-path bypasses the memory_remember tool
-				// so it must notify here itself.
-				captureCorrection(text, client, project, {
-					llm: corrLlm,
-					context: recentTurns,
-				})
-					.then(async (r) => {
-						if (!r) return;
-						// No markDirty: a mid-session snapshot rebuild changes the system
-						// prompt bytes (takenAt header) and invalidates the entire prompt
-						// cache — far costlier than surfacing the lesson next session.
-						const tag = r.distilled ? "🧠 교정 학습" : "📝 교정 기록";
-						const short =
-							r.lesson.length > 70 ? r.lesson.slice(0, 67) + "..." : r.lesson;
-						// notify 제거: 채팅 밀림 원인. setStatus만 유지.
-						ctx.ui.setStatus("memnest-correction", `${tag}: ${short}`);
-						// Fold a distilled correction into the evolving user model. Previously
-						// captureCorrection was a dead-end: it stored the rule but never fed
-						// the higher loops, so the _user_model bucket stayed empty and the
-						// SAME lesson piled up as new rows every time (never consolidated).
-						// updateUserModel refines the nearest existing facet (or adds a new
-						// one), so repeating a correction now SHARPENS one facet instead of
-						// duplicating it, and finally fills the bucket that buildInjection
-						// injects first, every turn. Raw (non-distilled) complaints are too
-						// noisy for the who-you-are model, so only distilled lessons fold.
-						if (r.distilled && corrLlm) {
-							await updateUserModel(
-								client,
-								[{ category: "preference", text: r.lesson }],
-								corrLlm,
-								{ max: 1 },
-							).catch(warn);
-						}
-					})
-					.catch(warn);
-			}
 
 			// outcome reinforcement (#1): the closed loop. "still broken" raises the
 			// matching failure memory; "works now" validates the one that helped. Give

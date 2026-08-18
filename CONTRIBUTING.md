@@ -65,12 +65,13 @@ MEMNEST_URL=http://127.0.0.1:3150 MEMNEST_DB=/tmp/memnest-dev/memory.db npm run 
 skips the live section when nothing answers, and its calls are read paths plus
 one recall feedback marker. It does not create memories.
 
-### Known failing test
+### A test that depends on your shell environment
 
-`learn`'s `extension registers the expected hooks and tools` currently fails:
-the test expects a `session_before_compact` hook that the extension does not
-register. It fails on a clean checkout, so it is not something you introduced.
-The other 40 tests in `learn` pass.
+`learn`'s `extension registers the expected hooks and tools` passes on a clean
+checkout: all 33 tests pass. It fails only when `MEMNEST_LEARN_INJECT=0` is
+exported in your shell, because that setting deliberately skips registering
+`before_agent_start` and the test asserts the hook is present. Unset the
+variable, or run the suite with `env -u MEMNEST_LEARN_INJECT bun test test/`.
 
 ## Continuous integration
 

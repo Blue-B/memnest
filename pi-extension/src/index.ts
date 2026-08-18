@@ -381,7 +381,7 @@ export default function register(pi: ExtensionAPI): void {
 				call("/health", undefined, "GET"),
 				call("/stats", undefined, "GET"),
 			]);
-			const state = health.isError ? "연결 실패" : "정상";
+			const state = health.isError ? "unreachable" : "ok";
 			let dashboard = `${MEMNEST_URL.replace(/\/$/, "")}/`;
 			let detail = "";
 			try {
