@@ -16,7 +16,7 @@ import {
   planClusterMerge,
   trigramSimilarity,
 } from "../src/consolidate.js";
-import { captureCorrection, captureMemories, looksLikeCorrection } from "../src/capture.js";
+import { captureMemories } from "../src/capture.js";
 import { MemnestClient, type FetchLike } from "../src/memnest-client.js";
 import type { SearchItem } from "../src/types.js";
 
@@ -167,38 +167,6 @@ test("consolidateByEmbedding clusters via engine cosine neighbors", async () => 
 });
 
 // ── capture ──────────────────────────────────────────────────────────────────
-test("looksLikeCorrection detects EN + KO correction candidates, ignores neutral", () => {
-  expect(looksLikeCorrection("No, use pnpm not npm")).toBe(true);
-  expect(looksLikeCorrection("아니 그거 틀렸어")).toBe(true);
-  expect(looksLikeCorrection("추측하지말고 직접 확인했어야지")).toBe(true);
-  expect(looksLikeCorrection("please add a test for this")).toBe(false);
-});
-
-test("looksLikeCorrection avoids broad Korean false positives", () => {
-  expect(looksLikeCorrection("자동로그말고 교정기록이 너무 자주 작동하는데? ")).toBe(false);
-  expect(looksLikeCorrection("그러면 그냥 지금 기존 pi랑 똑같은 거 아니야?")).toBe(false);
-  expect(looksLikeCorrection("이미 스마트발송은 다 되어있잖아 근데 뭘 해야 한단 거야?")).toBe(false);
-  expect(looksLikeCorrection("응 진행해 근데 룰베이스말고 더 효율적인 설계는 없어?")).toBe(false);
-});
-
-test("looksLikeCorrection detects KO skepticism / failure-prediction", () => {
-  // A doubt that the agent will repeat a past mistake = a correction signal.
-  expect(looksLikeCorrection("이번에도 그럴 것 같아")).toBe(true);
-  expect(looksLikeCorrection("이번에도그럴꺼같아")).toBe(true);
-  expect(looksLikeCorrection("또 실패할 것 같아")).toBe(true);
-  expect(looksLikeCorrection("이것도 안될것같아")).toBe(true);
-  expect(looksLikeCorrection("해도 의미없을것같은데")).toBe(true);
-});
-
-test("looksLikeCorrection does NOT match positive '~ㄹ 것 같아' (no false positives)", () => {
-  // The narrow negative-pointer design must leave optimistic agreement alone,
-  // otherwise every approving turn would spuriously fire correction capture.
-  expect(looksLikeCorrection("이거 맞는 것 같아 진행해줘")).toBe(false);
-  expect(looksLikeCorrection("이렇게 하면 될 것 같아")).toBe(false);
-  expect(looksLikeCorrection("지금 잘 되고 있는 것 같아")).toBe(false);
-  expect(looksLikeCorrection("다음 단계로 가도 될 것 같아")).toBe(false);
-});
-
 test("captureMemories writes extracted memories with category + default importance", async () => {
   const llm = async () =>
     JSON.stringify([
@@ -216,103 +184,37 @@ test("captureMemories writes extracted memories with category + default importan
   const res = await captureMemories([{ role: "user", text: "hi" }], llm, client, { project: "proj" });
   expect(res.extracted).toBe(2);
   expect(res.written).toEqual(["id1", "id2"]);
-  expect(added[0]).toMatchObject({ category: "preference", importance: "preference", project: "proj" });
-  expect(added[1]).toMatchObject({ category: "failure", importance: "knowledge" });
+  expect(added[0]).toMatchObject({ category: "preference", importance: "preference" });
+  expect(added[1]).toMatchObject({ category: "failure", importance: "knowledge", project: "proj" });
 });
 
-test("captureCorrection stores the raw complaint as a decision when no LLM is given", async () => {
-  let captured: any = null;
+// buildInjection's learned_rules slot searches ONLY `playbook`. The periodic
+// capture pass is now the sole path that feeds it, so a durable lesson
+// (correction -> decision, preference -> preference) must be routed there;
+// weaker memories stay project-local.
+test("captureMemories routes durable lessons to playbook, keeps the rest project-local", async () => {
+  const llm = async () =>
+    JSON.stringify([
+      { category: "correction", text: "Verify the adapter with Get-NetAdapter instead of assuming WiFi" },
+      { category: "preference", text: "Prefers pnpm over npm" },
+      { category: "failure", text: "localStorage tokens are XSS-prone" },
+      { category: "general", text: "the repo has a learn/ workspace" },
+    ]);
+  const added: any[] = [];
   const client = {
-    add: async (i: any) => {
-      captured = i;
-      return { id: "c1" };
+    add: async (input: any) => {
+      added.push(input);
+      return { status: "queued", id: `id${added.length}`, project: input.project };
     },
   } as unknown as MemnestClient;
-  const res = await captureCorrection("Use pnpm, not npm", client, "proj");
-  expect(res).toMatchObject({ id: "c1", distilled: false, lesson: "Use pnpm, not npm" });
-  // raw (non-distilled) complaint stays project-local so it can't pollute playbook
-  expect(captured).toMatchObject({ category: "correction", importance: "decision", text: "Use pnpm, not npm", project: "proj" });
-  expect(await captureCorrection("   ", client)).toBeNull();
-});
 
-test("captureCorrection distils a lesson from context into a preference when an LLM is given", async () => {
-  let captured: any = null;
-  const client = {
-    add: async (i: any) => {
-      captured = i;
-      return { id: "c2" };
-    },
-  } as unknown as MemnestClient;
-  const llm = async () => "네트워크를 추정하지 말고 Get-NetAdapter로 직접 확인할 것";
-  const res = await captureCorrection("너 왜 또 추정해?", client, "proj", {
-    llm,
-    context: [
-      { role: "user", text: "인터넷 속도 조회해줘" },
-      { role: "assistant", text: "WiFi 쓰시는 것 같아요" },
-    ],
-  });
-  expect(res).toMatchObject({ id: "c2", distilled: true });
-  expect(res!.lesson).toContain("Get-NetAdapter");
-  // a distilled rule is a durable cross-project lesson -> curated playbook bucket,
-  // which is the ONLY bucket buildInjection's learned_rules slot reads
-  expect(captured).toMatchObject({ category: "correction", importance: "preference", project: "playbook" });
-  expect(captured.text).toContain("Get-NetAdapter");
-});
-
-test("captureCorrection drops ambiguous candidates when the LLM returns NONE", async () => {
-  let captured: any = null;
-  const client = {
-    add: async (i: any) => {
-      captured = i;
-      return { id: "c3" };
-    },
-  } as unknown as MemnestClient;
-  const llm = async () => "NONE";
-  const res = await captureCorrection("아니 지금은 수정전 상태 세션인 거 아니야?", client, "proj", {
-    llm,
-    context: [{ role: "user", text: "x" }],
-  });
-  expect(res).toBeNull();
-  expect(captured).toBeNull();
-});
-
-test("captureCorrection trusts semantic NONE even for high-confidence candidates", async () => {
-  let captured: any = null;
-  const client = {
-    add: async (i: any) => {
-      captured = i;
-      return { id: "c4" };
-    },
-  } as unknown as MemnestClient;
-  const llm = async () => "NONE";
-  const res = await captureCorrection("추측하지말고 직접 확인했어야지", client, "proj", {
-    llm,
-    context: [{ role: "assistant", text: "아마 WiFi 문제 같습니다" }],
-  });
-  expect(res).toBeNull();
-  expect(captured).toBeNull();
-});
-
-// If the classifier is unavailable, only high-confidence signals may fall back
-// to raw storage. This preserves urgent corrections without letting particles
-// like "잖아" / "말고" flood the playbook.
-test("captureCorrection keeps high-confidence raw fallback when the LLM fails", async () => {
-  let captured: any = null;
-  const client = {
-    add: async (i: any) => {
-      captured = i;
-      return { id: "c5" };
-    },
-  } as unknown as MemnestClient;
-  const llm = async () => {
-    throw new Error("LLM unavailable");
-  };
-  const res = await captureCorrection("추측하지말고 직접 확인했어야지", client, "proj", {
-    llm,
-    context: [{ role: "assistant", text: "아마 WiFi 문제 같습니다" }],
-  });
-  expect(res).toMatchObject({ id: "c5", distilled: false });
-  expect(captured).toMatchObject({ category: "correction", importance: "decision", project: "proj" });
+  await captureMemories([{ role: "user", text: "hi" }], llm, client, { project: "proj" });
+  expect(added.map((a) => [a.category, a.importance, a.project])).toEqual([
+    ["correction", "decision", "playbook"],
+    ["preference", "preference", "playbook"],
+    ["failure", "knowledge", "proj"],
+    ["general", "log", "proj"],
+  ]);
 });
 
 // ── memnest client (fake fetch) ──────────────────────────────────────────────

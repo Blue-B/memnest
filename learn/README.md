@@ -14,10 +14,12 @@ Four loops run on top of the normal store:
 
 | Loop | Module | Behaviour |
 | --- | --- | --- |
-| Capture | `capture.ts`, `extract.ts` | Every `MEMNEST_CAPTURE_TURNS` turns, a slice of the conversation is distilled into categorised memories (failure, correction, insight, preference, convention, tool quirk) and written to the project bucket. A user complaint takes a faster path and is distilled into one lesson immediately. |
+| Capture | `capture.ts`, `extract.ts` | Every `MEMNEST_CAPTURE_TURNS` turns, a slice of the conversation is distilled into categorised memories (failure, correction, insight, preference, convention, tool quirk) and written to the bucket its importance selects. Corrections are captured by this pass like everything else, with no separate path. |
 | Reinforcement | `reinforce.ts` | An outcome phrase such as "still broken" or "works now" is matched against stored memories through the engine's cosine `/neighbors`, then the matching memory's standing is adjusted so the next session ranks it differently. |
 | Skill refinement | `skills.ts` | A procedural learning either appends a step or caveat to the closest saved skill or drafts a new one, so a procedure improves while it is used instead of staying frozen at the version first written. |
-| User model | `user-model.ts` | Preferences and distilled corrections are folded into a small set of refined facets, so repeating a correction sharpens one facet instead of adding another near-duplicate row. |
+| User model | `user-model.ts` | On the same capture pass, memories categorised `preference` are folded into a small set of refined facets, so restating a preference sharpens one facet instead of adding another near-duplicate row. Other categories, corrections included, feed normal memory and reinforcement but not the user model. |
+
+Capture routes by importance instead of writing everything to one place. A memory that lands on importance `preference` or `decision` (which covers the `preference`, `correction`, and `convention` categories) is a durable cross-project lesson, so it is written to the shared `playbook` bucket. That bucket is the only one the `learned_rules` injection slot searches, so the routing is what keeps that slot fed: a memory written anywhere else is stored but never injected back. Everything weaker stays project-local.
 
 Two supporting pieces shape what the agent actually sees:
 
@@ -56,7 +58,7 @@ Registered pi hooks:
 | `session_start` | Reset transcript state and build the first injection snapshot. |
 | `before_agent_start` | Append the snapshot to the system prompt. Registered only when injection is enabled. |
 | `agent_end` | Ingest assistant text, so a failure the model found but the user never restated is still visible to extraction. |
-| `input` | Count turns, take the correction path, detect outcome signals, and start a periodic capture pass. |
+| `input` | Count turns, detect outcome signals, and start a periodic capture pass. |
 | `session_before_compact` | Write a handoff to the daily log and the engine, then refresh the snapshot. |
 | `session_shutdown` | Final capture flush. |
 
@@ -72,10 +74,10 @@ Registered tools:
 
 Engine buckets, through `/add`, `/update`, `/search`, `/context`, `/neighbors`, and `/summary`:
 
-- the current project bucket, named from `MEMNEST_PROJECT` or the working directory's base name, for captured memories
+- the current project bucket, named from `MEMNEST_PROJECT` or the working directory's base name, for captured memories that are not routed to `playbook`
 - `_skills` for procedures
 - `_user_model` for user facets
-- `playbook`, read only, for prior corrections and preferences injected as their own slot
+- `playbook` for corrections and preferences, written there by capture and read back as the `learned_rules` slot
 
 Local files, under `MEMNEST_LEARN_DIR` (default `~/.pi/agent/memnest-learn`):
 
@@ -101,7 +103,7 @@ Every value above was read from `src/`; there are no other environment variables
 ## Development
 
 ```bash
-bun test test/       # 41 assertions across 3 files
+bun test test/       # 33 tests across 3 files
 bun run typecheck    # tsc --noEmit
 bun run build
 ```
@@ -126,6 +128,7 @@ One rough edge: `test/extension-load.test.ts` asserts that `before_agent_start` 
 - No CI. The repository workflows cover `core/`, `journal/`, and `pi-extension/`, so these tests run only when invoked by hand.
 - Output quality follows the borrowed model. Extraction, skill drafting, and user-model refinement are prompt-driven, and a weaker host model yields weaker memories. When the model is unavailable each step degrades to doing nothing.
 - Consolidation clusters by trigram overlap on returned documents rather than by cosine distance, since the engine returns a composite score. Paraphrases that share few character trigrams are not clustered.
+- Outcome-signal detection is a phrase-matching heuristic currently tuned for English and Korean, so a session in another language degrades to producing no signal rather than a wrong one.
 
 ## Related documentation
 
