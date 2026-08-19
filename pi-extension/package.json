@@ -53,7 +53,7 @@
     "build": "esbuild src/index.ts --bundle --format=esm --platform=node --target=node20 --external:@earendil-works/pi-coding-agent --external:@mariozechner/pi-coding-agent --outfile=dist/index.mjs",
     "prepublishOnly": "npm run build",
     "prepare": "npm run build",
-    "smoke": "node test/smoke.mjs && node test/auth.mjs",
+    "smoke": "node test/smoke.mjs && node test/auth.mjs && node test/empty-token.mjs && node test/scoped-autocontext.mjs && node test/autocontext-triggers.mjs",
     "smoke:bun": "bun test/smoke.mjs",
     "e2e": "node test/e2e-mcp.mjs"
   },

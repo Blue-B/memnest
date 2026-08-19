@@ -1,156 +1,109 @@
 #!/usr/bin/env node
-// E2E test: simulate a Claude Desktop-style stdio MCP client launching
-// `memnest --mcp`, perform initialize -> tools/list -> a real call.
-//
-// This is the same protocol Claude Desktop, Cursor, Cline, Continue, and
-// Zed use. If this passes, registering memnest in any of them will work.
-//
-// Run: node test/e2e-mcp.mjs
-//
-// IMPORTANT: stop any long-running memnest HTTP server first —
-// SQLite write lock contention will hang memory_search responses.
-//   systemctl --user stop memnest    (run the test)    systemctl --user start memnest
-
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir, homedir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const BIN = process.env.MEMNEST_BIN ?? "memnest";
-// Use shared ~/.memnest so the embedding model is already warm. Fall
-// back to a fresh temp dir when the test wants full isolation (slow).
-const DATA = process.env.MEMNEST_DATA_DIR ?? join(homedir(), ".memnest");
-const FRESH = process.env.MEMNEST_FRESH === "1";
-const dataDir = FRESH ? mkdtempSync(join(tmpdir(), "pp-e2e-")) : DATA;
+const bin = process.env.MEMNEST_BIN ?? "memnest";
+const data = mkdtempSync(join(tmpdir(), "memnest-contract-e2e-"));
+const child = spawn(bin, ["--mcp", "--data-dir", data], {
+	stdio: ["pipe", "pipe", "pipe"],
+});
+const pending = new Map();
+const stderr = [];
+let buffer = "";
+let nextId = 0;
 
-let ok = 0, fail = 0;
-function assert(name, cond, msg = "") {
-  if (cond) { ok++; console.log(`  PASS  ${name}`); }
-  else { fail++; console.log(`  FAIL  ${name}  -- ${msg}`); }
-}
-
-const child = spawn(BIN, ["--mcp", "--data-dir", dataDir], { stdio: ["pipe", "pipe", "pipe"] });
-
-let buf = "";
-const inbox = [];
-let pendingResolve = null;
+child.stderr.on("data", (chunk) => stderr.push(chunk.toString()));
+child.on("error", (error) => {
+	for (const { reject } of pending.values()) reject(error);
+	pending.clear();
+});
 child.stdout.on("data", (chunk) => {
-  buf += chunk.toString("utf8");
-  let nl;
-  while ((nl = buf.indexOf("\n")) >= 0) {
-    const line = buf.slice(0, nl).trim();
-    buf = buf.slice(nl + 1);
-    if (!line) continue;
-    try {
-      const j = JSON.parse(line);
-      if (pendingResolve) { const r = pendingResolve; pendingResolve = null; r(j); }
-      else inbox.push(j);
-    } catch {}
-  }
+	buffer += chunk.toString();
+	for (let newline; (newline = buffer.indexOf("\n")) >= 0; ) {
+		const line = buffer.slice(0, newline).trim();
+		buffer = buffer.slice(newline + 1);
+		if (!line) continue;
+		const response = JSON.parse(line);
+		const request = pending.get(response.id);
+		if (!request) continue;
+		clearTimeout(request.timer);
+		pending.delete(response.id);
+		request.resolve(response);
+	}
 });
 
-const stderr = [];
-child.stderr.on("data", (d) => stderr.push(d.toString("utf8")));
-
-function send(obj) {
-  child.stdin.write(JSON.stringify(obj) + "\n");
+function request(method, params = {}, timeoutMs = 120000) {
+	const id = ++nextId;
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(() => {
+			pending.delete(id);
+			reject(new Error(`MCP timeout for ${method}\n${stderr.join("").slice(-2000)}`));
+		}, timeoutMs);
+		pending.set(id, { resolve, reject, timer });
+		child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
+	});
 }
 
-function recv(timeoutMs = 5000) {
-  return new Promise((resolve, reject) => {
-    if (inbox.length) return resolve(inbox.shift());
-    pendingResolve = resolve;
-    setTimeout(() => {
-      if (pendingResolve) {
-        pendingResolve = null;
-        reject(new Error("timeout waiting for stdout JSON-RPC line"));
-      }
-    }, timeoutMs);
-  });
+function stopChild() {
+	return new Promise((resolve) => {
+		if (child.exitCode !== null || child.signalCode !== null) return resolve();
+		const force = setTimeout(() => child.kill("SIGKILL"), 1000);
+		child.once("exit", () => {
+			clearTimeout(force);
+			resolve();
+		});
+		child.stdin.end();
+		child.kill("SIGTERM");
+	});
 }
+
+const expected = [
+	"memory_remember",
+	"memory_search",
+	"memory_get",
+	"memory_update",
+	"memory_delete",
+	"memory_feedback",
+	"secret_set",
+	"secret_get",
+	"secret_list",
+	"secret_delete",
+];
 
 try {
-  // 1. initialize
-  send({
-    jsonrpc: "2.0",
-    id: 1,
-    method: "initialize",
-    params: {
-      protocolVersion: "2024-11-05",
-      capabilities: {},
-      clientInfo: { name: "pi-memnest-e2e", version: "0.0.0" },
-    },
-  });
-  const init = await recv(8000);
-  assert("initialize returns serverInfo", init?.result?.serverInfo?.name === "memnest",
-         JSON.stringify(init).slice(0, 200));
-
-  send({ jsonrpc: "2.0", method: "notifications/initialized" });
-
-  // 2. tools/list
-  send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
-  const list = await recv(8000);
-  const names = (list?.result?.tools ?? []).map((t) => t.name);
-  assert("tools/list returns >= 12 tools", names.length >= 12, `got ${names.length}: ${names.join(",")}`);
-  for (const want of ["memory_add", "memory_search", "memory_stats", "secret_set", "secret_get", "secret_list"]) {
-    assert(`tool '${want}' present`, names.includes(want));
-  }
-
-  // 3. tools/call memory_stats
-  send({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "memory_stats", arguments: {} } });
-  const stats = await recv(8000);
-  const statsText = stats?.result?.content?.[0]?.text ?? "";
-  assert("memory_stats returns total_chunks JSON", /total_chunks/.test(statsText), statsText.slice(0, 200));
-
-  // 4. tools/call memory_add then memory_search
-  send({
-    jsonrpc: "2.0",
-    id: 4,
-    method: "tools/call",
-    params: {
-      name: "memory_add",
-      arguments: {
-        project: "e2eproject",
-        text: "e2eprobeword smoke check from pi-memnest e2e harness",
-      },
-    },
-  });
-  const add = await recv(8000);
-  assert("memory_add returns content", !!add?.result?.content?.[0]?.text, JSON.stringify(add).slice(0, 200));
-
-  // Poll search via tools/call. Fresh data-dir means indexing is fast.
-  let found = false;
-  for (let i = 0; i < 20 && !found; i++) {
-    await new Promise((r) => setTimeout(r, 500));
-    const id = 100 + i;
-    send({
-      jsonrpc: "2.0",
-      id,
-      method: "tools/call",
-      params: { name: "memory_search", arguments: { query: "e2eprobeword", n_results: 3 } },
-    });
-    let s;
-    try {
-      s = await recv(3000);
-    } catch {
-      continue;
-    }
-    const t = s?.result?.content?.[0]?.text ?? "";
-    if (/e2eprobeword/.test(t)) found = true;
-  }
-  assert("memory_search finds the added chunk via stdio MCP", found);
-} catch (e) {
-  console.error("e2e error:", e.message);
-  fail++;
+	const init = await request("initialize", {
+		protocolVersion: "2024-11-05",
+		capabilities: {},
+	});
+	if (init.result?.serverInfo?.name !== "memnest")
+		throw new Error("initialize failed");
+	const listed = await request("tools/list");
+	const names = listed.result.tools.map((tool) => tool.name);
+	if (JSON.stringify(names) !== JSON.stringify(expected))
+		throw new Error(`unexpected tools: ${names.join(",")}`);
+	const remembered = await request("tools/call", {
+		name: "memory_remember",
+		arguments: {
+			project: "contract-e2e",
+			text: "canonical contract e2e probe",
+		},
+	});
+	if (remembered.result?.isError)
+		throw new Error(remembered.result.content?.[0]?.text);
+	const searched = await request("tools/call", {
+		name: "memory_search",
+		arguments: {
+			project: "contract-e2e",
+			query: "canonical contract probe",
+			n_results: 3,
+		},
+	});
+	if (!searched.result?.content?.[0]?.text.includes("canonical contract e2e probe"))
+		throw new Error("search did not find remembered memory");
+	console.log("MCP E2E: exact 10 tools and remember/search flow passed");
 } finally {
-  child.kill("SIGTERM");
-  if (FRESH) rmSync(dataDir, { recursive: true, force: true });
+	await stopChild();
+	rmSync(data, { recursive: true, force: true });
 }
-
-if (stderr.length) {
-  const s = stderr.join("");
-  if (s.trim()) console.log("\n(stderr from memnest):\n" + s.split("\n").slice(0, 8).join("\n"));
-}
-
-console.log(`\ne2e: ${ok} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);

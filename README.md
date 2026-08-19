@@ -77,7 +77,7 @@ Three ways in. Pick whichever your host supports.
 
 ```mermaid
 flowchart LR
-    A["pi<br/>native extension, 20 tools"] --> H["HTTP :3111<br/>API, dashboard, MCP"]
+    A["pi<br/>native extension, 10 tools"] --> H["HTTP :3111<br/>API, dashboard, MCP"]
     B["MCP hosts<br/>Claude Code, Cursor, Cline, Kilo Code,<br/>DeepSeek Harness, Grok Build, omp"] --> H
     B --> M["stdio MCP"]
     C["Everything else<br/>curl, JSONL adapter"] --> H
@@ -86,7 +86,7 @@ flowchart LR
     CORE --> D["~/.memnest<br/>SQLite, BM25, vectors"]
 ```
 
-All 24 MCP tools behave the same in every host. MCP defines tool calls the model decides to make, not hooks into a host's session events, so injection and logging come from two subcommands instead: `memnest hook` and `memnest watch`, described under [automatic memory](#automatic-memory) below. The pi extension bundles the same behaviour plus the `/memnest` command.
+The six memory tools and four capability-gated secret tools use the same public contract in every host. MCP defines tool calls the model decides to make, not hooks into a host's session events, so injection and logging come from two subcommands instead: `memnest hook` and `memnest watch`, described under [automatic memory](#automatic-memory) below. The pi extension bundles the same behaviour plus the `/memnest` command.
 
 ### pi, native extension
 
@@ -186,7 +186,7 @@ Service install on Linux, WSL, and Windows, backup and restore, retention, and t
 | Directory | Package | Role |
 | --- | --- | --- |
 | [`core/`](./core) | `memnest` 0.2.0 | **Required.** HTTP API, MCP server, indexes, lifecycle, vault, dashboard |
-| [`pi-extension/`](./pi-extension) | `pi-memnest` 0.6.0 | pi integration: 20 tools, `/memnest`, autocontext, feedback, opt-in AutoLog |
+| [`pi-extension/`](./pi-extension) | `pi-memnest` 0.6.0 | pi integration: 10 tools, `/memnest`, scoped autocontext, and feedback |
 | [`adapters/`](./adapters) | contract | Integration contract and reference JSONL adapter |
 | [`journal/`](./journal) | `memnest-journal` 0.1.0 | Optional Markdown and git audit mirror, not a database backup |
 | [`learn/`](./learn) | `memnest-learn` 0.1.0 | Optional pi learning layer. **Experimental**, no docs yet |

@@ -8,8 +8,6 @@
  * claims, and money/project strategy questions.
  */
 
-import { Type } from "typebox";
-
 type ExtensionAPI = {
 	on: (event: string, handler: (payload?: unknown) => unknown) => void;
 	registerTool: (tool: unknown) => void;
@@ -23,7 +21,7 @@ const DISABLE_ENV = "MEMNEST_AUTOCONTEXT_DISABLE";
 
 const env = (globalThis as GlobalWithProcess).process?.env ?? {};
 const MEMNEST_URL: string = env.MEMNEST_URL ?? "http://127.0.0.1:3111";
-const MEMNEST_TOKEN = env.MEMNEST_TOKEN;
+const MEMNEST_TOKEN = env.MEMNEST_TOKEN?.trim() || undefined;
 const MODE = String(env.MEMNEST_AUTOCONTEXT_MODE ?? "balanced").toLowerCase();
 const N_RESULTS = Math.max(
 	1,
@@ -197,7 +195,8 @@ function isMemResult(value: unknown): value is MemResult {
 	return r.document === undefined || typeof r.document === "string";
 }
 
-async function searchMemnest(query: string): Promise<MemResult[]> {
+async function searchMemnest(query: string, project: string | undefined): Promise<MemResult[]> {
+	if (!project) return [];
 	const ctrl = new AbortController();
 	const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
 	try {
@@ -211,15 +210,19 @@ async function searchMemnest(query: string): Promise<MemResult[]> {
 			// (memnest >= 0.5.1); EXCLUDE_PROJECTS below still covers custom lists.
 			body: JSON.stringify({
 				query,
+				project,
 				adapter: "pi-autocontext",
 				n_results: N_RESULTS,
-				exclude_reserved: true,
 			}),
 			signal: ctrl.signal,
 		});
 		if (!res.ok) return [];
 		const json = (await res.json()) as { results?: unknown };
-		return Array.isArray(json.results) ? json.results.filter(isMemResult) : [];
+		return Array.isArray(json.results)
+			? json.results
+					.filter(isMemResult)
+					.filter((result) => !result.project || result.project === project)
+			: [];
 	} catch {
 		return [];
 	} finally {
@@ -284,8 +287,11 @@ export function installAutocontext(pi: ExtensionAPI): void {
 	let lastSkipReason = disabled ? "disabled" : "none";
 	let lastInjectReason = "none";
 	let injections = 0;
+	let currentProject: string | undefined;
 
-	pi.on("session_start", () => {
+	pi.on("session_start", (event: unknown) => {
+		const cwd = event && typeof event === "object" ? (event as { cwd?: unknown }).cwd : undefined;
+		currentProject = typeof cwd === "string" ? cwd.split(/[\\/]/).filter(Boolean).pop() : undefined;
 		lastSeenQuery = null;
 		lastInjectedTokens = null;
 		lastInjectedAt = 0;
@@ -345,7 +351,7 @@ export function installAutocontext(pi: ExtensionAPI): void {
 				return;
 			}
 
-			const results = await searchMemnest(query);
+			const results = await searchMemnest(query, currentProject);
 			const block = formatBlock(results, reason, { strong });
 			if (!block) {
 				lastSkipReason = "no-results";
@@ -365,54 +371,4 @@ export function installAutocontext(pi: ExtensionAPI): void {
 		});
 	}
 
-	pi.registerTool({
-		name: "memnest_autocontext_status",
-		label: "Memnest Autocontext Status",
-		description:
-			"Inspect pi-memnest autocontext: profile, live retrieval, risk-trigger state, and injection counters.",
-		parameters: Type.Object({
-			query: Type.Optional(
-				Type.String({
-					description: "Optional: run a live retrieval and preview the block.",
-				}),
-			),
-		}),
-		execute: async (_id: string, params: { query?: string }) => {
-			const lines: string[] = [];
-			lines.push(`memnest URL          : ${MEMNEST_URL}`);
-			lines.push(`disabled             : ${disabled}`);
-			lines.push(`mode                 : ${MODE}`);
-			lines.push(`n_results / top      : ${N_RESULTS} / ${TOP_INJECT}`);
-			lines.push(`max injections       : ${MAX_INJECTIONS}`);
-			lines.push(`topic overlap gate   : ${TOPIC_OVERLAP}`);
-			lines.push(`min_score general/risk: ${MIN_SCORE} / ${RISK_MIN_SCORE}`);
-			lines.push(`min_len / timeout    : ${MIN_LEN} / ${TIMEOUT_MS}ms`);
-			lines.push(
-				`excluded projects    : ${[...EXCLUDE_PROJECTS].join(", ") || "(none)"}`,
-			);
-			lines.push(`injections so far    : ${injections}`);
-			lines.push(
-				`last injection       : ${lastInjectedAt ? new Date(lastInjectedAt).toISOString() : "(never)"} (${lastInjectedCount} items, ${lastInjectReason})`,
-			);
-			lines.push(`last skip reason     : ${lastSkipReason}`);
-			if (params?.query) {
-				const query = String(params.query);
-				const labels = riskLabels(query);
-				const results = await searchMemnest(
-					labels.length ? riskSearchQuery(query, labels) : query,
-				);
-				const block = formatBlock(
-					results,
-					labels.length
-						? `manual-risk-preview:${labels.join(",")}`
-						: "manual-status-preview",
-					{ strong: labels.length > 0 },
-				);
-				lines.push("");
-				lines.push(`--- live retrieval for: ${query} ---`);
-				lines.push(block ?? "(no results above min_score)");
-			}
-			return { content: [{ type: "text", text: lines.join("\n") }] };
-		},
-	});
 }

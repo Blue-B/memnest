@@ -65,12 +65,9 @@ await command.handler("", {
 assert.match(notices[0], /Dashboard:/);
 assert.ok(
 	requests
-		.filter(
-			(request) =>
-				request.url.endsWith("/health") || request.url.endsWith("/stats"),
-		)
+		.filter((request) => request.url.endsWith("/health"))
 		.every(
-			(request) => request.init.headers.Authorization === "Bearer test-token",
+			(request) => request.init.headers.authorization === "Bearer test-token",
 		),
 	"status requests should carry bearer auth",
 );

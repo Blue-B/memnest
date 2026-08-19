@@ -46,31 +46,17 @@ The command reports service health, memory count, the active data directory, and
 
 ## Tools
 
-The current extension registers 20 tools.
-
-### Memories and context
+The extension registers exactly ten model tools. The `/memnest` command and Autocontext hook remain available without adding status or admin tools to the model surface.
 
 | Tool | Purpose |
 | --- | --- |
-| `memory_remember` | Save a memory and route it to a project collection. Preference and decision memories default to `playbook`. |
-| `memory_update` | Correct an existing memory by id and refresh its indexes. |
-| `memory_search` | Search with BM25 and vector retrieval. Results include a `recall_id` for outcome tracking. |
-| `memory_feedback` | Mark a recall as helpful, harmful, or ignored. |
-| `memory_get` | Fetch the full text of a memory returned as a truncated excerpt. |
-| `memory_context` | Build a character-bounded prompt block from memories, notes, and facts. |
-| `memory_stats` | Read store statistics. |
-| `memory_sessions` | List recent session summaries. |
-| `memory_facts_list` | List structured subject, predicate, object facts. |
-
-### Notes, secrets, and collections
-
-| Tool | Purpose |
-| --- | --- |
-| `note_set`, `note_get`, `notes_list`, `note_delete` | Manage small key-value notes. |
-| `secret_set`, `secret_get`, `secret_list`, `secret_delete` | Manage values in the AES-256-GCM secret vault. |
-| `collections_list` | List project collections and counts. |
-| `memory_health` | Check whether the server is reachable. |
-| `memnest_autocontext_status` | Inspect Autocontext state or preview a live retrieval. |
+| `memory_remember` | Save a durable memory. Values marked sensitive are rejected and must use `secret_set`. |
+| `memory_search` | Search the current workspace by default, or use `project=all` explicitly. |
+| `memory_get` | Fetch one memory by id. |
+| `memory_update` | Correct one memory and refresh its indexes. |
+| `memory_delete` | Soft-delete one memory to the internal trash bucket. |
+| `memory_feedback` | Record recall telemetry; only an optional `memory_id` changes that result's ranking. |
+| `secret_set`, `secret_get`, `secret_list`, `secret_delete` | Manage AES-256-GCM vault values. Vault operations fail closed when crypto is unavailable. |
 
 Ordinary memories are not encrypted at rest. Use the secret tools for credentials, and keep the core data directory and `master.key` private.
 
@@ -79,9 +65,9 @@ Ordinary memories are not encrypted at rest. Use the secret tools for credential
 ```text
 memory_remember text="Project X deploys on port 8320" project="project-x" memory_kind="fact" confidence=1
 memory_search query="Project X deployment port" project="project-x"
-memory_feedback recall_id="recall_..." outcome="helpful"
-memory_context query="Project X deployment" project="project-x"
+memory_feedback recall_id="recall_..." memory_id="manual_..." outcome="helpful"
 memory_update id="manual_..." text="Project X now deploys on port 8420"
+memory_delete id="manual_..."
 ```
 
 The core records each save in `/operations`, completes embedding and indexing, and then acknowledges the write. A semantically deduplicated id remains resolvable to the canonical memory. The first operation can take longer while the core downloads its embedding model.
@@ -95,7 +81,7 @@ The core records each save in `/operations`, completes embedding and indexing, a
 - `rule` for preferences, decisions, and guardrails
 - `procedure` for reusable verified workflows
 
-Optional `confidence`, `source_ids`, `supersedes`, and `verified_at` fields preserve provenance without tying the data model to pi. The core HTTP and MCP contracts expose the same fields to other platform adapters.
+Optional `confidence`, `source_ids`, and `supersedes` fields preserve provenance without tying the data model to pi. The core HTTP and MCP contracts expose the same fields to other platform adapters.
 
 ## Autocontext
 
@@ -122,8 +108,6 @@ Common controls:
 | `MEMNEST_AUTOCONTEXT_RISK_MIN_SCORE` | `0.25` | Minimum score for a risk-triggered card. |
 | `MEMNEST_AUTOCONTEXT_EXCLUDE` | `_superseded,default,root,global` | Collections excluded from automatic retrieval. |
 
-Run `memnest_autocontext_status` to see the active mode, counters, and a test retrieval.
-
 ## Automatic conversation capture
 
 The extension does not install AutoLog event hooks. Use `memnest watch` as the single capture path so pi conversations are not stored twice. Watch stores redacted user and assistant transcript text without summarization, keeps long turns in ordered chunks without truncation, and retains new identified transcript AutoLog until explicit deletion. Legacy AutoLog keeps the core's configured retention policy.
@@ -135,7 +119,7 @@ MCP does not describe host session events. The core provides host-neutral automa
 - `memnest hook` reads a host's hook payload on stdin and answers with a context pack, in the shape that host expects.
 - `memnest watch` follows Claude Code, pi, and Codex transcripts and stores visible conversation text, with no host extension hooks.
 
-See [automatic memory](../README.md#automatic-memory) in the root README. Inside pi this extension remains the fuller surface, since it adds the 20 tools above and the `/memnest` command.
+See [automatic memory](../README.md#automatic-memory) in the root README. Inside pi the extension exposes the same ten-tool contract and adds the `/memnest` command.
 
 ## Development
 

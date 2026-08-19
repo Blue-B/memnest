@@ -44,9 +44,10 @@ fn derive_cipher(key: &str, salt: &[u8]) -> Result<Aes256Gcm> {
 /// for cases where they want to control the key themselves (e.g. KMS, vault).
 pub fn resolve_master_key(data_dir: &Path) -> Result<String> {
     if let Ok(env_key) = std::env::var("MEMNEST_MASTER_KEY")
-        && !env_key.is_empty() {
-            return Ok(env_key);
-        }
+        && !env_key.trim().is_empty()
+    {
+        return Ok(env_key.trim().to_string());
+    }
     let key_path = data_dir.join("master.key");
     if key_path.exists() {
         let key = std::fs::read_to_string(&key_path)
@@ -77,13 +78,18 @@ pub fn resolve_master_key(data_dir: &Path) -> Result<String> {
 
 pub fn init_crypto(master_key: Option<&str>) -> Result<()> {
     let (cipher, legacy) = match master_key {
-        Some(key) if !key.is_empty() => {
-            (Some(derive_cipher(key, SALT)?), Some(derive_cipher(key, LEGACY_SALT)?))
-        }
+        Some(key) if !key.trim().is_empty() => (
+            Some(derive_cipher(key.trim(), SALT)?),
+            Some(derive_cipher(key.trim(), LEGACY_SALT)?),
+        ),
         _ => (None, None),
     };
-    *CIPHER.write().map_err(|_| anyhow!("crypto lock poisoned"))? = cipher;
-    *LEGACY_CIPHER.write().map_err(|_| anyhow!("crypto lock poisoned"))? = legacy;
+    *CIPHER
+        .write()
+        .map_err(|_| anyhow!("crypto lock poisoned"))? = cipher;
+    *LEGACY_CIPHER
+        .write()
+        .map_err(|_| anyhow!("crypto lock poisoned"))? = legacy;
     Ok(())
 }
 
@@ -94,7 +100,7 @@ pub fn is_enabled() -> bool {
 pub fn encrypt(plaintext: &str) -> Result<String> {
     let guard = CIPHER.read().map_err(|_| anyhow!("crypto lock poisoned"))?;
     let Some(cipher) = guard.as_ref() else {
-        return Ok(plaintext.to_string());
+        return Err(anyhow!("secret vault crypto is unavailable"));
     };
     let nonce_bytes: [u8; 12] = rand::random();
     let nonce = Nonce::from_slice(&nonce_bytes);
@@ -109,7 +115,9 @@ pub fn encrypt(plaintext: &str) -> Result<String> {
 
 pub fn decrypt(ciphertext: &str) -> Result<String> {
     if !ciphertext.starts_with("$enc$") {
-        return Ok(ciphertext.to_string());
+        return Err(anyhow!(
+            "refusing to return plaintext from the secret vault"
+        ));
     }
     let payload = &ciphertext[5..];
     let guard = CIPHER.read().map_err(|_| anyhow!("crypto lock poisoned"))?;
@@ -130,10 +138,13 @@ pub fn decrypt(ciphertext: &str) -> Result<String> {
     // Fall back to the legacy (pre-rename) salt so migrated vaults decrypt.
     if let Ok(lguard) = LEGACY_CIPHER.read()
         && let Some(legacy) = lguard.as_ref()
-            && let Ok(plaintext) = legacy.decrypt(nonce, encrypted) {
-                return String::from_utf8(plaintext).context("invalid utf8 after decryption");
-            }
-    Err(anyhow!("decryption failed (primary and legacy keys both rejected)"))
+        && let Ok(plaintext) = legacy.decrypt(nonce, encrypted)
+    {
+        return String::from_utf8(plaintext).context("invalid utf8 after decryption");
+    }
+    Err(anyhow!(
+        "decryption failed (primary and legacy keys both rejected)"
+    ))
 }
 
 #[cfg(test)]
@@ -163,14 +174,17 @@ mod tests {
     #[test]
     fn legacy_salt_derives_distinct_recoverable_key() {
         let key = "shared-master-key-xyz";
-        let legacy = derive_cipher(key, LEGACY_SALT).unwrap();
-        let primary = derive_cipher(key, SALT).unwrap();
+        let legacy = derive_cipher(key.trim(), LEGACY_SALT).unwrap();
+        let primary = derive_cipher(key.trim(), SALT).unwrap();
         let nonce = Nonce::from_slice(&[9u8; 12]);
         let ct = legacy.encrypt(nonce, b"old-vault-secret".as_ref()).unwrap();
         // primary (new salt) must NOT decrypt a legacy-salt ciphertext ...
         assert!(primary.decrypt(nonce, ct.as_ref()).is_err());
         // ... but the legacy cipher does, which is exactly the decrypt() fallback.
-        assert_eq!(legacy.decrypt(nonce, ct.as_ref()).unwrap(), b"old-vault-secret");
+        assert_eq!(
+            legacy.decrypt(nonce, ct.as_ref()).unwrap(),
+            b"old-vault-secret"
+        );
     }
 
     #[test]
@@ -178,7 +192,8 @@ mod tests {
         let _g = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         init_crypto(None).unwrap();
         let original = "plain-text";
-        let encrypted = encrypt(original).unwrap();
-        assert_eq!(encrypted, original);
+        let error = encrypt(original).unwrap_err();
+        assert!(error.to_string().contains("crypto is unavailable"));
+        assert!(decrypt(original).is_err());
     }
 }

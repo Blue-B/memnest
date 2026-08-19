@@ -80,9 +80,8 @@ pub struct Metadata {
     pub access_count: i64,
     #[serde(default)]
     pub keywords: Vec<String>,
-    /// When true, the chunk content is treated as user-confidential.
-    /// Redaction is skipped (so secrets remain retrievable) and the document
-    /// is stored AES-GCM encrypted at rest.
+    /// Legacy schema field. Public memory operations reject true; sensitive
+    /// values belong in the encrypted secret vault.
     #[serde(default)]
     pub sensitive: bool,
     /// When true, automatic TTL expiry is suppressed for this chunk regardless

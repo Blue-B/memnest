@@ -77,7 +77,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    A["pi<br/>네이티브 확장, 20개 툴"] --> H["HTTP :3111<br/>API, 대시보드, MCP"]
+    A["pi<br/>네이티브 확장, 10개 툴"] --> H["HTTP :3111<br/>API, 대시보드, MCP"]
     B["MCP 호스트<br/>Claude Code, Cursor, Cline, Kilo Code,<br/>DeepSeek Harness, Grok Build, omp"] --> H
     B --> M["stdio MCP"]
     C["그 외 전부<br/>curl, JSONL 어댑터"] --> H
@@ -86,7 +86,7 @@ flowchart LR
     CORE --> D["~/.memnest<br/>SQLite, BM25, 벡터"]
 ```
 
-MCP 툴 24개는 어느 호스트에서든 똑같이 동작한다. MCP는 모델이 스스로 부르는 툴 호출만 규정하고 호스트 세션 이벤트 훅은 주지 않기 때문에, 자동 주입과 자동 기록은 확장 대신 서브커맨드 두 개가 맡는다. `memnest hook`과 `memnest watch`이고 아래 [자동 메모리](#자동-메모리)에서 설명한다. pi 확장은 같은 동작에 `/memnest` 커맨드를 더한 것이다.
+메모리 툴 6개와 금고 사용 시 제공되는 시크릿 툴 4개는 어느 호스트에서든 같은 공개 계약으로 동작한다. MCP는 모델이 스스로 부르는 툴 호출만 규정하고 호스트 세션 이벤트 훅은 주지 않기 때문에, 자동 주입과 자동 기록은 확장 대신 서브커맨드 두 개가 맡는다. `memnest hook`과 `memnest watch`이고 아래 [자동 메모리](#자동-메모리)에서 설명한다. pi 확장은 같은 동작에 `/memnest` 커맨드를 더한 것이다.
 
 ### pi, 네이티브 확장
 
@@ -186,7 +186,7 @@ memnest는 메모리 엔진이지 에이전트 런타임이 아니다. 에이전
 | 디렉터리 | 패키지 | 역할 |
 | --- | --- | --- |
 | [`core/`](./core) | `memnest` 0.2.0 | **필수.** HTTP API, MCP 서버, 색인, 수명주기, 금고, 대시보드 |
-| [`pi-extension/`](./pi-extension) | `pi-memnest` 0.6.0 | pi 연동. 툴 20개, `/memnest`, 자동 컨텍스트, 피드백, 선택형 AutoLog |
+| [`pi-extension/`](./pi-extension) | `pi-memnest` 0.6.0 | pi 연동. 툴 10개, `/memnest`, 프로젝트 범위 자동 컨텍스트, 피드백 |
 | [`adapters/`](./adapters) | 계약 | 연동 계약과 참조용 JSONL 어댑터 |
 | [`journal/`](./journal) | `memnest-journal` 0.1.0 | 선택. 마크다운과 git 감사 미러, 데이터베이스 백업은 아니다 |
 | [`learn/`](./learn) | `memnest-learn` 0.1.0 | 선택. pi 학습 레이어. **실험 단계**, 문서 없음 |

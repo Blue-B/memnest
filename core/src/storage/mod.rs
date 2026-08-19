@@ -24,7 +24,11 @@ const DEFAULT_COLLECTION_META: &[(&str, &str, &str)] = &[
         "project",
         "Root bucket used when the project cwd cannot be determined. Tool-call logs land here.",
     ),
-    ("default", "project", "Fallback for writes that carry no cwd metadata at all."),
+    (
+        "default",
+        "project",
+        "Fallback for writes that carry no cwd metadata at all.",
+    ),
     (
         "global",
         "project",
@@ -198,6 +202,12 @@ impl Database {
                 ON recall_events(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_recall_events_outcome
                 ON recall_events(outcome, created_at DESC);
+            CREATE TABLE IF NOT EXISTS recall_result_feedback (
+                recall_id TEXT NOT NULL,
+                memory_id TEXT NOT NULL,
+                outcome TEXT NOT NULL CHECK (outcome IN ('helpful','harmful','ignored')),
+                PRIMARY KEY (recall_id, memory_id)
+            );
             "#,
         )?;
         migrate_legacy_schema(&conn)?;
@@ -1181,62 +1191,87 @@ impl Database {
     pub fn set_recall_feedback(
         &self,
         id: &str,
+        memory_id: Option<&str>,
         outcome: &str,
         note: Option<&str>,
     ) -> Result<Option<Vec<String>>> {
         let mut conn = self.pool.get()?;
         let tx = conn.transaction()?;
-        let event: Option<(String, String)> = tx
+        let event: Option<String> = tx
             .query_row(
-                "SELECT result_ids, outcome FROM recall_events WHERE id = ?1",
+                "SELECT result_ids FROM recall_events WHERE id = ?1",
                 params![id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| row.get(0),
             )
             .optional()?;
-        let Some((ids_json, previous_outcome)) = event else {
+        let Some(ids_json) = event else {
             return Ok(None);
         };
-        let ids: Vec<String> = serde_json::from_str(&ids_json).unwrap_or_default();
-        if previous_outcome != outcome {
-            for id in &ids {
-                let canonical_id: String = tx
-                    .query_row(
-                        "SELECT canonical_id FROM memory_aliases WHERE alias_id = ?1",
-                        params![id],
-                        |row| row.get(0),
-                    )
-                    .optional()?
-                    .unwrap_or_else(|| id.clone());
-                let metadata_json: Option<String> = tx
-                    .query_row(
-                        "SELECT metadata FROM chunks WHERE id = ?1",
-                        params![canonical_id],
-                        |row| row.get(0),
-                    )
-                    .optional()?;
-                let Some(metadata_json) = metadata_json else {
-                    continue;
-                };
-                let mut metadata: Metadata = serde_json::from_str(&metadata_json)?;
-                match previous_outcome.as_str() {
-                    "helpful" => metadata.helpful_count = (metadata.helpful_count - 1).max(0),
-                    "harmful" => metadata.harmful_count = (metadata.harmful_count - 1).max(0),
-                    _ => {}
-                }
-                match outcome {
-                    "helpful" => metadata.helpful_count += 1,
-                    "harmful" => metadata.harmful_count += 1,
-                    _ => {}
-                }
-                tx.execute(
-                    "UPDATE chunks SET metadata = ?2, updated_at = ?3 WHERE id = ?1",
-                    params![
-                        canonical_id,
-                        serde_json::to_string(&metadata)?,
-                        Utc::now().to_rfc3339()
-                    ],
-                )?;
+        let result_ids: Vec<String> = serde_json::from_str(&ids_json).unwrap_or_default();
+        let ids: Vec<String> = match memory_id {
+            Some(memory_id) if result_ids.iter().any(|id| id == memory_id) => {
+                vec![memory_id.to_string()]
             }
+            Some(memory_id) => {
+                return Err(anyhow::anyhow!(
+                    "memory {memory_id} was not returned by recall {id}"
+                ));
+            }
+            None => Vec::new(),
+        };
+        for memory_id in &ids {
+            let previous_outcome: Option<String> = tx
+                .query_row(
+                    "SELECT outcome FROM recall_result_feedback WHERE recall_id = ?1 AND memory_id = ?2",
+                    params![id, memory_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if previous_outcome.as_deref() == Some(outcome) {
+                continue;
+            }
+            let canonical_id: String = tx
+                .query_row(
+                    "SELECT canonical_id FROM memory_aliases WHERE alias_id = ?1",
+                    params![memory_id],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .unwrap_or_else(|| memory_id.clone());
+            let metadata_json: Option<String> = tx
+                .query_row(
+                    "SELECT metadata FROM chunks WHERE id = ?1",
+                    params![canonical_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            let Some(metadata_json) = metadata_json else {
+                continue;
+            };
+            let mut metadata: Metadata = serde_json::from_str(&metadata_json)?;
+            match previous_outcome.as_deref() {
+                Some("helpful") => metadata.helpful_count = (metadata.helpful_count - 1).max(0),
+                Some("harmful") => metadata.harmful_count = (metadata.harmful_count - 1).max(0),
+                _ => {}
+            }
+            match outcome {
+                "helpful" => metadata.helpful_count += 1,
+                "harmful" => metadata.harmful_count += 1,
+                _ => {}
+            }
+            tx.execute(
+                "UPDATE chunks SET metadata = ?2, updated_at = ?3 WHERE id = ?1",
+                params![
+                    canonical_id,
+                    serde_json::to_string(&metadata)?,
+                    Utc::now().to_rfc3339()
+                ],
+            )?;
+            tx.execute(
+                    "INSERT INTO recall_result_feedback (recall_id, memory_id, outcome) VALUES (?1, ?2, ?3)
+                     ON CONFLICT(recall_id, memory_id) DO UPDATE SET outcome = excluded.outcome",
+                    params![id, memory_id, outcome],
+                )?;
         }
         tx.execute(
             "UPDATE recall_events SET outcome = ?2, feedback_note = ?3 WHERE id = ?1",
@@ -1701,12 +1736,27 @@ mod tests {
         })
         .unwrap();
 
+        let aggregate = db
+            .set_recall_feedback("recall-test", None, "helpful", Some("aggregate only"))
+            .unwrap()
+            .unwrap();
+        assert!(aggregate.is_empty());
+        assert_eq!(
+            db.get_chunk(&chunk_id)
+                .unwrap()
+                .unwrap()
+                .metadata
+                .helpful_count,
+            0,
+            "aggregate feedback must not change result ranking"
+        );
+
         let ids = db
-            .set_recall_feedback("recall-test", "helpful", Some("worked"))
+            .set_recall_feedback("recall-test", Some(&chunk_id), "helpful", Some("worked"))
             .unwrap()
             .unwrap();
         assert_eq!(ids, vec![chunk_id.clone()]);
-        db.set_recall_feedback("recall-test", "helpful", Some("retry"))
+        db.set_recall_feedback("recall-test", Some(&chunk_id), "helpful", Some("retry"))
             .unwrap();
         assert_eq!(
             db.get_chunk(&chunk_id)
@@ -1717,7 +1767,7 @@ mod tests {
             1,
             "same feedback must be idempotent"
         );
-        db.set_recall_feedback("recall-test", "harmful", None)
+        db.set_recall_feedback("recall-test", Some(&chunk_id), "harmful", None)
             .unwrap();
 
         let recalls = db.recent_recall_events(10).unwrap();
@@ -1757,12 +1807,12 @@ mod tests {
         })
         .unwrap();
         assert_eq!(
-            db.set_recall_feedback("empty-recall", "ignored", None)
+            db.set_recall_feedback("empty-recall", None, "ignored", None)
                 .unwrap(),
             Some(Vec::new())
         );
         assert!(
-            db.set_recall_feedback("missing", "ignored", None)
+            db.set_recall_feedback("missing", None, "ignored", None)
                 .unwrap()
                 .is_none()
         );

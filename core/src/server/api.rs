@@ -16,23 +16,23 @@ use crate::redaction::redact_text;
 
 #[derive(Deserialize)]
 pub struct SearchRequest {
-    query: String,
+    pub query: String,
     #[serde(default = "default_project")]
-    project: String,
+    pub project: String,
     #[serde(default = "default_n")]
-    n_results: usize,
+    pub n_results: usize,
     #[serde(default)]
-    recent_first: bool,
+    pub recent_first: bool,
     /// Optional category filter (e.g. "failure", "insight"). The learning layer uses this.
     #[serde(default)]
-    category: String,
+    pub category: String,
     /// Drop reserved autolog buckets (root/default/global/_superseded) from
     /// cross-project results. Pass project="root" explicitly to read them.
     #[serde(default)]
-    exclude_reserved: bool,
+    pub exclude_reserved: bool,
     /// Safe integration label used only for local observability.
     #[serde(default = "default_http_adapter")]
-    adapter: String,
+    pub adapter: String,
 }
 
 fn default_project() -> String {
@@ -47,10 +47,10 @@ fn default_http_adapter() -> String {
 
 #[derive(Serialize)]
 pub struct SearchResponse {
-    results: Vec<SearchResultItem>,
-    total: usize,
-    elapsed_ms: u128,
-    recall_id: String,
+    pub results: Vec<SearchResultItem>,
+    pub total: usize,
+    pub elapsed_ms: u128,
+    pub recall_id: String,
 }
 
 #[derive(Serialize)]
@@ -76,88 +76,94 @@ pub struct SearchResultItem {
 
 #[derive(Deserialize)]
 pub struct AddRequest {
-    text: String,
+    pub text: String,
     #[serde(default)]
-    project: String,
+    pub project: String,
     #[serde(default)]
-    metadata: Option<Metadata>,
+    pub metadata: Option<Metadata>,
+    #[serde(default)]
+    pub sensitive: Option<bool>,
 }
 
 #[derive(Deserialize)]
 pub struct DeleteRequest {
-    ids: Vec<String>,
+    pub ids: Vec<String>,
 }
 
 #[derive(Deserialize)]
 pub struct UpdateRequest {
-    id: String,
+    pub id: String,
     #[serde(default)]
-    text: Option<String>,
+    pub sensitive: Option<bool>,
     #[serde(default)]
-    project: Option<String>,
+    pub text: Option<String>,
     #[serde(default)]
-    metadata: Option<MetadataPatch>,
+    pub project: Option<String>,
     #[serde(default)]
-    chunk_type: Option<ChunkType>,
+    pub metadata: Option<MetadataPatch>,
     #[serde(default)]
-    importance: Option<Importance>,
+    pub chunk_type: Option<ChunkType>,
+    #[serde(default)]
+    pub importance: Option<Importance>,
 }
 
 #[derive(Deserialize)]
 pub struct MetadataPatch {
     #[serde(default)]
-    chunk_type: Option<ChunkType>,
+    pub chunk_type: Option<ChunkType>,
     #[serde(default)]
-    importance: Option<Importance>,
+    pub importance: Option<Importance>,
     #[serde(default)]
-    session_id: Option<String>,
+    pub session_id: Option<String>,
     #[serde(default)]
-    cwd: Option<String>,
+    pub cwd: Option<String>,
     #[serde(default)]
-    parent_session_id: Option<String>,
+    pub parent_session_id: Option<String>,
     #[serde(default)]
-    source: Option<String>,
+    pub source: Option<String>,
     #[serde(default)]
-    role: Option<String>,
+    pub role: Option<String>,
     #[serde(default)]
-    tool: Option<String>,
+    pub tool: Option<String>,
     #[serde(default)]
-    event_id: Option<String>,
+    pub event_id: Option<String>,
     #[serde(default)]
-    sequence: Option<i64>,
+    pub sequence: Option<i64>,
     #[serde(default)]
-    total: Option<i64>,
+    pub total: Option<i64>,
     #[serde(default)]
-    truncated: Option<bool>,
+    pub truncated: Option<bool>,
     #[serde(default)]
-    raw_chunk: Option<String>,
+    pub raw_chunk: Option<String>,
     #[serde(default)]
-    access_count: Option<i64>,
+    pub access_count: Option<i64>,
     #[serde(default)]
-    keywords: Option<Vec<String>>,
+    pub keywords: Option<Vec<String>>,
     #[serde(default)]
-    sensitive: Option<bool>,
+    pub sensitive: Option<bool>,
     #[serde(default)]
-    pinned: Option<bool>,
+    pub pinned: Option<bool>,
     #[serde(default)]
-    adapter: Option<String>,
+    pub adapter: Option<String>,
     #[serde(default)]
-    adapter_version: Option<String>,
+    pub adapter_version: Option<String>,
     #[serde(default)]
-    memory_kind: Option<MemoryKind>,
+    pub memory_kind: Option<MemoryKind>,
     #[serde(default)]
-    confidence: Option<f32>,
+    pub confidence: Option<f32>,
     #[serde(default)]
-    source_ids: Option<Vec<String>>,
+    pub source_ids: Option<Vec<String>>,
     #[serde(default)]
-    supersedes: Option<String>,
+    pub supersedes: Option<String>,
     #[serde(default)]
-    verified_at: Option<String>,
+    pub verified_at: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct FeedbackRequest {
     recall_id: String,
+    #[serde(default)]
+    memory_id: Option<String>,
     outcome: String,
     #[serde(default)]
     note: Option<String>,
@@ -449,6 +455,20 @@ pub struct StatsResponse {
 
 // ── API Handlers ─────────────────────────────────────────────
 
+fn operation_error_response(error: super::operations::OperationError) -> Response {
+    let status = match error.kind {
+        super::operations::ErrorKind::BadRequest => axum::http::StatusCode::BAD_REQUEST,
+        super::operations::ErrorKind::NotFound => axum::http::StatusCode::NOT_FOUND,
+        super::operations::ErrorKind::Conflict => axum::http::StatusCode::CONFLICT,
+        super::operations::ErrorKind::Internal => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    (
+        status,
+        Json(serde_json::json!({"status":"error","error":error.message})),
+    )
+        .into_response()
+}
+
 pub async fn health(State(system): State<Arc<RwLock<MemorySystem>>>) -> Json<HealthResponse> {
     let sys = system.read().await;
     let status = sys.lifecycle_status.read().await;
@@ -476,76 +496,29 @@ pub async fn get_chunk_full(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Path(id): Path<String>,
 ) -> Response {
-    let sys = system.read().await;
-    let db = sys.db.read().await;
-    match db.get_chunk(&id) {
-        Ok(Some(c)) => {
-            let redacted = redact_text(&c.document);
-            let doc_len = redacted.chars().count();
-            Json(serde_json::json!({
-                "id": c.id,
-                "project": c.project,
-                "document": redacted.chars().take(8000).collect::<String>(),
-                "doc_len": doc_len,
-                "timestamp": c.created_at.to_rfc3339(),
-                "chunk_type": format!("{:?}", c.metadata.chunk_type),
-                "importance": format!("{:?}", c.metadata.importance),
-                "category": format!("{:?}", c.metadata.category),
-            }))
-            .into_response()
-        }
-        _ => (
-            axum::http::StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"error": format!("chunk not found: {id}")})),
-        )
-            .into_response(),
+    match super::operations::get(system, &id).await {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => operation_error_response(error),
     }
 }
 
 pub async fn search(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<SearchRequest>,
-) -> Json<SearchResponse> {
-    let started = std::time::Instant::now();
-    let cat = if req.category.trim().is_empty() {
-        None
-    } else {
-        Some(req.category.clone())
-    };
-    let items = run_hybrid_search(
-        system.clone(),
-        &req.query,
-        &req.project,
-        req.n_results,
-        req.recent_first,
-        false,
-        req.exclude_reserved,
-        cat,
-    )
-    .await;
-    let elapsed_ms = started.elapsed().as_millis();
-    let recall_id = format!("recall_{}", uuid::Uuid::new_v4().simple());
-    let event = RecallEvent {
-        id: recall_id.clone(),
-        query: redact_text(&req.query),
-        project: req.project.clone(),
-        result_ids: items.iter().map(|item| item.id.clone()).collect(),
-        duration_ms: elapsed_ms.min(i64::MAX as u128) as i64,
+) -> Response {
+    let input = super::operations::SearchInput {
+        query: req.query,
+        project: req.project,
+        n_results: req.n_results,
+        recent_first: req.recent_first,
+        category: (!req.category.trim().is_empty()).then_some(req.category),
+        exclude_reserved: req.exclude_reserved,
         adapter: req.adapter,
-        outcome: "pending".to_string(),
-        created_at: chrono::Utc::now(),
     };
-    {
-        let sys = system.read().await;
-        let _ = sys.db.write().await.insert_recall_event(&event);
+    match super::operations::search(system, input).await {
+        Ok(out) => Json(out).into_response(),
+        Err(error) => operation_error_response(error),
     }
-    let total = items.len();
-    Json(SearchResponse {
-        results: items,
-        total,
-        elapsed_ms,
-        recall_id,
-    })
 }
 
 pub(crate) async fn run_hybrid_search(
@@ -618,12 +591,7 @@ pub(crate) async fn run_hybrid_search(
             if project != "all" && c.project != project {
                 continue;
             }
-            if exclude_reserved
-                && matches!(
-                    c.project.as_str(),
-                    "root" | "default" | "global" | "_superseded" | "_trash"
-                )
-            {
+            if super::operations::exclude_project(&c.project, exclude_reserved) {
                 continue;
             }
             if let Some(cf) = &cat_filter {
@@ -893,7 +861,27 @@ async fn repair_transcript_indexes(sys: &MemorySystem, chunk: &MemoryChunk) -> a
 pub async fn add(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<AddRequest>,
-) -> Json<HashMap<String, String>> {
+) -> Response {
+    match super::operations::remember(
+        system,
+        super::operations::RememberInput {
+            text: req.text,
+            project: req.project,
+            metadata: req.metadata,
+            sensitive: req.sensitive.unwrap_or(false),
+        },
+    )
+    .await
+    {
+        Ok(out) => (axum::http::StatusCode::CREATED, Json(out)).into_response(),
+        Err(error) => operation_error_response(error),
+    }
+}
+
+pub(crate) async fn add_impl(
+    system: Arc<RwLock<MemorySystem>>,
+    req: AddRequest,
+) -> HashMap<String, String> {
     let project = if req.project.is_empty() {
         "default".to_string()
     } else {
@@ -906,7 +894,7 @@ pub async fn add(
             "error".to_string(),
             format!("project '{project}' is reserved; write rejected"),
         );
-        return Json(map);
+        return map;
     }
     let text = redact_text(&req.text);
     let mut metadata = req.metadata.unwrap_or(Metadata {
@@ -944,7 +932,7 @@ pub async fn add(
                         map.insert("error".to_string(), error.to_string());
                     }
                 }
-                return Json(map);
+                return map;
             }
             Ok(None) => {}
             Err(error) => {
@@ -953,7 +941,7 @@ pub async fn add(
                 map.insert("id".to_string(), id.clone());
                 map.insert("project".to_string(), project);
                 map.insert("error".to_string(), error.to_string());
-                return Json(map);
+                return map;
             }
         }
     } else {
@@ -966,7 +954,7 @@ pub async fn add(
             map.insert("status".to_string(), "deduplicated".to_string());
             map.insert("id".to_string(), existing_id);
             map.insert("project".to_string(), project);
-            return Json(map);
+            return map;
         }
     }
 
@@ -1023,7 +1011,7 @@ pub async fn add(
     map.insert("job_id".to_string(), job_id);
     map.insert("project".to_string(), project);
     map.insert("adapter".to_string(), adapter);
-    Json(map)
+    map
 }
 
 pub(crate) async fn persist_chunk_async(
@@ -1103,38 +1091,11 @@ pub(crate) async fn persist_chunk_async(
 pub async fn delete(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<DeleteRequest>,
-) -> Json<HashMap<String, serde_json::Value>> {
-    let sys = system.read().await;
-    let now_str = chrono::Utc::now().to_rfc3339();
-    let db = sys.db.write().await;
-
-    let mut deleted = Vec::new();
-    let mut not_found = Vec::new();
-
-    for id in req.ids {
-        let canonical_id = db.canonical_chunk_id(&id).unwrap_or_else(|_| id.clone());
-        match db.trash_chunk(&canonical_id, &now_str) {
-            Ok(true) => deleted.push(canonical_id),
-            Ok(false) => not_found.push(id),
-            Err(_) => not_found.push(id),
-        }
+) -> Response {
+    match super::operations::delete(system, req.ids).await {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => operation_error_response(error),
     }
-    drop(db);
-
-    if !deleted.is_empty() {
-        let _ = sys.remove_text_docs(&deleted).await;
-
-        let mut vector_index = sys.vector_index.write().await;
-        for id in &deleted {
-            let _ = vector_index.remove(id);
-        }
-        let _ = vector_index.save();
-    }
-
-    let mut result = HashMap::new();
-    result.insert("deleted".to_string(), serde_json::json!(deleted));
-    result.insert("not_found".to_string(), serde_json::json!(not_found));
-    Json(result)
 }
 
 #[derive(Deserialize)]
@@ -1194,13 +1155,23 @@ pub async fn restore(
 pub async fn update(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<UpdateRequest>,
-) -> Json<HashMap<String, serde_json::Value>> {
+) -> Response {
+    match super::operations::update(system, req).await {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => operation_error_response(error),
+    }
+}
+
+pub(crate) async fn update_impl(
+    system: Arc<RwLock<MemorySystem>>,
+    req: UpdateRequest,
+) -> HashMap<String, serde_json::Value> {
     let mut out = HashMap::new();
     let id = req.id.trim();
     if id.is_empty() {
         out.insert("status".to_string(), serde_json::json!("error"));
         out.insert("message".to_string(), serde_json::json!("id is required"));
-        return Json(out);
+        return out;
     }
 
     let sys = system.read().await;
@@ -1211,12 +1182,12 @@ pub async fn update(
             Ok(None) => {
                 out.insert("status".to_string(), serde_json::json!("not_found"));
                 out.insert("id".to_string(), serde_json::json!(id));
-                return Json(out);
+                return out;
             }
             Err(e) => {
                 out.insert("status".to_string(), serde_json::json!("error"));
                 out.insert("message".to_string(), serde_json::json!(e.to_string()));
-                return Json(out);
+                return out;
             }
         }
     };
@@ -1230,7 +1201,7 @@ pub async fn update(
                 "message".to_string(),
                 serde_json::json!("text must not be empty"),
             );
-            return Json(out);
+            return out;
         }
         let redacted = redact_text(&text);
         text_changed = redacted != original_document;
@@ -1264,7 +1235,7 @@ pub async fn update(
             Ok(Err(e)) => {
                 out.insert("status".to_string(), serde_json::json!("error"));
                 out.insert("message".to_string(), serde_json::json!(e.to_string()));
-                return Json(out);
+                return out;
             }
             Err(e) => {
                 out.insert("status".to_string(), serde_json::json!("error"));
@@ -1272,7 +1243,7 @@ pub async fn update(
                     "message".to_string(),
                     serde_json::json!(format!("embed join: {e}")),
                 );
-                return Json(out);
+                return out;
             }
         }
     }
@@ -1283,7 +1254,7 @@ pub async fn update(
         Err(e) => {
             out.insert("status".to_string(), serde_json::json!("error"));
             out.insert("message".to_string(), serde_json::json!(e.to_string()));
-            return Json(out);
+            return out;
         }
     }
 
@@ -1293,7 +1264,7 @@ pub async fn update(
     {
         out.insert("status".to_string(), serde_json::json!("error"));
         out.insert("message".to_string(), serde_json::json!(e.to_string()));
-        return Json(out);
+        return out;
     }
     if embedding_changed && let Some(embedding) = &chunk.embedding {
         let mut vector_index = sys.vector_index.write().await;
@@ -1303,7 +1274,7 @@ pub async fn update(
         {
             out.insert("status".to_string(), serde_json::json!("error"));
             out.insert("message".to_string(), serde_json::json!(e.to_string()));
-            return Json(out);
+            return out;
         }
     }
 
@@ -1315,7 +1286,7 @@ pub async fn update(
         serde_json::json!(chunk.updated_at.to_rfc3339()),
     );
     out.insert("text_changed".to_string(), serde_json::json!(text_changed));
-    Json(out)
+    out
 }
 
 fn apply_metadata_patch(target: &mut Metadata, patch: MetadataPatch) {
@@ -2369,12 +2340,16 @@ pub struct SecretSetRequest {
 pub async fn set_secret(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<SecretSetRequest>,
-) -> Json<HashMap<String, String>> {
-    let mut out = HashMap::new();
+) -> Response {
     if req.key.trim().is_empty() || req.value.is_empty() {
-        out.insert("status".into(), "error".into());
-        out.insert("message".into(), "key and value are required".into());
-        return Json(out);
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"status":"error","message":"key and value are required"})),
+        )
+            .into_response();
+    }
+    if !crate::crypto::is_enabled() {
+        return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"status":"error","message":"secret vault crypto is unavailable"}))).into_response();
     }
     let secret = Secret {
         key: req.key.trim().to_string(),
@@ -2384,55 +2359,38 @@ pub async fn set_secret(
         updated: chrono::Utc::now(),
     };
     let sys = system.read().await;
-    let result = sys.db.write().await.insert_secret(&secret);
-    match result {
-        Ok(()) => {
-            out.insert("status".into(), "ok".into());
-            out.insert("key".into(), secret.key);
-            out.insert(
-                "encryption".into(),
-                if crate::crypto::is_enabled() {
-                    "aes-256-gcm".into()
-                } else {
-                    "disabled".into()
-                },
-            );
-        }
-        Err(e) => {
-            out.insert("status".into(), "error".into());
-            out.insert("message".into(), e.to_string());
-        }
+    match sys.db.write().await.insert_secret(&secret) {
+        Ok(()) => (
+            axum::http::StatusCode::CREATED,
+            Json(serde_json::json!({"status":"ok","key":secret.key,"encryption":"aes-256-gcm"})),
+        )
+            .into_response(),
+        Err(error) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"status":"error","message":error.to_string()})),
+        )
+            .into_response(),
     }
-    Json(out)
 }
 
 /// GET /secrets/{key} — decrypt and return a credential value.
 pub async fn get_secret(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Path(key): Path<String>,
-) -> Json<HashMap<String, String>> {
-    let mut out = HashMap::new();
-    let sys = system.read().await;
-    let db = sys.db.read().await;
-    match db.get_secret(&key) {
-        Ok(Some(secret)) => {
-            out.insert("status".into(), "ok".into());
-            out.insert("key".into(), secret.key);
-            out.insert("kind".into(), secret.kind);
-            out.insert("note".into(), secret.note);
-            out.insert("value".into(), secret.value);
-            out.insert("updated".into(), secret.updated.to_rfc3339());
-        }
-        Ok(None) => {
-            out.insert("status".into(), "not_found".into());
-            out.insert("key".into(), key);
-        }
-        Err(e) => {
-            out.insert("status".into(), "error".into());
-            out.insert("message".into(), e.to_string());
-        }
+) -> Response {
+    if !crate::crypto::is_enabled() {
+        return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"status":"error","message":"secret vault crypto is unavailable"}))).into_response();
     }
-    Json(out)
+    let sys = system.read().await;
+    let result = {
+        let db = sys.db.read().await;
+        db.get_secret(&key)
+    };
+    match result {
+        Ok(Some(secret)) => Json(serde_json::json!({"status":"ok","key":secret.key,"kind":secret.kind,"note":secret.note,"value":secret.value,"updated":secret.updated.to_rfc3339()})).into_response(),
+        Ok(None) => (axum::http::StatusCode::NOT_FOUND, Json(serde_json::json!({"status":"not_found","key":key}))).into_response(),
+        Err(error) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"status":"error","message":error.to_string()}))).into_response(),
+    }
 }
 
 /// GET /secrets — list metadata only. Values are never returned by this endpoint.
@@ -2459,24 +2417,22 @@ pub async fn list_secrets(
 pub async fn delete_secret(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Path(key): Path<String>,
-) -> Json<HashMap<String, String>> {
-    let mut out = HashMap::new();
+) -> Response {
     let sys = system.read().await;
-    match sys.db.write().await.delete_secret(&key) {
-        Ok(true) => {
-            out.insert("status".into(), "ok".into());
-            out.insert("key".into(), key);
-        }
-        Ok(false) => {
-            out.insert("status".into(), "not_found".into());
-            out.insert("key".into(), key);
-        }
-        Err(e) => {
-            out.insert("status".into(), "error".into());
-            out.insert("message".into(), e.to_string());
-        }
+    let result = sys.db.write().await.delete_secret(&key);
+    match result {
+        Ok(true) => Json(serde_json::json!({"status":"ok","key":key})).into_response(),
+        Ok(false) => (
+            axum::http::StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"status":"not_found","key":key})),
+        )
+            .into_response(),
+        Err(error) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"status":"error","message":error.to_string()})),
+        )
+            .into_response(),
     }
-    Json(out)
 }
 
 pub async fn operations(
@@ -2508,32 +2464,18 @@ pub async fn operations(
 pub async fn recall_feedback(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<FeedbackRequest>,
-) -> Json<serde_json::Value> {
-    let outcome = req.outcome.trim().to_lowercase();
-    if !matches!(outcome.as_str(), "helpful" | "harmful" | "ignored") {
-        return Json(serde_json::json!({
-            "status": "error",
-            "message": "outcome must be helpful, harmful, or ignored"
-        }));
-    }
-    let sys = system.read().await;
-    let db = sys.db.write().await;
-    let note = req.note.as_deref().map(redact_text);
-    match db.set_recall_feedback(&req.recall_id, &outcome, note.as_deref()) {
-        Ok(None) => Json(serde_json::json!({
-            "status": "not_found",
-            "recall_id": req.recall_id
-        })),
-        Ok(Some(ids)) => Json(serde_json::json!({
-            "status": "ok",
-            "recall_id": req.recall_id,
-            "outcome": outcome,
-            "memory_ids": ids
-        })),
-        Err(error) => Json(serde_json::json!({
-            "status": "error",
-            "message": error.to_string()
-        })),
+) -> Response {
+    match super::operations::feedback(
+        system,
+        &req.recall_id,
+        req.memory_id.as_deref(),
+        &req.outcome,
+        req.note.as_deref(),
+    )
+    .await
+    {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => operation_error_response(error),
     }
 }
 
@@ -5305,17 +5247,18 @@ mod transcript_tests {
             );
         }
 
-        let response = add(
-            State(system.clone()),
-            Json(AddRequest {
+        let response = add_impl(
+            system.clone(),
+            AddRequest {
                 text: document.into(),
                 project: "repair".into(),
                 metadata: Some(metadata),
-            }),
+                sensitive: None,
+            },
         )
         .await;
         assert_eq!(
-            response.0.get("status").map(String::as_str),
+            response.get("status").map(String::as_str),
             Some("deduplicated")
         );
 

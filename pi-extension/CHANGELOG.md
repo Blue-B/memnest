@@ -4,6 +4,10 @@ All notable changes to `pi-memnest`.
 
 ## Unreleased
 
+- Canonicalized the model surface to six memory tools and four vault tools, with shared HTTP/MCP memory operations, scoped automatic recall, soft delete, targeted feedback, strict auth token normalization, and fail-closed secrets.
+
+## Unreleased
+
 - Raise the default Autocontext score thresholds from `0.12` to `0.25` so weak, unrelated retrievals are not injected into prompts. Both values remain configurable with environment variables.
 
 ## [0.6.0] - 2026-08-01

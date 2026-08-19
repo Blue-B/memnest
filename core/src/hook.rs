@@ -51,6 +51,7 @@ pub enum HookFormat {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Resolved {
     pub prompt: String,
+    pub project: Option<String>,
     /// Never `Auto`: detection has already run.
     pub format: HookFormat,
 }
@@ -58,7 +59,7 @@ pub struct Resolved {
 /// Read the payload. Unknown shapes fall back to plain text rather than
 /// failing, because an unrecognised host should still get memory.
 pub fn resolve(raw: &str, requested: HookFormat) -> Resolved {
-    let (prompt, detected) = match serde_json::from_str::<Value>(raw) {
+    let (prompt, project, detected) = match serde_json::from_str::<Value>(raw) {
         Ok(Value::Object(map)) => {
             let prompt = PROMPT_KEYS
                 .iter()
@@ -72,15 +73,28 @@ pub fn resolve(raw: &str, requested: HookFormat) -> Resolved {
             } else {
                 HookFormat::Text
             };
-            (prompt, format)
+            let project = map
+                .get("project")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .or_else(|| {
+                    map.get("cwd")
+                        .and_then(Value::as_str)
+                        .and_then(|cwd| std::path::Path::new(cwd).file_name())
+                        .and_then(|name| name.to_str())
+                        .map(str::to_string)
+                });
+            (prompt, project, format)
         }
-        // Valid JSON that is not an object carries no field to read, and a
-        // parse failure means the host piped the prompt itself.
-        _ => (raw.to_string(), HookFormat::Text),
+        // Unknown workspace means no automatic recall, never all-project recall.
+        _ => (raw.to_string(), None, HookFormat::Text),
     };
 
     Resolved {
         prompt: prompt.trim().to_string(),
+        project,
         format: match requested {
             HookFormat::Auto => detected,
             explicit => explicit,
@@ -130,14 +144,22 @@ pub fn resolve_url(flag: Option<&str>) -> String {
         .unwrap_or_else(|| "http://127.0.0.1:3111".to_string())
 }
 
-/// Ask the running service for a context pack. Server-side defaults decide the
-/// project scope and character budget, so the hook stays in step with `/context`.
-async fn fetch_context(base_url: &str, prompt: &str, timeout_ms: u64) -> Result<String> {
+/// Ask the running service for a workspace-scoped memory pack. Notes and facts
+/// are disabled because they are global and must not leak across projects.
+async fn fetch_context(
+    base_url: &str,
+    prompt: &str,
+    project: &str,
+    timeout_ms: u64,
+) -> Result<String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_millis(timeout_ms))
         .build()?;
     let mut request = client.post(context_endpoint(base_url)).json(&json!({
         "query": prompt,
+        "project": project,
+        "max_notes": 0,
+        "max_facts": 0,
         "adapter": "memnest-hook",
     }));
     if let Ok(token) = std::env::var("MEMNEST_TOKEN")
@@ -167,10 +189,17 @@ pub async fn respond(
     timeout_ms: u64,
 ) -> (String, Option<String>) {
     let resolved = resolve(raw, requested);
-    if !should_search(&resolved.prompt) {
+    if !should_search(&resolved.prompt) || resolved.project.is_none() {
         return (String::new(), None);
     }
-    match fetch_context(base_url, &resolved.prompt, timeout_ms).await {
+    match fetch_context(
+        base_url,
+        &resolved.prompt,
+        resolved.project.as_deref().unwrap_or_default(),
+        timeout_ms,
+    )
+    .await
+    {
         Ok(context) => (render(resolved.format, &context), None),
         // A missing service is the normal case on a machine where memnest is
         // not running yet, so it is a note on stderr, never a failed prompt.
@@ -196,10 +225,11 @@ mod tests {
 
     #[test]
     fn claude_code_payload_is_detected_and_read() {
-        let raw = r#"{"session_id":"x","hook_event_name":"UserPromptSubmit","prompt":"what did we decide about the deploy port"}"#;
+        let raw = r#"{"session_id":"x","hook_event_name":"UserPromptSubmit","cwd":"/work/deploy","prompt":"what did we decide about the deploy port"}"#;
         let resolved = resolve(raw, HookFormat::Auto);
         assert_eq!(resolved.format, HookFormat::ClaudeCode);
         assert_eq!(resolved.prompt, "what did we decide about the deploy port");
+        assert_eq!(resolved.project.as_deref(), Some("deploy"));
     }
 
     #[test]
@@ -216,16 +246,25 @@ mod tests {
 
     #[test]
     fn unknown_json_falls_back_to_text_and_scans_prompt_keys() {
-        let resolved = resolve(r#"{"query":"how do we handle migrations"}"#, HookFormat::Auto);
+        let resolved = resolve(
+            r#"{"query":"how do we handle migrations"}"#,
+            HookFormat::Auto,
+        );
         assert_eq!(resolved.format, HookFormat::Text);
         assert_eq!(resolved.prompt, "how do we handle migrations");
 
         // A bare `prompt` without host markers is still not Claude Code.
-        let bare = resolve(r#"{"prompt":"how do we handle migrations"}"#, HookFormat::Auto);
+        let bare = resolve(
+            r#"{"prompt":"how do we handle migrations"}"#,
+            HookFormat::Auto,
+        );
         assert_eq!(bare.format, HookFormat::Text);
 
         // Later keys are only used when the earlier ones are absent.
-        let message = resolve(r#"{"message":"restore from the backup directory"}"#, HookFormat::Auto);
+        let message = resolve(
+            r#"{"message":"restore from the backup directory"}"#,
+            HookFormat::Auto,
+        );
         assert_eq!(message.prompt, "restore from the backup directory");
     }
 
@@ -264,7 +303,10 @@ mod tests {
     fn explicit_format_overrides_detection() {
         let raw = r#"{"session_id":"x","hook_event_name":"UserPromptSubmit","prompt":"long enough prompt here"}"#;
         assert_eq!(resolve(raw, HookFormat::Text).format, HookFormat::Text);
-        assert_eq!(resolve("plain text", HookFormat::ClaudeCode).format, HookFormat::ClaudeCode);
+        assert_eq!(
+            resolve("plain text", HookFormat::ClaudeCode).format,
+            HookFormat::ClaudeCode
+        );
     }
 
     #[test]
@@ -280,13 +322,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unknown_workspace_injects_nothing() {
+        let raw = r#"{"prompt":"what did we decide about the deploy port"}"#;
+        let (out, warning) = respond(raw, "http://127.0.0.1:1", HookFormat::Auto, 100).await;
+        assert_eq!(out, "");
+        assert!(warning.is_none());
+    }
+
+    #[tokio::test]
     async fn a_missing_service_prints_nothing() {
         // Port 1 is never a memnest service, so this exercises the path that
         // must not block a user's prompt.
-        let raw = r#"{"session_id":"x","hook_event_name":"UserPromptSubmit","prompt":"what did we decide about the deploy port"}"#;
+        let raw = r#"{"session_id":"x","hook_event_name":"UserPromptSubmit","cwd":"/work/deploy","prompt":"what did we decide about the deploy port"}"#;
         let (out, warning) = respond(raw, "http://127.0.0.1:1", HookFormat::Auto, 500).await;
         assert_eq!(out, "");
-        assert!(warning.is_some(), "the failure should be reported on stderr");
+        assert!(
+            warning.is_some(),
+            "the failure should be reported on stderr"
+        );
     }
 
     #[tokio::test]
