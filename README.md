@@ -169,7 +169,7 @@ Totals, 24-hour search count, latency, in-flight and failed jobs, disk use. Fail
 
 | Area | What is implemented |
 | --- | --- |
-| Retrieval | Hybrid BM25 + HNSW vector search, project filters, nearest-neighbor queries, `recall_id` on every search |
+| Retrieval | Hybrid BM25 + HNSW vector search, project filters, and `recall_id` on every search |
 | Feedback loop | Helpful and harmful outcomes persist per memory and feed the ranking score, capped at ±0.10 |
 | Structured memory | Optional record, fact, rule, procedure kinds with confidence, provenance, verification metadata |
 | Context assembly | Character-bounded context packs, counted in Unicode characters so non-Latin text is not truncated early |

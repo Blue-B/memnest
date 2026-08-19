@@ -140,18 +140,6 @@ impl Database {
                 updated TEXT NOT NULL
             );
 
-            -- Legacy inert schema retained so upgrades never rewrite stored graph data.
-            CREATE TABLE IF NOT EXISTS graph_edges (
-                source TEXT NOT NULL,
-                target TEXT NOT NULL,
-                predicate TEXT NOT NULL,
-                meta TEXT NOT NULL DEFAULT '{}',
-                created_at TEXT NOT NULL,
-                PRIMARY KEY (source, target, predicate)
-            ) WITHOUT ROWID;
-            CREATE INDEX IF NOT EXISTS idx_graph_source ON graph_edges(source);
-            CREATE INDEX IF NOT EXISTS idx_graph_target ON graph_edges(target);
-
             -- Per-collection metadata: kind + free-form description shown in the viewer.
             CREATE TABLE IF NOT EXISTS collection_meta (
                 name        TEXT PRIMARY KEY,
@@ -1388,6 +1376,91 @@ mod tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    #[tokio::test]
+    async fn fresh_database_does_not_create_graph_edges() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        drop(db);
+
+        let conn = Connection::open(dir.path().join("memory.db")).unwrap();
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'graph_edges')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(!exists);
+    }
+
+    #[tokio::test]
+    async fn legacy_graph_edges_survive_reopen_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("memory.db");
+        let conn = Connection::open(&db_path).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE graph_edges (
+                source TEXT NOT NULL,
+                target TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                meta TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (source, target, predicate)
+            ) WITHOUT ROWID;
+            INSERT INTO graph_edges (source, target, predicate, meta, created_at)
+            VALUES ('alpha', 'beta', 'depends_on', '{"weight":1}', '2026-01-02T03:04:05Z');
+            "#,
+        )
+        .unwrap();
+        let original_schema: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'graph_edges'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        drop(conn);
+
+        let db = Database::new(dir.path()).await.unwrap();
+        drop(db);
+
+        let conn = Connection::open(&db_path).unwrap();
+        let reopened_schema: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'graph_edges'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let row: (String, String, String, String, String) = conn
+            .query_row(
+                "SELECT source, target, predicate, meta, created_at FROM graph_edges",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(reopened_schema, original_schema);
+        assert_eq!(
+            row,
+            (
+                "alpha".to_string(),
+                "beta".to_string(),
+                "depends_on".to_string(),
+                r#"{"weight":1}"#.to_string(),
+                "2026-01-02T03:04:05Z".to_string(),
+            )
+        );
     }
 
     #[tokio::test]
