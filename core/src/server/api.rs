@@ -466,9 +466,8 @@ pub async fn health(State(system): State<Arc<RwLock<MemorySystem>>>) -> Json<Hea
 }
 
 /// Full (redacted) document for one chunk — the escape hatch for the 600-char
-/// search excerpt. Bounded at 8,000 chars like NeighborItem, and for the same
-/// reason: agents read skills/lessons from this field, so a tighter clip would
-/// silently drop content.
+/// search-result excerpt. The returned document is bounded at 8,000 chars so
+/// agents can read skills and lessons without silently losing content.
 pub async fn get_chunk_full(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Path(id): Path<String>,
@@ -2577,7 +2576,7 @@ svg { display: block; }
   .md\:flex { display: flex; }
   .md\:hidden { display: none; }
   .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .md\:grid-cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .md\:grid-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .md\:p-8 { padding: 2rem; }
   .md\:pt-0 { padding-top: 0; }
   .md\:py-8 { padding-top: 2rem; padding-bottom: 2rem; }
