@@ -4,7 +4,6 @@ pub mod doctor;
 pub mod embedding;
 pub mod eval;
 pub mod facts;
-pub mod graph;
 pub mod hook;
 pub mod index;
 pub mod lifecycle;
@@ -26,7 +25,6 @@ pub struct MemorySystem {
     pub embedder: Arc<embedding::Embedder>,
     pub vector_index: Arc<RwLock<index::VectorIndex>>,
     pub text_index: Arc<RwLock<Option<index::TextIndex>>>,
-    pub graph: Arc<RwLock<graph::KnowledgeGraph>>,
     pub lifecycle_status: Arc<RwLock<lifecycle::LifecycleStatus>>,
     pub vault_enabled: bool,
 }
@@ -87,7 +85,6 @@ impl MemorySystem {
         }
         let vector_index = Arc::new(RwLock::new(vector));
         let text_index = Arc::new(RwLock::new(None));
-        let graph = Arc::new(RwLock::new(graph::KnowledgeGraph::new(&config.data_dir)?));
 
         Ok(Self {
             config,
@@ -95,7 +92,6 @@ impl MemorySystem {
             embedder,
             vector_index,
             text_index,
-            graph,
             lifecycle_status: Arc::new(RwLock::new(lifecycle::LifecycleStatus::default())),
             vault_enabled: true,
         })
@@ -129,26 +125,6 @@ impl MemorySystem {
         let mut guard = self.text_index.write().await;
         let text = ensure_text_index(&mut guard, &self.config.data_dir)?;
         text.remove_many(ids)
-    }
-
-    /// Re-add already-migrated chunks to the text index so the `project` field
-    /// reflects the new bucket after a session fork. Removing first is implied
-    /// by `add_many_with_project` because it `delete_term`s by id before write.
-    pub async fn reindex_after_fork(&self, chunks: &[crate::models::MemoryChunk]) -> Result<()> {
-        if chunks.is_empty() {
-            return Ok(());
-        }
-        let docs: Vec<(String, String, String)> = chunks
-            .iter()
-            .map(|chunk| {
-                (
-                    chunk.id.clone(),
-                    chunk.project.clone(),
-                    chunk.document.clone(),
-                )
-            })
-            .collect();
-        self.add_text_docs(&docs).await
     }
 }
 

@@ -4,6 +4,10 @@ All notable changes to `memnest`, the Rust engine.
 
 ## Unreleased
 
+- Removed the unsupported `learn/` package, in-memory graph runtime,
+  session-fork mutation endpoint, and learning-only neighbors endpoint. Existing
+  memory rows, lineage metadata, and the legacy `graph_edges` table remain
+  untouched for compatibility.
 - Canonicalized the model surface to six memory tools and four vault tools, with shared HTTP/MCP memory operations, scoped automatic recall, soft delete, targeted feedback, strict auth token normalization, and fail-closed secrets.
 
 ## [0.2.0] - 2026-08-17

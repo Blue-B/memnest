@@ -189,7 +189,6 @@ Service install on Linux, WSL, and Windows, backup and restore, retention, and t
 | [`pi-extension/`](./pi-extension) | `pi-memnest` 0.6.0 | pi integration: 10 tools, `/memnest`, scoped autocontext, and feedback |
 | [`adapters/`](./adapters) | contract | Integration contract and reference JSONL adapter |
 | [`journal/`](./journal) | `memnest-journal` 0.1.0 | Optional Markdown and git audit mirror, not a database backup |
-| [`learn/`](./learn) | `memnest-learn` 0.1.0 | Optional pi learning layer. **Experimental**, no docs yet |
 
 ## Security
 

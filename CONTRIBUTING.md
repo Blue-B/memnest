@@ -21,7 +21,6 @@ Only `core/` is required to run memnest. The rest are optional pieces around it.
 | `core/` | Rust | The engine: HTTP API, MCP server, indexes, dashboard |
 | `pi-extension/` | TypeScript | pi integration |
 | `journal/` | JavaScript | Markdown and git audit mirror |
-| `learn/` | TypeScript | Experimental pi learning layer |
 | `adapters/generic-http/` | JavaScript | Reference JSONL adapter |
 | `docs/` | Markdown | Operations guide and screenshots |
 
@@ -31,10 +30,9 @@ Run the checks for the component you touched. These were each executed against
 this checkout, and the counts are what they printed.
 
 ```bash
-cd core                   && cargo test --quiet        # 74 tests
+cd core                   && cargo test --quiet
 cd pi-extension           && npm run build && npm run smoke
 cd journal                && npm run smoke             # see the warning below
-cd learn                  && npm test                  # needs bun on PATH
 cd adapters/generic-http  && node test.mjs
 ```
 
@@ -44,7 +42,6 @@ release binary after the tests. `docs/operations.md` suggests
 interfere with each other. The parallel run above passed, and CI runs
 `cargo test --quiet`, so use the serial form only if you hit a flaky test.
 
-`learn` has extra scripts: `npm run build` and `npm run typecheck` (`tsc --noEmit`).
 `pi-extension` has `npm run e2e` (`node test/e2e-mcp.mjs`) on top of the smoke run.
 
 ### The smoke tests talk to a running memnest
@@ -64,14 +61,6 @@ MEMNEST_URL=http://127.0.0.1:3150 MEMNEST_DB=/tmp/memnest-dev/memory.db npm run 
 `pi-extension`'s smoke test also reaches for `http://127.0.0.1:3111`, but it
 skips the live section when nothing answers, and its calls are read paths plus
 one recall feedback marker. It does not create memories.
-
-### A test that depends on your shell environment
-
-`learn`'s `extension registers the expected hooks and tools` passes on a clean
-checkout: all 33 tests pass. It fails only when `MEMNEST_LEARN_INJECT=0` is
-exported in your shell, because that setting deliberately skips registering
-`before_agent_start` and the test asserts the hook is present. Unset the
-variable, or run the suite with `env -u MEMNEST_LEARN_INJECT bun test test/`.
 
 ## Continuous integration
 
@@ -97,7 +86,7 @@ docs: rewrite the README around what a stranger needs
 chore: clean up the repository for a public release
 ```
 
-Scopes in use are `core`, `pi-extension`, `journal`, `learn`, and `adapters`.
+Scopes in use are `core`, `pi-extension`, `journal`, and `adapters`.
 `docs` and `chore` changes that span the repository are written without a scope.
 Bodies explain why the change was needed, wrapped at roughly 80 columns.
 
