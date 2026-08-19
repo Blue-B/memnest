@@ -9,7 +9,7 @@
  */
 
 type ExtensionAPI = {
-	on: (event: string, handler: (payload?: unknown) => unknown) => void;
+	on: (event: string, handler: (...args: any[]) => unknown) => void;
 	registerTool: (tool: unknown) => void;
 };
 type GlobalWithProcess = typeof globalThis & {
@@ -282,10 +282,6 @@ export function installAutocontext(pi: ExtensionAPI): void {
 
 	let lastSeenQuery: string | null = null;
 	let lastInjectedTokens: Set<string> | null = null;
-	let lastInjectedAt = 0;
-	let lastInjectedCount = 0;
-	let lastSkipReason = disabled ? "disabled" : "none";
-	let lastInjectReason = "none";
 	let injections = 0;
 	let currentProject: string | undefined;
 
@@ -294,10 +290,6 @@ export function installAutocontext(pi: ExtensionAPI): void {
 		currentProject = typeof cwd === "string" ? cwd.split(/[\\/]/).filter(Boolean).pop() : undefined;
 		lastSeenQuery = null;
 		lastInjectedTokens = null;
-		lastInjectedAt = 0;
-		lastInjectedCount = 0;
-		lastSkipReason = disabled ? "disabled" : "none";
-		lastInjectReason = "none";
 		injections = 0;
 	});
 
@@ -306,22 +298,13 @@ export function installAutocontext(pi: ExtensionAPI): void {
 			const e =
 				event && typeof event === "object" ? (event as { prompt?: unknown }) : {};
 			const prompt: string = typeof e.prompt === "string" ? e.prompt : "";
-			if (!isSubstantive(prompt)) {
-				lastSkipReason = "not-substantive";
-				return;
-			}
+			if (!isSubstantive(prompt)) return;
 
 			const q = normQuery(prompt);
-			if (q === lastSeenQuery) {
-				lastSkipReason = "duplicate-prompt";
-				return;
-			}
+			if (q === lastSeenQuery) return;
 			lastSeenQuery = q;
 
-			if (injections >= MAX_INJECTIONS) {
-				lastSkipReason = "session-cap";
-				return;
-			}
+			if (injections >= MAX_INJECTIONS) return;
 
 			const labels = riskLabels(prompt);
 			let reason = "";
@@ -339,30 +322,19 @@ export function installAutocontext(pi: ExtensionAPI): void {
 				reason = "first-substantive-turn";
 				if (lastInjectedTokens) {
 					const sim = overlap(tokens, lastInjectedTokens);
-					if (sim >= TOPIC_OVERLAP) {
-						lastSkipReason = `same-topic overlap=${sim.toFixed(2)}`;
-						return;
-					}
+					if (sim >= TOPIC_OVERLAP) return;
 					reason = `topic-shift overlap=${sim.toFixed(2)}`;
 				}
 				tokensForSuccess = tokens;
 			} else {
-				lastSkipReason = "no-risk-trigger";
 				return;
 			}
 
 			const results = await searchMemnest(query, currentProject);
 			const block = formatBlock(results, reason, { strong });
-			if (!block) {
-				lastSkipReason = "no-results";
-				return;
-			}
+			if (!block) return;
 
 			if (tokensForSuccess) lastInjectedTokens = tokensForSuccess;
-			lastInjectedAt = Date.now();
-			lastInjectedCount = Math.min(results.length, TOP_INJECT);
-			lastInjectReason = reason;
-			lastSkipReason = "none";
 			injections++;
 
 			return {
