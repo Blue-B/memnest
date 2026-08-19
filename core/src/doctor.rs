@@ -20,7 +20,6 @@ pub async fn run(config: &Config) -> Result<Vec<Check>> {
     checks.push(check_database(&config.data_dir).await);
     checks.push(check_vector_index(&config.data_dir).await);
     checks.push(check_text_index(&config.data_dir).await);
-    checks.push(check_graph(&config.data_dir).await);
     checks.push(check_embedding(config).await);
     checks.push(check_config(config));
     Ok(checks)
@@ -189,25 +188,6 @@ async fn check_text_index(data_dir: &Path) -> Check {
             name: "text index",
             status: Status::Error,
             message: format!("cannot open: {}", e),
-        },
-    }
-}
-
-async fn check_graph(data_dir: &Path) -> Check {
-    match crate::graph::KnowledgeGraph::new(data_dir) {
-        Ok(g) => Check {
-            name: "knowledge graph",
-            status: Status::Ok,
-            message: format!(
-                "graph loaded, nodes={}, edges={}",
-                g.node_count(),
-                g.edge_count()
-            ),
-        },
-        Err(e) => Check {
-            name: "knowledge graph",
-            status: Status::Error,
-            message: format!("cannot initialize: {}", e),
         },
     }
 }

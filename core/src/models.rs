@@ -18,7 +18,7 @@ pub struct Metadata {
     pub chunk_type: ChunkType,
     #[serde(default)]
     pub importance: Importance,
-    /// Semantic category for the learning layer (failure/correction/insight/...).
+    /// Optional semantic category (failure/correction/insight/...).
     /// Stored in the metadata JSON blob; `#[serde(default)]` keeps legacy rows
     /// (written before this field existed) deserializing as `General`.
     #[serde(default)]
@@ -27,13 +27,10 @@ pub struct Metadata {
     pub session_id: String,
     /// Absolute working directory of the client that produced this chunk.
     /// Lets us distinguish e.g. `/mnt/c/Users/root/projA` from `/home/x/projA`
-    /// (both would collapse to `projA` as project basename) and is required
-    /// for fork-aware reparenting.
+    /// (both would collapse to `projA` as project basename).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
-    /// When a session is forked from another, this records the source session id.
-    /// Reparenting (`memory_session_fork`) sets this on every moved chunk so the
-    /// origin remains queryable even after the chunks have migrated.
+    /// Legacy session-lineage metadata retained for row and transcript compatibility.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -48,7 +45,7 @@ pub struct Metadata {
     /// Product-facing semantic kind. Legacy rows default to `record`.
     #[serde(default)]
     pub memory_kind: MemoryKind,
-    /// Optional confidence assigned by an importer or learning layer.
+    /// Optional confidence assigned by an importer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f32>,
     /// Provenance and replacement links used by structured memory workflows.
@@ -118,9 +115,8 @@ pub enum Importance {
     Preference,
 }
 
-/// Semantic memory category used by the (client-side) learning layer to mark
-/// what kind of durable knowledge a chunk represents. The engine only stores
-/// and returns it; classification happens in the learning layer.
+/// Semantic category supplied by clients. The engine stores and returns it
+/// without classifying memory content.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MemoryCategory {
@@ -263,25 +259,6 @@ pub struct OperationsSummary {
     pub running_jobs: usize,
     pub failed_jobs: usize,
     pub average_recall_ms_24h: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GraphNode {
-    pub id: String,
-    pub depth: usize,
-    pub path: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SystemStats {
-    pub collections: Vec<CollectionStat>,
-    pub total_chunks: usize,
-    pub session_summaries: usize,
-    pub facts_count: usize,
-    pub notes_count: usize,
-    pub servers_count: usize,
-    pub graph_nodes: usize,
-    pub graph_edges: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

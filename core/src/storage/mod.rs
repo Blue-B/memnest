@@ -140,6 +140,7 @@ impl Database {
                 updated TEXT NOT NULL
             );
 
+            -- Legacy inert schema retained so upgrades never rewrite stored graph data.
             CREATE TABLE IF NOT EXISTS graph_edges (
                 source TEXT NOT NULL,
                 target TEXT NOT NULL,
@@ -581,86 +582,6 @@ impl Database {
             params![id, now],
         )?;
         Ok(())
-    }
-
-    /// Read every chunk tagged with `session_id` in metadata. Used by the
-    /// fork preflight (`dry_run`) and any caller that wants to inspect a
-    /// session's footprint without rewriting it.
-    pub fn get_chunks_by_session(&self, session_id: &str) -> Result<Vec<MemoryChunk>> {
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, project, document, embedding, metadata, created_at, updated_at
-             FROM chunks
-             WHERE json_extract(metadata, '$.session_id') = ?1
-             ORDER BY created_at ASC",
-        )?;
-        let mut rows = stmt.query(params![session_id])?;
-        let mut out = Vec::new();
-        while let Some(row) = rows.next()? {
-            out.push(self.row_to_chunk(row)?);
-        }
-        Ok(out)
-    }
-
-    /// Reparent every chunk tagged with `from_session_id` onto a new session.
-    ///
-    /// This is the storage half of `pi --fork`: when the CLI produces a new
-    /// session id (and usually a new cwd), every memory chunk that originated
-    /// in the source session is rewritten in place to belong to the new
-    /// session id, new project bucket (derived from `to_cwd`) and new cwd.
-    /// `parent_session_id` is set on each moved chunk so the lineage is still
-    /// queryable. Returns `(matched, moved_chunk_ids)`.
-    ///
-    /// The original chunks are NOT duplicated — fork is treated as a true
-    /// migration. Callers that need a copy-on-fork policy should snapshot
-    /// before calling.
-    pub fn reparent_session(
-        &self,
-        from_session_id: &str,
-        to_session_id: &str,
-        to_project: &str,
-        to_cwd: &str,
-    ) -> Result<Vec<MemoryChunk>> {
-        anyhow::ensure!(
-            !from_session_id.is_empty(),
-            "from_session_id must not be empty"
-        );
-        anyhow::ensure!(!to_session_id.is_empty(), "to_session_id must not be empty");
-        anyhow::ensure!(
-            from_session_id != to_session_id,
-            "from_session_id and to_session_id must differ"
-        );
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, project, document, embedding, metadata, created_at, updated_at
-             FROM chunks
-             WHERE json_extract(metadata, '$.session_id') = ?1",
-        )?;
-        let mut rows = stmt.query(params![from_session_id])?;
-        let mut moved = Vec::new();
-        while let Some(row) = rows.next()? {
-            let mut chunk = self.row_to_chunk(row)?;
-            // Preserve original session lineage. If the chunk had been forked
-            // before, keep the *oldest* known parent rather than overwriting
-            // with the immediate predecessor — that's more useful for tracing.
-            if chunk.metadata.parent_session_id.is_none() {
-                chunk.metadata.parent_session_id = Some(from_session_id.to_string());
-            }
-            chunk.metadata.session_id = to_session_id.to_string();
-            chunk.metadata.cwd = Some(to_cwd.to_string());
-            chunk.project = to_project.to_string();
-            chunk.updated_at = Utc::now();
-            moved.push(chunk);
-        }
-        drop(rows);
-        drop(stmt);
-        // Re-insert each migrated chunk under the same primary key — keeps
-        // FTS5 / vector index ids stable so callers only need to refresh the
-        // text index's project field afterwards.
-        for chunk in &moved {
-            self.insert_chunk(chunk)?;
-        }
-        Ok(moved)
     }
 
     pub fn chunk_count(&self) -> Result<usize> {
@@ -1120,47 +1041,6 @@ impl Database {
         Ok(count as usize)
     }
 
-    // ── Graph Edges ──────────────────────────────────────────
-
-    pub fn insert_graph_edge(
-        &self,
-        source: &str,
-        target: &str,
-        predicate: &str,
-        meta: &str,
-    ) -> Result<()> {
-        let conn = self.pool.get()?;
-        conn.execute(
-            "INSERT OR REPLACE INTO graph_edges (source, target, predicate, meta, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![source, target, predicate, meta, Utc::now().to_rfc3339()],
-        )?;
-        Ok(())
-    }
-
-    pub fn get_graph_edges(&self) -> Result<Vec<(String, String, String, String)>> {
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare("SELECT source, target, predicate, meta FROM graph_edges")?;
-        let mut rows = stmt.query([])?;
-        let mut edges = Vec::new();
-        while let Some(row) = rows.next()? {
-            edges.push((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?));
-        }
-        Ok(edges)
-    }
-
-    pub fn graph_stats(&self) -> Result<(usize, usize)> {
-        let conn = self.pool.get()?;
-        let node_count: i64 = conn.query_row(
-            "SELECT COUNT(DISTINCT source) + COUNT(DISTINCT target) FROM graph_edges",
-            [],
-            |row| row.get(0),
-        )?;
-        let edge_count: i64 =
-            conn.query_row("SELECT COUNT(*) FROM graph_edges", [], |row| row.get(0))?;
-        Ok((node_count as usize, edge_count as usize))
-    }
-
     // ── Operational observability ────────────────────────────
 
     pub fn upsert_processing_job(&self, job: &ProcessingJob) -> Result<()> {
@@ -1508,74 +1388,6 @@ mod tests {
             created_at: now,
             updated_at: now,
         }
-    }
-
-    fn session_chunk(project: &str, session_id: &str, document: &str) -> MemoryChunk {
-        let mut c = sample_chunk(project, document, Importance::Knowledge);
-        c.metadata.session_id = session_id.to_string();
-        c.metadata.cwd = Some(format!("/old/{project}"));
-        c
-    }
-
-    #[tokio::test]
-    async fn reparent_session_moves_chunks_to_new_session_and_project() {
-        let dir = tempfile::tempdir().unwrap();
-        let db = Database::new(dir.path()).await.unwrap();
-        let c1 = session_chunk("old-proj", "sess_A", "chunk one");
-        let c2 = session_chunk("old-proj", "sess_A", "chunk two");
-        // c3 belongs to a different session and must NOT be touched.
-        let c3 = session_chunk("old-proj", "sess_B", "unrelated");
-        db.insert_chunk(&c1).unwrap();
-        db.insert_chunk(&c2).unwrap();
-        db.insert_chunk(&c3).unwrap();
-
-        let moved = db
-            .reparent_session(
-                "sess_A",
-                "sess_NEW",
-                "new-proj",
-                "/mnt/c/Users/root/new-proj",
-            )
-            .expect("reparent");
-        assert_eq!(moved.len(), 2);
-        for chunk in &moved {
-            assert_eq!(chunk.metadata.session_id, "sess_NEW");
-            assert_eq!(chunk.metadata.parent_session_id.as_deref(), Some("sess_A"));
-            assert_eq!(
-                chunk.metadata.cwd.as_deref(),
-                Some("/mnt/c/Users/root/new-proj")
-            );
-            assert_eq!(chunk.project, "new-proj");
-        }
-
-        // Source session must be empty post-move; unrelated session intact.
-        assert!(db.get_chunks_by_session("sess_A").unwrap().is_empty());
-        let untouched = db.get_chunks_by_session("sess_B").unwrap();
-        assert_eq!(untouched.len(), 1);
-        assert_eq!(untouched[0].project, "old-proj");
-    }
-
-    #[tokio::test]
-    async fn reparent_session_preserves_oldest_parent_on_double_fork() {
-        // When a chunk is forked a second time, the original ancestor should
-        // remain the recorded parent — otherwise lineage gets lost on each hop.
-        let dir = tempfile::tempdir().unwrap();
-        let db = Database::new(dir.path()).await.unwrap();
-        let c = session_chunk("p1", "sess_root", "original");
-        db.insert_chunk(&c).unwrap();
-
-        db.reparent_session("sess_root", "sess_mid", "p2", "/p2")
-            .unwrap();
-        let moved = db
-            .reparent_session("sess_mid", "sess_leaf", "p3", "/p3")
-            .unwrap();
-
-        assert_eq!(moved.len(), 1);
-        assert_eq!(
-            moved[0].metadata.parent_session_id.as_deref(),
-            Some("sess_root"),
-            "parent should pin to the original root, not the intermediate session"
-        );
     }
 
     #[tokio::test]

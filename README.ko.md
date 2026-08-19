@@ -189,7 +189,6 @@ memnest는 메모리 엔진이지 에이전트 런타임이 아니다. 에이전
 | [`pi-extension/`](./pi-extension) | `pi-memnest` 0.6.0 | pi 연동. 툴 10개, `/memnest`, 프로젝트 범위 자동 컨텍스트, 피드백 |
 | [`adapters/`](./adapters) | 계약 | 연동 계약과 참조용 JSONL 어댑터 |
 | [`journal/`](./journal) | `memnest-journal` 0.1.0 | 선택. 마크다운과 git 감사 미러, 데이터베이스 백업은 아니다 |
-| [`learn/`](./learn) | `memnest-learn` 0.1.0 | 선택. pi 학습 레이어. **실험 단계**, 문서 없음 |
 
 ## 보안
 

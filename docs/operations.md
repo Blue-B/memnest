@@ -10,7 +10,7 @@ For what memnest is and how to connect an agent, start at the [README](../README
 
 The engine needs Git, a Rust toolchain with Rust 2024 edition support, and internet access on the first embedding operation so fastembed can download the configured model. Core CI builds and tests on Linux and Windows.
 
-The optional TypeScript packages under `pi-extension/`, `journal/`, and `learn/` list their own runtime requirements in their package README files.
+The optional packages under `pi-extension/` and `journal/` list their own runtime requirements in their package README files.
 
 ## Run as a service
 
@@ -143,7 +143,6 @@ These match the current package scripts and were verified against this checkout:
 cd core          && cargo check && cargo test -- --test-threads=1
 cd pi-extension  && npm run build && npm run smoke
 cd journal       && npm run smoke
-cd learn         && npm run build && npm test
 cd adapters/generic-http && node test.mjs
 ```
 

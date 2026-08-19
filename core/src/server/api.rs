@@ -23,7 +23,7 @@ pub struct SearchRequest {
     pub n_results: usize,
     #[serde(default)]
     pub recent_first: bool,
-    /// Optional category filter (e.g. "failure", "insight"). The learning layer uses this.
+    /// Optional semantic category filter (e.g. "failure", "insight").
     #[serde(default)]
     pub category: String,
     /// Drop reserved autolog buckets (root/default/global/_superseded) from
@@ -305,32 +305,6 @@ pub struct ReprojectResponse {
     ids: Vec<String>,
 }
 
-#[derive(Deserialize)]
-pub struct ForkSessionRequest {
-    pub from_session_id: String,
-    pub to_session_id: String,
-    /// Target cwd of the forked session. Required — the new project bucket
-    /// is derived from its basename so chunks land in the right collection.
-    pub to_cwd: String,
-    /// Optional explicit project bucket override. Defaults to `basename(to_cwd)`.
-    #[serde(default)]
-    pub to_project: Option<String>,
-    /// When true, just reports the match count without performing the move.
-    #[serde(default)]
-    pub dry_run: bool,
-}
-
-#[derive(Serialize)]
-pub struct ForkSessionResponse {
-    pub status: String,
-    pub matched: usize,
-    pub moved: usize,
-    pub to_project: String,
-    pub ids: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-}
-
 #[derive(Serialize)]
 pub struct SummaryResponse {
     status: String,
@@ -444,8 +418,6 @@ pub struct StatsResponse {
     total_facts: usize,
     total_notes: usize,
     total_servers: usize,
-    graph_nodes: usize,
-    graph_edges: usize,
     collections: Vec<CollectionEntry>,
     age_buckets: AgeBuckets,
     disk: DiskStats,
@@ -601,7 +573,7 @@ pub(crate) async fn run_hybrid_search(
             }
             if let Some(cf) = &cat_filter {
                 // Compare against the serde (snake_case) name so multi-word
-                // categories match what the learning layer sends, e.g.
+                // Categories are client-supplied semantic labels, e.g.
                 // ToolQuirk -> "tool_quirk" (NOT the CamelCase Debug form).
                 let actual = serde_json::to_value(&c.metadata.category)
                     .ok()
@@ -691,129 +663,6 @@ pub(crate) async fn run_hybrid_search(
         let ranked = items.into_iter().map(|(item, _)| item).collect();
         diversify_by_project(ranked, n_results)
     }
-}
-
-#[derive(Deserialize)]
-pub struct NeighborsRequest {
-    #[serde(default)]
-    pub text: String,
-    #[serde(default)]
-    pub id: String,
-    #[serde(default = "default_neighbors_k")]
-    pub k: usize,
-    /// Cosine-distance cap; 0 means no cap. Lower = stricter near-duplicate.
-    #[serde(default)]
-    pub max_distance: f32,
-    #[serde(default = "default_project")]
-    pub project: String,
-}
-fn default_neighbors_k() -> usize {
-    10
-}
-
-#[derive(Debug, Serialize)]
-pub struct NeighborItem {
-    pub id: String,
-    pub project: String,
-    pub document: String,
-    pub distance: f32,
-    pub category: String,
-    pub importance: String,
-    pub chunk_type: String,
-}
-
-/// How many candidates to pull from the global vector index for a neighbours
-/// query. The index is global but chunks are project-scoped and the project
-/// filter runs per candidate, so a scoped query that fetches only `k + 1` is
-/// starved whenever one bucket dominates the store: the whole candidate set
-/// comes back as that bucket and the scoped caller gets nothing. Unscoped
-/// queries keep taking exactly the global top `k + 1`.
-///
-/// ponytail: flat 2000-candidate floor when scoped, scaling to 4000 for large
-/// k. Sized against a store whose smallest bucket is ~0.05% of live index
-/// entries, where 160 candidates returned nothing and 2000 returned that
-/// bucket's nearest rows. Measured cost of the deep fetch is ~0.15s, and every
-/// scoped caller is a background dedup pass rather than the user's critical
-/// path. A bucket rarer than this floor can still come back short; the upgrade
-/// path is a per-project vector index, not a bigger constant.
-fn neighbor_candidates(project: &str, k: usize) -> usize {
-    if project == "all" {
-        k + 1
-    } else {
-        ((k + 1) * 40).clamp(2000, 4000)
-    }
-}
-
-/// Cosine nearest-neighbours of a chunk (by `id`) or of free `text`, straight
-/// from the HNSW index. This is the robust primitive for the learning layer's
-/// consolidation: client-side lexical similarity (trigrams) misses paraphrase
-/// duplicates that the engine's embeddings catch. Self is excluded.
-pub async fn neighbors(
-    State(system): State<Arc<RwLock<MemorySystem>>>,
-    Json(req): Json<NeighborsRequest>,
-) -> Json<Vec<NeighborItem>> {
-    let sys = system.read().await;
-    let query_embedding: Option<Vec<f32>> = if !req.id.trim().is_empty() {
-        let db = sys.db.read().await;
-        db.get_chunk(&req.id)
-            .ok()
-            .flatten()
-            .and_then(|c| c.embedding)
-    } else if !req.text.trim().is_empty() {
-        let embedder = sys.embedder.clone();
-        let text = req.text.clone();
-        tokio::task::spawn_blocking(move || embedder.encode_query(&text))
-            .await
-            .ok()
-            .and_then(|r| r.ok())
-    } else {
-        None
-    };
-    let Some(embedding) = query_embedding else {
-        return Json(Vec::new());
-    };
-    let k = req.k.clamp(1, 100);
-    // Scoped queries over-fetch so the per-candidate project filter below has
-    // something to keep; see `neighbor_candidates`.
-    let candidates = neighbor_candidates(&req.project, k);
-    let raw = sys
-        .vector_index
-        .read()
-        .await
-        .search(&embedding, candidates)
-        .unwrap_or_default();
-    let db = sys.db.read().await;
-    let mut out = Vec::new();
-    for (id, distance) in raw {
-        if id == req.id {
-            continue; // exclude self when querying by id
-        }
-        if req.max_distance > 0.0 && distance > req.max_distance {
-            continue;
-        }
-        if let Ok(Some(c)) = db.get_chunk(&id) {
-            if req.project != "all" && c.project != req.project {
-                continue;
-            }
-            out.push(NeighborItem {
-                id: c.id,
-                project: c.project,
-                // Generous limit: the learning layer rewrites/refines memories
-                // and skills from this field, so truncating here would silently
-                // drop content on write-back. 8000 chars covers single-sentence
-                // memories and multi-step skills with headroom.
-                document: redact_text(&c.document).chars().take(8000).collect(),
-                distance,
-                category: format!("{:?}", c.metadata.category),
-                importance: format!("{:?}", c.metadata.importance),
-                chunk_type: format!("{:?}", c.metadata.chunk_type),
-            });
-            if out.len() >= k {
-                break;
-            }
-        }
-    }
-    Json(out)
 }
 
 fn is_transcript_chunk(metadata: &Metadata) -> bool {
@@ -1755,115 +1604,6 @@ pub async fn reproject(
     })
 }
 
-/// POST /sessions/fork — reparent every chunk belonging to `from_session_id`
-/// onto a new session id + cwd. Used by CLIs that implement a fork primitive
-/// (`pi --fork`, claude-code resume into new path, codex subagent fork) so the
-/// memory side mirrors the jsonl-level fork instead of leaving orphan chunks
-/// in the source bucket.
-pub async fn fork_session(
-    State(system): State<Arc<RwLock<MemorySystem>>>,
-    Json(req): Json<ForkSessionRequest>,
-) -> Json<ForkSessionResponse> {
-    let from = req.from_session_id.trim().to_string();
-    let to = req.to_session_id.trim().to_string();
-    let to_cwd = req.to_cwd.trim().to_string();
-    if from.is_empty() || to.is_empty() || to_cwd.is_empty() {
-        return Json(ForkSessionResponse {
-            status: "error".into(),
-            matched: 0,
-            moved: 0,
-            to_project: String::new(),
-            ids: Vec::new(),
-            message: Some("from_session_id, to_session_id, and to_cwd are required".into()),
-        });
-    }
-    if from == to {
-        return Json(ForkSessionResponse {
-            status: "error".into(),
-            matched: 0,
-            moved: 0,
-            to_project: String::new(),
-            ids: Vec::new(),
-            message: Some("from_session_id must differ from to_session_id".into()),
-        });
-    }
-
-    let to_project = req
-        .to_project
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| project_from_cwd(&to_cwd));
-
-    let sys = system.read().await;
-
-    if req.dry_run {
-        // Count without mutating. Cheap pre-flight for clients that want to
-        // confirm with the user before committing.
-        let db = sys.db.read().await;
-        let ids = db
-            .get_chunks_by_session(&from)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|c| c.id)
-            .collect::<Vec<_>>();
-        return Json(ForkSessionResponse {
-            status: "ok".into(),
-            matched: ids.len(),
-            moved: 0,
-            to_project,
-            ids,
-            message: None,
-        });
-    }
-
-    let moved = {
-        let db = sys.db.write().await;
-        match db.reparent_session(&from, &to, &to_project, &to_cwd) {
-            Ok(moved) => moved,
-            Err(e) => {
-                return Json(ForkSessionResponse {
-                    status: "error".into(),
-                    matched: 0,
-                    moved: 0,
-                    to_project,
-                    ids: Vec::new(),
-                    message: Some(format!("reparent failed: {e}")),
-                });
-            }
-        }
-    };
-
-    // Refresh FTS5 project field so the moved chunks search under the new bucket.
-    let _ = sys.reindex_after_fork(&moved).await;
-
-    let ids: Vec<String> = moved.iter().map(|c| c.id.clone()).collect();
-    Json(ForkSessionResponse {
-        status: "ok".into(),
-        matched: moved.len(),
-        moved: moved.len(),
-        to_project,
-        ids,
-        message: None,
-    })
-}
-
-/// Derive a project bucket name from an absolute cwd. Falls back to `default`
-/// when the path is empty or has no last component (e.g. `/`).
-fn project_from_cwd(cwd: &str) -> String {
-    let trimmed = cwd.trim().trim_end_matches(['/', '\\']);
-    if trimmed.is_empty() {
-        return "default".into();
-    }
-    let last = trimmed.rsplit(['/', '\\']).next().unwrap_or("").trim();
-    if last.is_empty() {
-        "default".into()
-    } else {
-        last.to_string()
-    }
-}
-
 pub async fn add_summary(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<SummaryRequest>,
@@ -2509,7 +2249,6 @@ pub async fn stats(
     let total_facts = db.fact_count().unwrap_or(0);
     let total_notes = db.note_count().unwrap_or(0);
     let total_servers = db.server_count().unwrap_or(0);
-    let (graph_nodes, graph_edges) = db.graph_stats().unwrap_or((0, 0));
 
     // T2: health report fields
     let coll_stats = db.collection_stats(500).unwrap_or_default();
@@ -2587,13 +2326,12 @@ pub async fn stats(
              <h1 class="text-3xl md:text-5xl font-semibold tracking-tight max-w-3xl leading-tight" data-i18n="system.title">Status and integration paths.</h1>
              <p class="text-sm md:text-base text-slate-600 dark:text-slate-300 mt-4 max-w-2xl leading-relaxed" data-i18n="system.subtitle">Review current storage volume and the endpoints needed for integration. Raw responses are kept under a debug link.</p>
              <div class="signal-line mt-7 mb-5 w-full max-w-xl"></div>
-             <div class="grid grid-cols-2 md:grid-cols-6 gap-3">
+             <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
               <div><div class="metric-label">chunks</div><div class="text-2xl font-semibold mt-1">{}</div></div>
               <div><div class="metric-label">sessions</div><div class="text-2xl font-semibold mt-1">{}</div></div>
               <div><div class="metric-label">facts</div><div class="text-2xl font-semibold mt-1">{}</div></div>
               <div><div class="metric-label">notes</div><div class="text-2xl font-semibold mt-1">{}</div></div>
               <div><div class="metric-label">servers</div><div class="text-2xl font-semibold mt-1">{}</div></div>
-              <div><div class="metric-label">graph</div><div class="text-2xl font-semibold mt-1">{} / {}</div></div>
              </div>
             </section>
             <div class="grid grid-cols-1 lg:grid-cols-[0.95fr_1.05fr] gap-5">
@@ -2618,14 +2356,7 @@ pub async fn stats(
               </div>
              </section>
             </div>"##,
-            total_chunks,
-            total_sessions,
-            total_facts,
-            total_notes,
-            total_servers,
-            graph_nodes,
-            graph_edges,
-            endpoint_rows
+            total_chunks, total_sessions, total_facts, total_notes, total_servers, endpoint_rows
         );
 
         let html = BASE_HTML
@@ -2645,8 +2376,6 @@ pub async fn stats(
         total_facts,
         total_notes,
         total_servers,
-        graph_nodes,
-        graph_edges,
         collections,
         age_buckets,
         disk,
@@ -4177,7 +3906,6 @@ var i18n = {
   'metric.memories': '메모리',
   'metric.facts': '지식',
   'metric.notes': '노트',
-  'metric.graph': '그래프',
   'panel.collections': '컬렉션',
   'panel.recent': '최근 입력',
   'panel.health': '시스템 상태',
@@ -4210,7 +3938,6 @@ var i18n = {
   'console.storage': '저장 공간',
   'console.rootShare': 'root 집중도',
   'console.staleRoot': '30일 초과 root 기록',
-  'console.graphNodes': '그래프 노드 / 사실',
   'console.verdicts': '도움됨 / 문제',
   'console.recentSearches': '최근 검색과 주입 후보',
   'console.viewJson': 'JSON 보기',
@@ -4265,7 +3992,6 @@ var i18n = {
   'metric.memories': 'Memories',
   'metric.facts': 'Facts',
   'metric.notes': 'Notes',
-  'metric.graph': 'Graph',
   'panel.collections': 'Collections',
   'panel.recent': 'Recent entries',
   'panel.health': 'System health',
@@ -4298,7 +4024,6 @@ var i18n = {
   'console.storage': 'Storage',
   'console.rootShare': 'Root share',
   'console.staleRoot': 'Root records older than 30 days',
-  'console.graphNodes': 'Graph nodes / facts',
   'console.verdicts': 'Helpful / harmful',
   'console.recentSearches': 'Recent searches and injection candidates',
   'console.viewJson': 'View JSON',
@@ -4406,9 +4131,7 @@ pub async fn viewer_dashboard(State(system): State<Arc<RwLock<MemorySystem>>>) -
 
     let total_chunks = db.chunk_count().unwrap_or(0);
     let total_sessions = db.summary_count().unwrap_or(0);
-    let total_facts = db.fact_count().unwrap_or(0);
     let total_notes = db.note_count().unwrap_or(0);
-    let (graph_nodes, _) = db.graph_stats().unwrap_or((0, 0));
     let collections = db.collection_stats(8).unwrap_or_default();
     let recent = db.recent_chunks(6).unwrap_or_default();
     let recalls = db.recent_recall_events(8).unwrap_or_default();
@@ -4571,7 +4294,6 @@ pub async fn viewer_dashboard(State(system): State<Arc<RwLock<MemorySystem>>>) -
          <div class="console-alerts">
           <div class="console-alert {}"><span data-i18n="console.rootShare">Root share</span> {:.1}% ({})</div>
           <div class="console-alert {}"><span data-i18n="console.staleRoot">Root records older than 30 days</span> {}</div>
-          <div class="console-alert {}"><span data-i18n="console.graphNodes">Graph nodes / facts</span> {} / {}</div>
           <div class="console-alert {}"><span data-i18n="console.verdicts">Helpful / harmful</span> {} / {}</div>
          </div>
 
@@ -4635,9 +4357,6 @@ pub async fn viewer_dashboard(State(system): State<Arc<RwLock<MemorySystem>>>) -
         root_chunks,
         if over_30d > 10_000 { "" } else { "ok" },
         over_30d,
-        if graph_nodes == 0 { "" } else { "ok" },
-        graph_nodes,
-        total_facts,
         if operations.harmful_24h > 0 { "" } else { "ok" },
         operations.helpful_24h,
         operations.harmful_24h,

@@ -15,9 +15,6 @@ pub struct Config {
     pub keyword_max_bonus: f32,
     pub mmr_lambda: f32,
     pub mmr_diversity_penalty: f32,
-    pub stale_fact_days: i64,
-    pub enable_encryption: bool,
-    pub enable_graph: bool,
     pub enable_lifecycle: bool,
 }
 
@@ -44,9 +41,6 @@ impl Default for Config {
             keyword_max_bonus: 0.15,
             mmr_lambda: 0.5,
             mmr_diversity_penalty: 0.15,
-            stale_fact_days: 180,
-            enable_encryption: true,
-            enable_graph: true,
             enable_lifecycle: true,
         }
     }
