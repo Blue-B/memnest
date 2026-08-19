@@ -223,10 +223,6 @@ function installAutocontext(pi) {
   const disabled = env[DISABLE_ENV] === "1" || MODE === "off" || MODE === "none";
   let lastSeenQuery = null;
   let lastInjectedTokens = null;
-  let lastInjectedAt = 0;
-  let lastInjectedCount = 0;
-  let lastSkipReason = disabled ? "disabled" : "none";
-  let lastInjectReason = "none";
   let injections = 0;
   let currentProject;
   pi.on("session_start", (_event, context) => {
@@ -234,30 +230,17 @@ function installAutocontext(pi) {
     currentProject = typeof cwd === "string" ? cwd.split(/[\\/]/).filter(Boolean).pop() : void 0;
     lastSeenQuery = null;
     lastInjectedTokens = null;
-    lastInjectedAt = 0;
-    lastInjectedCount = 0;
-    lastSkipReason = disabled ? "disabled" : "none";
-    lastInjectReason = "none";
     injections = 0;
   });
   if (!disabled) {
     pi.on("before_agent_start", async (event) => {
       const e = event && typeof event === "object" ? event : {};
       const prompt = typeof e.prompt === "string" ? e.prompt : "";
-      if (!isSubstantive(prompt)) {
-        lastSkipReason = "not-substantive";
-        return;
-      }
+      if (!isSubstantive(prompt)) return;
       const q = normQuery(prompt);
-      if (q === lastSeenQuery) {
-        lastSkipReason = "duplicate-prompt";
-        return;
-      }
+      if (q === lastSeenQuery) return;
       lastSeenQuery = q;
-      if (injections >= MAX_INJECTIONS) {
-        lastSkipReason = "session-cap";
-        return;
-      }
+      if (injections >= MAX_INJECTIONS) return;
       const labels = riskLabels(prompt);
       let reason = "";
       let query = prompt;
@@ -273,28 +256,17 @@ function installAutocontext(pi) {
         reason = "first-substantive-turn";
         if (lastInjectedTokens) {
           const sim = overlap(tokens, lastInjectedTokens);
-          if (sim >= TOPIC_OVERLAP) {
-            lastSkipReason = `same-topic overlap=${sim.toFixed(2)}`;
-            return;
-          }
+          if (sim >= TOPIC_OVERLAP) return;
           reason = `topic-shift overlap=${sim.toFixed(2)}`;
         }
         tokensForSuccess = tokens;
       } else {
-        lastSkipReason = "no-risk-trigger";
         return;
       }
       const results = await searchMemnest(query, currentProject);
       const block = formatBlock(results, reason, { strong });
-      if (!block) {
-        lastSkipReason = "no-results";
-        return;
-      }
+      if (!block) return;
       if (tokensForSuccess) lastInjectedTokens = tokensForSuccess;
-      lastInjectedAt = Date.now();
-      lastInjectedCount = Math.min(results.length, TOP_INJECT);
-      lastInjectReason = reason;
-      lastSkipReason = "none";
       injections++;
       return {
         message: { customType: CUSTOM_TYPE, content: block, display: false }
