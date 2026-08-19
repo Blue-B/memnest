@@ -118,8 +118,8 @@ Common controls:
 | `MEMNEST_AUTOCONTEXT_MODE` | `balanced` | `balanced`, `aggressive`, or `off`. |
 | `MEMNEST_AUTOCONTEXT_TOP` | `2` | Maximum results included in one card. |
 | `MEMNEST_AUTOCONTEXT_MAX_INJECTIONS` | `4` | Maximum cards in one session. |
-| `MEMNEST_AUTOCONTEXT_MIN_SCORE` | `0.12` | Minimum score for the general lane. |
-| `MEMNEST_AUTOCONTEXT_RISK_MIN_SCORE` | `0.12` | Minimum score for a risk-triggered card. |
+| `MEMNEST_AUTOCONTEXT_MIN_SCORE` | `0.25` | Minimum score for the general lane. |
+| `MEMNEST_AUTOCONTEXT_RISK_MIN_SCORE` | `0.25` | Minimum score for a risk-triggered card. |
 | `MEMNEST_AUTOCONTEXT_EXCLUDE` | `_superseded,default,root,global` | Collections excluded from automatic retrieval. |
 
 Run `memnest_autocontext_status` to see the active mode, counters, and a test retrieval.

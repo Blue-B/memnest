@@ -41,8 +41,8 @@ const TOPIC_OVERLAP = Math.max(
 	0,
 	Math.min(1, Number(env.MEMNEST_AUTOCONTEXT_TOPIC_OVERLAP ?? "0.35")),
 );
-const MIN_SCORE = Number(env.MEMNEST_AUTOCONTEXT_MIN_SCORE ?? "0.12");
-const RISK_MIN_SCORE = Number(env.MEMNEST_AUTOCONTEXT_RISK_MIN_SCORE ?? "0.12");
+const MIN_SCORE = Number(env.MEMNEST_AUTOCONTEXT_MIN_SCORE ?? "0.25");
+const RISK_MIN_SCORE = Number(env.MEMNEST_AUTOCONTEXT_RISK_MIN_SCORE ?? "0.25");
 const MIN_LEN = Math.max(
 	1,
 	parseInt(env.MEMNEST_AUTOCONTEXT_MIN_LEN || "16", 10) || 16,
