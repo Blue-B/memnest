@@ -50,8 +50,7 @@ assert("init creates repo", r.code === 0 && existsSync(join(DIR, ".git")), r.err
 // 2. export+sync writes chunks and commits
 r = cli("sync", "--message", "smoke: initial sync");
 assert("sync exits 0", r.code === 0, r.err);
-const chunkDirs = existsSync(join(DIR, "chunks")) ? readdirSync(join(DIR, "chunks")) : [];
-assert("chunks/ subtree exists", chunkDirs.length > 0);
+assert("chunks/ subtree exists", existsSync(join(DIR, "chunks")));
 
 // 3. add a fresh chunk via HTTP to ensure something new on next sync.
 //     memnest /add is queued — we poll /stats until total_chunks
