@@ -15,7 +15,7 @@ pub mod server;
 pub mod storage;
 pub mod watch;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -38,7 +38,13 @@ impl MemorySystem {
         // This means PAT/API key storage works out of the box.
         let master_key = crypto::resolve_master_key(&config.data_dir)?;
         crypto::init_crypto(Some(&master_key))?;
-        let db = Arc::new(RwLock::new(storage::Database::new(&config.data_dir).await?));
+        let database = storage::Database::new(&config.data_dir).await?;
+        let encrypted_values = database.encrypted_vault_values()?;
+        if let Err(error) = crypto::validate_ciphertexts(&master_key, &encrypted_values) {
+            crypto::disable_crypto()?;
+            return Err(error).context("vault key validation failed");
+        }
+        let db = Arc::new(RwLock::new(database));
         let model_cache = config.data_dir.join("models");
         std::fs::create_dir_all(&model_cache)?;
         let embedder = Arc::new(embedding::Embedder::new(

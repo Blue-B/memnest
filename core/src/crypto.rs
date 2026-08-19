@@ -95,6 +95,16 @@ pub fn init_crypto(master_key: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn disable_crypto() -> Result<()> {
+    *CIPHER
+        .write()
+        .map_err(|_| anyhow!("crypto lock poisoned"))? = None;
+    *LEGACY_CIPHER
+        .write()
+        .map_err(|_| anyhow!("crypto lock poisoned"))? = None;
+    Ok(())
+}
+
 pub fn is_enabled() -> bool {
     CIPHER.read().map(|c| c.is_some()).unwrap_or(false)
 }
@@ -115,17 +125,14 @@ pub fn encrypt(plaintext: &str) -> Result<String> {
     Ok(format!("$enc${}", BASE64.encode(&combined)))
 }
 
-pub fn decrypt(ciphertext: &str) -> Result<String> {
-    if !ciphertext.starts_with("$enc$") {
-        return Err(anyhow!(
-            "refusing to return plaintext from the secret vault"
-        ));
-    }
-    let payload = &ciphertext[5..];
-    let guard = CIPHER.read().map_err(|_| anyhow!("crypto lock poisoned"))?;
-    let Some(cipher) = guard.as_ref() else {
-        return Err(anyhow!("encryption is disabled but encrypted data found"));
-    };
+fn decrypt_with_ciphers(
+    ciphertext: &str,
+    cipher: &Aes256Gcm,
+    legacy: Option<&Aes256Gcm>,
+) -> Result<String> {
+    let payload = ciphertext
+        .strip_prefix("$enc$")
+        .ok_or_else(|| anyhow!("refusing to return plaintext from the secret vault"))?;
     let decoded = BASE64
         .decode(payload)
         .context("invalid base64 ciphertext")?;
@@ -137,9 +144,7 @@ pub fn decrypt(ciphertext: &str) -> Result<String> {
     if let Ok(plaintext) = cipher.decrypt(nonce, encrypted) {
         return String::from_utf8(plaintext).context("invalid utf8 after decryption");
     }
-    // Fall back to the legacy (pre-rename) salt so migrated vaults decrypt.
-    if let Ok(lguard) = LEGACY_CIPHER.read()
-        && let Some(legacy) = lguard.as_ref()
+    if let Some(legacy) = legacy
         && let Ok(plaintext) = legacy.decrypt(nonce, encrypted)
     {
         return String::from_utf8(plaintext).context("invalid utf8 after decryption");
@@ -147,6 +152,41 @@ pub fn decrypt(ciphertext: &str) -> Result<String> {
     Err(anyhow!(
         "decryption failed (primary and legacy keys both rejected)"
     ))
+}
+
+pub fn decrypt(ciphertext: &str) -> Result<String> {
+    let guard = CIPHER.read().map_err(|_| anyhow!("crypto lock poisoned"))?;
+    let cipher = guard
+        .as_ref()
+        .ok_or_else(|| anyhow!("encryption is disabled but encrypted data found"))?;
+    let legacy_guard = LEGACY_CIPHER
+        .read()
+        .map_err(|_| anyhow!("crypto lock poisoned"))?;
+    decrypt_with_ciphers(ciphertext, cipher, legacy_guard.as_ref())
+}
+
+pub(crate) fn validate_ciphertexts(master_key: &str, values: &[String]) -> Result<()> {
+    if values.is_empty() {
+        return Ok(());
+    }
+    let cipher = derive_cipher(master_key.trim(), SALT)?;
+    let legacy = derive_cipher(master_key.trim(), LEGACY_SALT)?;
+    for value in values {
+        decrypt_with_ciphers(value, &cipher, Some(&legacy))?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn encrypt_with_master_key(master_key: &str, plaintext: &str) -> Result<String> {
+    let cipher = derive_cipher(master_key.trim(), SALT)?;
+    let nonce_bytes = [7u8; 12];
+    let encrypted = cipher
+        .encrypt(Nonce::from_slice(&nonce_bytes), plaintext.as_bytes())
+        .map_err(|error| anyhow!("encryption failed: {error}"))?;
+    let mut combined = nonce_bytes.to_vec();
+    combined.extend_from_slice(&encrypted);
+    Ok(format!("$enc${}", BASE64.encode(combined)))
 }
 
 #[cfg(test)]
@@ -187,6 +227,9 @@ mod tests {
             legacy.decrypt(nonce, ct.as_ref()).unwrap(),
             b"old-vault-secret"
         );
+        let mut encoded = vec![9u8; 12];
+        encoded.extend_from_slice(&ct);
+        validate_ciphertexts(key, &[format!("$enc${}", BASE64.encode(encoded))]).unwrap();
     }
 
     #[test]
