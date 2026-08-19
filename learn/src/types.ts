@@ -33,7 +33,15 @@ export interface LearnedMemory {
   importance?: Importance;
 }
 
-/** A search result returned by the memnest engine (`POST /search`). */
+/**
+ * A memory row as the engine renders it. Returned by `POST /search` and, in the
+ * same shape, by `GET /collection/{name}`.
+ *
+ * `helpful_count` / `harmful_count` carry recall feedback and are what let a
+ * prompt-independent block rank by durability instead of by query similarity.
+ * They are optional here because the fake clients in the test suite predate
+ * them; treat a missing count as zero.
+ */
 export interface SearchItem {
   id: string;
   project: string;
@@ -43,6 +51,8 @@ export interface SearchItem {
   chunk_type: string;
   importance: string;
   category: string;
+  helpful_count?: number;
+  harmful_count?: number;
 }
 
 /** Minimal transcript turn the capture step reasons over. */
@@ -60,6 +70,50 @@ export type LlmComplete = (input: {
   system: string;
   user: string;
 }) => Promise<string>;
+
+/**
+ * How durable each importance level is, high to low. Mirrors the routing rule
+ * in `capture.ts`: `preference` and `decision` are the cross-project lessons
+ * worth restating every session, `knowledge` is useful but situational, `log`
+ * is chatter. The engine returns importance PascalCased (`"Preference"`), so
+ * always lowercase before looking a value up here.
+ */
+const IMPORTANCE_RANK: Record<string, number> = {
+  preference: 3,
+  decision: 2,
+  knowledge: 1,
+  log: 0,
+};
+
+function importanceRank(importance: string): number {
+  return IMPORTANCE_RANK[importance.trim().toLowerCase()] ?? 0;
+}
+
+/**
+ * Order memories for a prompt-INDEPENDENT block by how durable they are.
+ *
+ * The injection snapshot is standing context, not an answer to the current
+ * prompt, so relevance to a query is the wrong signal. Ranking by cosine
+ * distance to a fixed placeholder string (what this layer used to do) is not
+ * relevance at all, it is noise with a threshold on top. Durability is what a
+ * standing block actually wants: how important the memory was judged, whether
+ * feedback confirmed it, and how recent it is.
+ *
+ * The comparator is a total order (id breaks ties last), so the same rows
+ * always render the same bytes. That is what keeps the snapshot prefix-cache
+ * stable. Only stored fields are compared, never wall-clock age, so the result
+ * does not drift between turns.
+ */
+export function rankByDurability<T extends SearchItem>(items: readonly T[]): T[] {
+  const net = (i: T) => (i.helpful_count ?? 0) - (i.harmful_count ?? 0);
+  return [...items].sort(
+    (a, b) =>
+      importanceRank(b.importance) - importanceRank(a.importance) ||
+      net(b) - net(a) ||
+      b.timestamp.localeCompare(a.timestamp) ||
+      a.id.localeCompare(b.id),
+  );
+}
 
 /** Importance fallback per category when the extractor doesn't specify one. */
 export function defaultImportanceFor(category: MemoryCategory): Importance {

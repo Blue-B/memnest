@@ -18,11 +18,14 @@ Three loops run on top of the normal store:
 | Skill refinement | `skills.ts` | A procedural learning either appends a step or caveat to the closest saved skill or drafts a new one, so a procedure improves while it is used instead of staying frozen at the version first written. |
 | User model | `user-model.ts` | On the same capture pass, memories categorised `preference` are folded into a small set of refined facets, so restating a preference sharpens one facet instead of adding another near-duplicate row. Other categories, corrections included, feed normal memory but not the user model. |
 
-Capture routes by importance instead of writing everything to one place. A memory that lands on importance `preference` or `decision` (which covers the `preference`, `correction`, and `convention` categories) is a durable cross-project lesson, so it is written to the shared `playbook` bucket. That bucket is the only one the `learned_rules` injection slot searches, so the routing is what keeps that slot fed: a memory written anywhere else is stored but never injected back. Everything weaker stays project-local.
+Capture routes by importance instead of writing everything to one place. A memory that lands on importance `preference` or `decision` (which covers the `preference`, `correction`, and `convention` categories) is a durable cross-project lesson, so it is written to the shared `playbook` bucket. That bucket is the only one the `learned_rules` injection slot reads, so the routing is what keeps that slot fed: a memory written anywhere else is stored but never injected back. Everything weaker stays project-local.
 
 Two supporting pieces shape what the agent actually sees:
 
-- `kv-snapshot.ts` keeps the injected block byte-stable between deliberate checkpoints (session start, compaction, day rollover). Prefix-caching runtimes invalidate their cache from the first differing token, so a block that changed every turn would force the conversation tail to be reprocessed each turn.
+- `kv-snapshot.ts` keeps the injected block byte-stable between deliberate checkpoints (session start, compaction, day rollover). Prefix-caching runtimes invalidate their cache from the first differing token, so a block that changed every turn would force the conversation tail to be reprocessed each turn. A newly captured memory therefore does not rebuild the block; it appears at the next checkpoint.
+
+The injected block is standing context and takes no query. Who the user is, what is open, and which rules they keep restating do not change with the prompt, so its slots are selected by durability (importance, then recall feedback, then recency) rather than by similarity to a search string. Selection reads each bucket directly through `GET /collection/{name}`, because ranking rows by their distance to a fixed placeholder sentence is not relevance, and a threshold on that number only tunes noise. Prompt-aware retrieval is a separate job, done on demand and risk-gated by `autocontext.ts` in the `pi-extension` package.
+
 - `budget.ts` is a sliding-window limiter over the borrowed model. Automatic capture, skill refinement, and user-model work share `MEMNEST_LLM_MAX_CALLS` calls per window; when the window is spent those steps return nothing rather than competing with the user's own requests. Tools invoked by hand are not limited.
 
 `consolidate.ts` clusters near-duplicate memories by trigram similarity and merges each cluster into one canonical entry, retiring the rest without deleting them.
@@ -71,7 +74,7 @@ Registered tools:
 
 ## Where it stores things
 
-Engine buckets, through `/add`, `/update`, `/search`, `/context`, `/neighbors`, and `/summary`:
+Engine buckets, through `/add`, `/update`, `/search`, `/context`, `/neighbors`, `/collection/{name}`, and `/summary`:
 
 - the current project bucket, named from `MEMNEST_PROJECT` or the working directory's base name, for captured memories that are not routed to `playbook`
 - `_skills` for procedures
@@ -92,8 +95,7 @@ Local files, under `MEMNEST_LEARN_DIR` (default `~/.pi/agent/memnest-learn`):
 | `MEMNEST_LEARN_DIR` | `~/.pi/agent/memnest-learn` | Where the scratchpad and daily logs live. |
 | `MEMNEST_LEARN_INJECT` | on | Set to `0` to stop injecting the memory block. Capture and the learning loops keep running. |
 | `MEMNEST_CAPTURE_TURNS` | `10` | Turns between automatic capture passes. |
-| `MEMNEST_LEARN_RULE_TOP` | `2` | Learned rules injected from `playbook`. |
-| `MEMNEST_LEARN_RULE_MIN_SCORE` | `0.12` | Minimum score for one of those rules. |
+| `MEMNEST_LEARN_RULE_TOP` | `2` | Learned rules injected from `playbook`, most durable first. |
 | `MEMNEST_LLM_MAX_CALLS` | `24` | Background model calls allowed per window. |
 | `MEMNEST_LLM_WINDOW_MS` | `300000` | Length of that window. |
 
@@ -102,7 +104,7 @@ Every value above was read from `src/`; there are no other environment variables
 ## Development
 
 ```bash
-bun test test/       # 33 tests across 3 files
+bun test test/       # 29 tests across 3 files
 bun run typecheck    # tsc --noEmit
 bun run build
 ```

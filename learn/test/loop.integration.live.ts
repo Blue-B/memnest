@@ -88,7 +88,9 @@ async function main() {
   );
   check("similar facet is refined, not duplicated", u2.refined === 1 && u2.added === 0, JSON.stringify(u2));
 
-  const profile = await userModelContext(client, "package manager preference");
+  // No query: the block is standing context, so it reads the bucket and ranks
+  // by durability. That also means no wait for HNSW indexing here.
+  const profile = await userModelContext(client, { max: 20 });
   check("userModelContext renders a who-you-are block", profile.startsWith("user_profile:") && profile.includes("Bun"), profile.slice(0, 120));
 
   console.log(`\n=== ${failures === 0 ? "ALL CLOSED-LOOP CHECKS PASSED" : failures + " CHECK(S) FAILED"} ===`);

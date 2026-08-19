@@ -15,6 +15,13 @@ class MemnestClient {
     this.baseUrl = baseUrl;
     this.fetchFn = fetchFn;
   }
+  async get(path, signal) {
+    const res = await this.fetchFn(`${this.baseUrl}${path}`, { method: "GET", signal });
+    if (!res.ok) {
+      throw new Error(`memnest ${path} -> HTTP ${res.status}: ${await safeText(res)}`);
+    }
+    return res.json();
+  }
   async post(path, body, signal) {
     const res = await this.fetchFn(`${this.baseUrl}${path}`, {
       method: "POST",
@@ -61,6 +68,10 @@ class MemnestClient {
     const out = await this.post("/search", body);
     return out?.results ?? [];
   }
+  async collection(name) {
+    const out = await this.get(`/collection/${encodeURIComponent(name)}`);
+    return Array.isArray(out) ? out : [];
+  }
   async context(query, opts = {}) {
     const out = await this.post("/context", {
       query,
@@ -101,7 +112,7 @@ async function safeText(res) {
 
 // src/kv-snapshot.ts
 function emptySnapshot() {
-  return { text: null, takenAt: null, takenOnDate: null, reason: null, dirty: false };
+  return { text: null, takenAt: null, takenOnDate: null, reason: null };
 }
 var systemClock = {
   isoNow: () => new Date().toISOString(),
@@ -120,22 +131,14 @@ class MemorySnapshot {
       text,
       takenAt: this.clock.isoNow(),
       takenOnDate: this.clock.today(),
-      reason,
-      dirty: false
+      reason
     };
   }
-  markDirty() {
-    this.state.dirty = true;
-  }
   needsRefresh() {
-    return this.state.text === null || this.state.dirty || this.state.takenOnDate !== this.clock.today();
+    return this.state.text === null || this.state.takenOnDate !== this.clock.today();
   }
   nextReason() {
-    if (this.state.text === null)
-      return "first_turn";
-    if (this.state.dirty)
-      return "long_term_write";
-    return "day_rollover";
+    return this.state.text === null ? "first_turn" : "day_rollover";
   }
   async get(builder) {
     if (this.needsRefresh()) {
@@ -158,6 +161,19 @@ var MEMORY_CATEGORIES = [
   "convention",
   "tool_quirk"
 ];
+var IMPORTANCE_RANK = {
+  preference: 3,
+  decision: 2,
+  knowledge: 1,
+  log: 0
+};
+function importanceRank(importance) {
+  return IMPORTANCE_RANK[importance.trim().toLowerCase()] ?? 0;
+}
+function rankByDurability(items) {
+  const net = (i) => (i.helpful_count ?? 0) - (i.harmful_count ?? 0);
+  return [...items].sort((a, b) => importanceRank(b.importance) - importanceRank(a.importance) || net(b) - net(a) || b.timestamp.localeCompare(a.timestamp) || a.id.localeCompare(b.id));
+}
 function defaultImportanceFor(category) {
   switch (category) {
     case "preference":
@@ -569,15 +585,11 @@ ${f.text}`
   }
   return { refined, added };
 }
-async function userModelContext(client, query, opts = {}) {
-  const max = opts.max ?? 5;
-  const hits = await client.search(query || "user preferences and working style", {
-    project: USER_MODEL_PROJECT,
-    nResults: max
-  });
-  if (hits.length === 0)
+async function userModelContext(client, opts = {}) {
+  const facets = rankByDurability(await client.collection(USER_MODEL_PROJECT)).slice(0, opts.max ?? 5);
+  if (facets.length === 0)
     return "";
-  const lines = hits.map((h) => `- ${h.document.replace(/\s+/g, " ").trim()}`);
+  const lines = facets.map((f) => `- ${f.document.replace(/\s+/g, " ").trim()}`);
   return ["user_profile:", ...lines].join(`
 `);
 }
@@ -652,7 +664,6 @@ var SCRATCHPAD_FILE = path.join(LEARN_DIR, "SCRATCHPAD.md");
 var DAILY_DIR = path.join(LEARN_DIR, "daily");
 var CAPTURE_EVERY_TURNS = Number(process.env.MEMNEST_CAPTURE_TURNS ?? 10);
 var LEARN_INJECT = process.env.MEMNEST_LEARN_INJECT !== "0";
-var LEARN_RULE_MIN_SCORE = Number(process.env.MEMNEST_LEARN_RULE_MIN_SCORE ?? "0.12");
 var LEARN_RULE_TOP = Math.max(1, Number(process.env.MEMNEST_LEARN_RULE_TOP ?? "2") || 2);
 var LLM_MAX_CALLS = Number(process.env.MEMNEST_LLM_MAX_CALLS ?? 24);
 var LLM_WINDOW_MS = Number(process.env.MEMNEST_LLM_WINDOW_MS ?? 5 * 60 * 1000);
@@ -717,10 +728,10 @@ async function learnFromMemories(memories, llm) {
     updateUserModel(client, memories, llm, { max: 4 })
   ]);
 }
-async function buildInjection(prompt) {
+async function buildInjection() {
   const parts = [];
   try {
-    const profile = await userModelContext(client, prompt || "user preferences working style", { max: 3 });
+    const profile = await userModelContext(client, { max: 3 });
     if (profile.trim())
       parts.push(profile);
   } catch (e) {
@@ -733,12 +744,9 @@ async function buildInjection(prompt) {
       parts.push(`- [ ] ${i.text}`);
   }
   try {
-    const rules = (await client.search(prompt || "user corrections and preferences", {
-      project: "playbook",
-      nResults: Math.max(4, LEARN_RULE_TOP * 2)
-    })).filter((r) => r.score >= LEARN_RULE_MIN_SCORE).slice(0, LEARN_RULE_TOP);
+    const rules = rankByDurability(await client.collection("playbook")).slice(0, LEARN_RULE_TOP);
     if (rules.length > 0) {
-      parts.push("learned_rules (relevant prior corrections; verify before applying):");
+      parts.push("learned_rules (durable prior corrections; verify before applying):");
       for (const r of rules) {
         parts.push(`- ${r.document.replace(/\s+/g, " ").trim().slice(0, 260)}`);
       }
@@ -747,9 +755,9 @@ async function buildInjection(prompt) {
     warn(e);
   }
   try {
-    const { prompt: pack } = await client.context(prompt || "recent work", {
+    const { prompt: pack } = await client.context("", {
       project: currentProject(),
-      nResults: 3,
+      nResults: 0,
       maxNotes: 4,
       maxFacts: 4,
       maxChars: 1800
@@ -768,11 +776,11 @@ function src_default(pi) {
     recentTurns = [];
     turnCounter = 0;
     if (LEARN_INJECT)
-      await snapshot.refresh("session_start", () => buildInjection(""));
+      await snapshot.refresh("session_start", buildInjection);
   });
   if (LEARN_INJECT) {
     pi.on("before_agent_start", async (event) => {
-      const { text, reason, takenAt } = await snapshot.get(() => buildInjection(event.prompt ?? ""));
+      const { text, reason, takenAt } = await snapshot.get(buildInjection);
       if (!text.trim())
         return;
       const header = [
@@ -832,7 +840,7 @@ function src_default(pi) {
       fs.writeFileSync(fp, appendDaily(readSafe(fp), handoff), "utf-8");
       client.summary(currentProject(), ctx.sessionManager.getSessionId(), handoff).catch(warn);
     }
-    await snapshot.refresh("before_compact", () => buildInjection(""));
+    await snapshot.refresh("before_compact", buildInjection);
   });
   pi.on("session_shutdown", async (_event, ctx) => {
     const llm = backgroundLlm(ctx);

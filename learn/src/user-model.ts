@@ -10,6 +10,7 @@
 
 import type { MemnestClient } from "./memnest-client.js";
 import { trigramSimilarity } from "./consolidate.js";
+import { rankByDurability } from "./types.js";
 import type { LearnedMemory, LlmComplete, MemoryCategory } from "./types.js";
 
 export const USER_MODEL_PROJECT = "_user_model";
@@ -107,18 +108,24 @@ export async function updateUserModel(
 /**
  * Build a compact "who you are" block from the top user-model facets, for the
  * byte-stable injection snapshot. Empty string when the model is empty.
+ *
+ * Takes no query on purpose. Who the user is does not change with the prompt,
+ * so there is nothing to be relevant to. The previous version searched this
+ * bucket for the literal string "user preferences and working style", which
+ * ranked facets by their similarity to that one sentence, and against a store
+ * where a single bucket holds most of the rows it returned nothing at all.
+ * Reading the bucket and ranking by durability makes the slot depend only on
+ * what is actually stored.
  */
 export async function userModelContext(
   client: MemnestClient,
-  query: string,
   opts: { max?: number } = {},
 ): Promise<string> {
-  const max = opts.max ?? 5;
-  const hits = await client.search(query || "user preferences and working style", {
-    project: USER_MODEL_PROJECT,
-    nResults: max,
-  });
-  if (hits.length === 0) return "";
-  const lines = hits.map((h) => `- ${h.document.replace(/\s+/g, " ").trim()}`);
+  const facets = rankByDurability(await client.collection(USER_MODEL_PROJECT)).slice(
+    0,
+    opts.max ?? 5,
+  );
+  if (facets.length === 0) return "";
+  const lines = facets.map((f) => `- ${f.document.replace(/\s+/g, " ").trim()}`);
   return ["user_profile:", ...lines].join("\n");
 }

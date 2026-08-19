@@ -748,6 +748,28 @@ pub struct NeighborItem {
     pub chunk_type: String,
 }
 
+/// How many candidates to pull from the global vector index for a neighbours
+/// query. The index is global but chunks are project-scoped and the project
+/// filter runs per candidate, so a scoped query that fetches only `k + 1` is
+/// starved whenever one bucket dominates the store: the whole candidate set
+/// comes back as that bucket and the scoped caller gets nothing. Unscoped
+/// queries keep taking exactly the global top `k + 1`.
+///
+/// ponytail: flat 2000-candidate floor when scoped, scaling to 4000 for large
+/// k. Sized against a store whose smallest bucket is ~0.05% of live index
+/// entries, where 160 candidates returned nothing and 2000 returned that
+/// bucket's nearest rows. Measured cost of the deep fetch is ~0.15s, and every
+/// scoped caller is a background dedup pass rather than the user's critical
+/// path. A bucket rarer than this floor can still come back short; the upgrade
+/// path is a per-project vector index, not a bigger constant.
+fn neighbor_candidates(project: &str, k: usize) -> usize {
+    if project == "all" {
+        k + 1
+    } else {
+        ((k + 1) * 40).clamp(2000, 4000)
+    }
+}
+
 /// Cosine nearest-neighbours of a chunk (by `id`) or of free `text`, straight
 /// from the HNSW index. This is the robust primitive for the learning layer's
 /// consolidation: client-side lexical similarity (trigrams) misses paraphrase
@@ -777,11 +799,14 @@ pub async fn neighbors(
         return Json(Vec::new());
     };
     let k = req.k.clamp(1, 100);
+    // Scoped queries over-fetch so the per-candidate project filter below has
+    // something to keep; see `neighbor_candidates`.
+    let candidates = neighbor_candidates(&req.project, k);
     let raw = sys
         .vector_index
         .read()
         .await
-        .search(&embedding, k + 1)
+        .search(&embedding, candidates)
         .unwrap_or_default();
     let db = sys.db.read().await;
     let mut out = Vec::new();
