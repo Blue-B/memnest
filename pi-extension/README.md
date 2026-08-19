@@ -126,7 +126,7 @@ Run `memnest_autocontext_status` to see the active mode, counters, and a test re
 
 ## Automatic conversation capture
 
-The extension does not install AutoLog event hooks. Use `memnest watch` as the single capture path so pi conversations are not stored twice. Watch stores redacted user and assistant transcript text without summarization, keeps long turns in ordered chunks without truncation, and retains AutoLog until explicit deletion.
+The extension does not install AutoLog event hooks. Use `memnest watch` as the single capture path so pi conversations are not stored twice. Watch stores redacted user and assistant transcript text without summarization, keeps long turns in ordered chunks without truncation, and retains new identified transcript AutoLog until explicit deletion. Legacy AutoLog keeps the core's configured retention policy.
 
 ## Outside pi
 

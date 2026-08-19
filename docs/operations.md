@@ -60,7 +60,8 @@ Retention depends on memory type and importance:
 
 - manual and consolidated memories do not expire automatically
 - knowledge, decision, and preference memories do not expire automatically
-- AutoLog conversation records do not expire automatically
+- new transcript AutoLog records with `.transcript` source and event identity do not expire automatically
+- legacy AutoLog records keep the configurable 30-day default (`MEMNEST_TTL_AUTOLOG_DAYS`)
 - filtered records expire after 7 days
 - pinned memories are excluded from automatic retention and from normal prune requests
 
@@ -131,6 +132,7 @@ Common options: `--host`, `--port`, `--data-dir`, `--backup-dir`, `--restore-dir
 | `MEMNEST_TOKEN` | Required for a non-local bind; clients send `Authorization: Bearer <token>` |
 | `MEMNEST_EMBED_MODEL` | Embedding model, defaults to `intfloat/multilingual-e5-base` |
 | `MEMNEST_EMBED_DIM` | Embedding dimension, defaults to 768 |
+| `MEMNEST_TTL_AUTOLOG_DAYS` | Legacy AutoLog retention window, defaults to 30; transcript events are permanent |
 | `MEMNEST_ARCHIVE` | Set to `0` to stop writing archive JSONL before hard deletion |
 
 ## Development checks

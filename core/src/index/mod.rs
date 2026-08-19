@@ -112,12 +112,13 @@ impl VectorIndex {
         let mut out = Vec::new();
         for item in self.index.search(query, k * 3, ef) {
             if let Some(id) = self.ids.get(item.id)
-                && !self.deleted.contains(&item.id) {
-                    out.push((id.clone(), item.distance));
-                    if out.len() >= k {
-                        break;
-                    }
+                && !self.deleted.contains(&item.id)
+            {
+                out.push((id.clone(), item.distance));
+                if out.len() >= k {
+                    break;
                 }
+            }
         }
         Ok(out)
     }
@@ -150,6 +151,13 @@ impl VectorIndex {
 
     pub fn len(&self) -> usize {
         self.ids.len().saturating_sub(self.deleted.len())
+    }
+
+    pub fn contains(&self, id: &str) -> bool {
+        self.ids
+            .iter()
+            .enumerate()
+            .any(|(index, existing)| existing == id && !self.deleted.contains(&index))
     }
 
     pub fn is_empty(&self) -> bool {

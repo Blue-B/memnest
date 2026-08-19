@@ -1,7 +1,7 @@
 pub mod decay;
 
 use crate::MemorySystem;
-use crate::models::{ChunkType, Importance};
+use crate::models::{ChunkType, Importance, Metadata};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::path::Path;
@@ -16,24 +16,55 @@ pub struct LifecycleStatus {
     pub ttl_autolog_days: Option<i64>,
 }
 
-/// TTL policy by `(chunk_type, importance)`. Conversation AutoLog is preserved
-/// until explicitly deleted; filtered automation remains short-lived.
-fn autolog_ttl_days() -> Option<i64> {
-    None
+fn parse_autolog_ttl(raw: Option<&str>) -> Option<i64> {
+    match raw {
+        None => Some(30),
+        Some(value)
+            if value.trim() == "0"
+                || value.trim().eq_ignore_ascii_case("off")
+                || value.trim().eq_ignore_ascii_case("unlimited") =>
+        {
+            None
+        }
+        Some(value) => value
+            .trim()
+            .parse::<i64>()
+            .ok()
+            .filter(|days| *days > 0)
+            .or(Some(30)),
+    }
 }
 
-fn ttl_days_for(chunk_type: &ChunkType, importance: &Importance) -> Option<i64> {
-    // Anything the user explicitly marked is permanent regardless of source.
+fn autolog_ttl_days() -> Option<i64> {
+    parse_autolog_ttl(std::env::var("MEMNEST_TTL_AUTOLOG_DAYS").ok().as_deref())
+}
+
+fn is_transcript_autolog(metadata: &Metadata) -> bool {
+    metadata.chunk_type == ChunkType::AutoLog
+        && metadata
+            .event_id
+            .as_deref()
+            .is_some_and(|id| !id.is_empty())
+        && metadata
+            .source
+            .as_deref()
+            .is_some_and(|source| source.ends_with(".transcript"))
+}
+
+/// New preservation-first transcript events are permanent. Legacy AutoLog
+/// keeps its existing configurable 30-day default so old tool noise does not
+/// silently become permanent.
+fn ttl_days_for(metadata: &Metadata) -> Option<i64> {
     if matches!(
-        importance,
+        metadata.importance,
         Importance::Knowledge | Importance::Decision | Importance::Preference
-    ) {
+    ) || is_transcript_autolog(metadata)
+    {
         return None;
     }
-    match chunk_type {
-        ChunkType::Manual => None,
-        ChunkType::Consolidated => None, // summaries replace raw logs, keep them
-        ChunkType::AutoLog => None,
+    match metadata.chunk_type {
+        ChunkType::Manual | ChunkType::Consolidated => None,
+        ChunkType::AutoLog => autolog_ttl_days(),
         ChunkType::Filtered => Some(7),
     }
 }
@@ -122,8 +153,7 @@ pub async fn prune_expired(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
             if chunk.project == "_trash" {
                 continue;
             }
-            if let Some(days) = ttl_days_for(&chunk.metadata.chunk_type, &chunk.metadata.importance)
-            {
+            if let Some(days) = ttl_days_for(&chunk.metadata) {
                 let age = (now - chunk.created_at).num_days();
                 if age > days {
                     to_trash.push(chunk.id);
@@ -368,13 +398,46 @@ mod tests {
     }
 
     #[test]
-    fn autolog_has_no_automatic_ttl() {
-        assert_eq!(autolog_ttl_days(), None);
-        assert_eq!(ttl_days_for(&ChunkType::AutoLog, &Importance::Log), None);
+    fn only_identified_transcript_autolog_is_permanent() {
+        assert_eq!(parse_autolog_ttl(None), Some(30));
+        assert_eq!(parse_autolog_ttl(Some("45")), Some(45));
+        assert_eq!(parse_autolog_ttl(Some("off")), None);
+
+        let legacy = Metadata {
+            chunk_type: ChunkType::AutoLog,
+            importance: Importance::Log,
+            ..Default::default()
+        };
+        let legacy_ttl = autolog_ttl_days();
+        assert_eq!(ttl_days_for(&legacy), legacy_ttl);
         assert_eq!(
-            ttl_days_for(&ChunkType::Filtered, &Importance::Log),
-            Some(7)
+            ttl_days_for(&Metadata {
+                source: Some("pi.transcript".into()),
+                ..legacy.clone()
+            }),
+            legacy_ttl
         );
+        assert_eq!(
+            ttl_days_for(&Metadata {
+                event_id: Some("event-1".into()),
+                ..legacy.clone()
+            }),
+            legacy_ttl
+        );
+
+        let transcript = Metadata {
+            source: Some("pi.transcript".into()),
+            event_id: Some("event-1".into()),
+            ..legacy.clone()
+        };
+        assert_eq!(ttl_days_for(&transcript), None);
+
+        let filtered = Metadata {
+            chunk_type: ChunkType::Filtered,
+            importance: Importance::Log,
+            ..Default::default()
+        };
+        assert_eq!(ttl_days_for(&filtered), Some(7));
     }
 
     #[test]
