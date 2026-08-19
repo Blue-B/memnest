@@ -10,7 +10,7 @@ Memnest keeps the core platform-neutral. Any agent can use the HTTP API or the M
 | MCP over Streamable HTTP | `POST /mcp` on the same port as the API and dashboard, so several hosts share one process and one store. |
 | MCP over stdio | Tool access for a client that spawns its own child process. |
 | `memnest hook`, `memnest watch` | Core subcommands that give any host prompt-time injection and transcript capture without an extension. |
-| `pi-extension/` | First-class pi tools, Autocontext, optional AutoLog, and `/memnest` status command. |
+| `pi-extension/` | Canonical ten pi tools, scoped Autocontext, and the `/memnest` status command. |
 | `adapters/generic-http/` | Dependency-free JSONL reference adapter for other hosts. |
 
 ## Adapter contract
@@ -22,7 +22,7 @@ An adapter should provide these operations:
 - `message`: optionally capture a user or assistant message
 - `summary`: store a session summary
 - `search`: retrieve memory and receive a `recall_id`
-- `feedback`: submit helpful, harmful, or ignored for a `recall_id`
+- `feedback`: submit helpful, harmful, or ignored for a `recall_id`; include `memory_id` to affect one returned result
 
 Every write may include `adapter`, `adapter_version`, `session_id`, `cwd`, `source`, and `role`. Structured memories may additionally include `memory_kind`, `confidence`, `source_ids`, `supersedes`, and `verified_at`.
 

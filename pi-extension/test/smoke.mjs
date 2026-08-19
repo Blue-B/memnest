@@ -72,8 +72,16 @@ assert(
 );
 
 const EXPECTED = [
-	"memory_remember", "memory_search", "memory_get", "memory_update", "memory_delete", "memory_feedback",
-	"secret_set", "secret_get", "secret_list", "secret_delete",
+	"memory_remember",
+	"memory_search",
+	"memory_get",
+	"memory_update",
+	"memory_delete",
+	"memory_feedback",
+	"secret_set",
+	"secret_get",
+	"secret_list",
+	"secret_delete",
 ];
 
 assert(
@@ -93,21 +101,16 @@ assert(
 	"memory_search defaults to 3 results",
 	tools.get("memory_search")?.parameters?.properties?.n_results?.default === 3,
 );
-const unscoped = await tools.get("memory_search").execute(
-	"id",
-	{ query: "must stay scoped" },
-	undefined,
-	noop,
-	{},
-);
+const unscoped = await tools
+	.get("memory_search")
+	.execute("id", { query: "must stay scoped" }, undefined, noop, {});
 assert(
 	"memory_search does not fall back to all projects without cwd",
 	/unavailable/.test(unscoped.content?.[0]?.text ?? ""),
 );
 
-// Live server round-trip. MEMNEST_URL has no default because these calls store
-// memories, and a default of 127.0.0.1:3111 would write test collections into
-// whatever store the developer actually uses.
+// Live search round-trip. MEMNEST_URL has no default because search records
+// recall telemetry; never point the smoke test at an unrelated personal store.
 const URL = process.env.MEMNEST_URL;
 if (!URL) {
 	console.log(
@@ -124,10 +127,21 @@ try {
 
 if (reachable) {
 	const search = tools.get("memory_search");
-	const response = await search.execute("id", { query: "memnest smoke", n_results: 1 }, undefined, noop, { cwd: process.cwd() });
-	assert("memory_search returns compact text", (response.content?.[0]?.text ?? "").startsWith("=== memory search results"));
+	const response = await search.execute(
+		"id",
+		{ query: "memnest smoke", n_results: 1 },
+		undefined,
+		noop,
+		{ cwd: process.cwd() },
+	);
+	assert(
+		"memory_search returns compact text",
+		(response.content?.[0]?.text ?? "").startsWith("=== memory search results"),
+	);
 } else {
-	console.log(`\n(memnest server not reachable at ${URL} — skipping live calls)`);
+	console.log(
+		`\n(memnest server not reachable at ${URL} — skipping live calls)`,
+	);
 }
 
 console.log(`\nsmoke: ${ok} passed, ${fail} failed`);

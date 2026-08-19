@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { eventToRequest, sendEvent } from "./memnest-adapter.mjs";
+process.env.MEMNEST_TOKEN = "  adapter-token  ";
+const { eventToRequest, sendEvent } = await import("./memnest-adapter.mjs?test");
 
 const add = eventToRequest({
 	type: "remember",
@@ -15,6 +16,7 @@ assert.equal(add.body.metadata.memory_kind, "fact");
 const search = eventToRequest({
 	type: "search",
 	query: "deploy",
+	project: "demo",
 	adapter: "test-host",
 });
 assert.equal(search.path, "/search");
@@ -23,10 +25,12 @@ assert.equal(search.body.adapter, "test-host");
 const feedback = eventToRequest({
 	type: "feedback",
 	recall_id: "recall-1",
+	memory_id: "memory-1",
 	outcome: "helpful",
 });
 assert.equal(feedback.path, "/feedback");
 assert.equal(feedback.body.recall_id, "recall-1");
+assert.equal(feedback.body.memory_id, "memory-1");
 assert.equal(feedback.body.outcome, "helpful");
 
 let captured;
@@ -36,9 +40,14 @@ const result = await sendEvent({ type: "health" }, async (url, init) => {
 });
 assert.equal(result.status, "ok");
 assert.match(captured.url, /\/health$/);
+assert.equal(captured.init.headers.authorization, "Bearer adapter-token");
 
+assert.throws(
+	() => eventToRequest({ type: "search", query: "unsafe" }),
+	/search project is required/,
+);
 assert.throws(
 	() => eventToRequest({ type: "unknown" }),
 	/unsupported event type/,
 );
-console.log("generic-http adapter: 11 assertions passed");
+console.log("generic-http adapter: 14 assertions passed");

@@ -6,7 +6,7 @@ const baseUrl = (process.env.MEMNEST_URL ?? "http://127.0.0.1:3111").replace(
 	/\/$/,
 	"",
 );
-const token = process.env.MEMNEST_TOKEN;
+const token = process.env.MEMNEST_TOKEN?.trim() || undefined;
 const defaultAdapter = process.env.MEMNEST_ADAPTER ?? "generic-http";
 const timeoutMs = Number(process.env.MEMNEST_TIMEOUT_MS ?? "3000");
 
@@ -14,12 +14,13 @@ export function eventToRequest(event) {
 	const adapter = event.adapter ?? defaultAdapter;
 	if (event.type === "health") return { method: "GET", path: "/health" };
 	if (event.type === "search") {
+		if (!event.project) throw new Error("search project is required; use project=all explicitly");
 		return {
 			method: "POST",
 			path: "/search",
 			body: {
 				query: event.query,
-				project: event.project ?? "all",
+				project: event.project,
 				n_results: event.limit ?? 3,
 				adapter,
 			},
@@ -31,6 +32,7 @@ export function eventToRequest(event) {
 			path: "/feedback",
 			body: {
 				recall_id: event.recall_id,
+				memory_id: event.memory_id,
 				outcome: event.outcome,
 				note: event.note,
 			},

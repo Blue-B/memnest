@@ -51,10 +51,10 @@ curl -s http://127.0.0.1:3111/search \
 
 curl -s http://127.0.0.1:3111/feedback \
   -H 'content-type: application/json' \
-  -d '{"recall_id":"recall_...","outcome":"helpful"}'
+  -d '{"recall_id":"recall_...","memory_id":"manual_...","outcome":"helpful"}'
 ```
 
-Every search returns a `recall_id`. Feedback applies to that whole search rather than to one row: every memory the search returned takes the helpful or harmful count. That loop is the part a vector store does not give you.
+Every search returns a `recall_id`. Feedback with `memory_id` changes only that returned memory. Omitting `memory_id` records aggregate telemetry without changing any memory ranking.
 
 ```mermaid
 sequenceDiagram
@@ -63,8 +63,8 @@ sequenceDiagram
     Agent->>memnest: search "deploy port"
     memnest-->>Agent: 3 results + recall_id
     Note over Agent: the answer used that recall
-    Agent->>memnest: feedback recall_id, helpful
-    Note over memnest: all 3 memories gain a helpful count
+    Agent->>memnest: feedback recall_id + memory_id, helpful
+    Note over memnest: only that returned memory gains a helpful count
 ```
 
 Three callers can rate a recall: the Helpful and Harmful buttons on the dashboard (a person), the `memory_feedback` tool (the agent itself), and `POST /feedback` (a script). The effect is capped at ±0.10 of the ranking score, so feedback breaks near ties instead of overriding relevance.

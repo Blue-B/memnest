@@ -22,7 +22,7 @@ assert.ok(before);
 const prompt = "please recall the previous deployment configuration decision";
 assert.equal(await before({ prompt }), undefined, "unknown workspace must inject nothing");
 assert.equal(requests.length, 0, "unknown workspace must not search all projects");
-hooks.get("session_start")({ cwd: "/tmp/workspace" });
+hooks.get("session_start")({}, { cwd: "/tmp/workspace" });
 const injected = await before({ prompt: `${prompt} now` });
 assert.equal(requests[0].project, "workspace");
 const text = injected?.message?.content ?? "";

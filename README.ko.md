@@ -51,10 +51,10 @@ curl -s http://127.0.0.1:3111/search \
 
 curl -s http://127.0.0.1:3111/feedback \
   -H 'content-type: application/json' \
-  -d '{"recall_id":"recall_...","outcome":"helpful"}'
+  -d '{"recall_id":"recall_...","memory_id":"manual_...","outcome":"helpful"}'
 ```
 
-검색은 항상 `recall_id`를 돌려준다. 피드백은 결과 한 줄이 아니라 그 검색 전체에 준다. 판정을 남기면 그 검색이 돌려준 기억 전원에게 도움됨이나 문제 카운트가 올라간다. 벡터 저장소가 주지 않는 부분이 이 루프다.
+검색은 항상 `recall_id`를 돌려준다. `memory_id`를 지정한 피드백은 그 결과 하나의 랭킹만 바꾸고, 생략하면 랭킹을 바꾸지 않고 검색 전체 텔레메트리만 기록한다.
 
 ```mermaid
 sequenceDiagram
@@ -63,11 +63,11 @@ sequenceDiagram
     에이전트->>memnest: "배포 포트" 검색
     memnest-->>에이전트: 결과 3건 + recall_id
     Note over 에이전트: 그 회상을 답변에 사용함
-    에이전트->>memnest: recall_id, helpful 피드백
-    Note over memnest: 3건 전부 도움됨 카운트가 오름
+    에이전트->>memnest: recall_id + memory_id, helpful 피드백
+    Note over memnest: 지정한 결과만 도움됨 카운트가 오름
 ```
 
-판정을 남기는 주체는 셋이다. 대시보드의 도움됨과 문제 버튼(사람), `memory_feedback` 툴(에이전트 자신), `POST /feedback`(스크립트). 반영 강도는 랭킹 점수 기준 최대 ±0.10이라, 관련도를 뒤집는 게 아니라 비슷한 후보들 사이의 순위를 가른다.
+판정을 남기는 주체는 셋이다. 대시보드의 도움됨과 문제 버튼(사람), `memory_feedback` 툴에서 `memory_id`를 지정한 에이전트, `POST /feedback`(스크립트). 반영 강도는 랭킹 점수 기준 최대 ±0.10이라, 관련도를 뒤집는 게 아니라 비슷한 후보들 사이의 순위를 가른다.
 
 첫 저장은 fastembed가 임베딩 모델을 내려받느라 느리다. `/add`는 레코드가 실제로 저장되고 색인된 뒤에야 `succeeded` 또는 `deduplicated`를 반환한다.
 

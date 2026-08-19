@@ -289,8 +289,8 @@ export function installAutocontext(pi: ExtensionAPI): void {
 	let injections = 0;
 	let currentProject: string | undefined;
 
-	pi.on("session_start", (event: unknown) => {
-		const cwd = event && typeof event === "object" ? (event as { cwd?: unknown }).cwd : undefined;
+	pi.on("session_start", (_event: unknown, context: { cwd?: unknown }) => {
+		const cwd = context?.cwd;
 		currentProject = typeof cwd === "string" ? cwd.split(/[\\/]/).filter(Boolean).pop() : undefined;
 		lastSeenQuery = null;
 		lastInjectedTokens = null;

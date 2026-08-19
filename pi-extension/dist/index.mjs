@@ -229,8 +229,8 @@ function installAutocontext(pi) {
   let lastInjectReason = "none";
   let injections = 0;
   let currentProject;
-  pi.on("session_start", (event) => {
-    const cwd = event && typeof event === "object" ? event.cwd : void 0;
+  pi.on("session_start", (_event, context) => {
+    const cwd = context?.cwd;
     currentProject = typeof cwd === "string" ? cwd.split(/[\\/]/).filter(Boolean).pop() : void 0;
     lastSeenQuery = null;
     lastInjectedTokens = null;
@@ -4529,17 +4529,29 @@ async function call(path, body, method = "POST") {
   try {
     const response = await fetch(`${URL}${path}`, {
       method,
-      headers: { "content-type": "application/json", ...TOKEN ? { authorization: `Bearer ${TOKEN}` } : {} },
+      headers: {
+        "content-type": "application/json",
+        ...TOKEN ? { authorization: `Bearer ${TOKEN}` } : {}
+      },
       ...body !== void 0 && method !== "GET" ? { body: JSON.stringify(body) } : {}
     });
     const text = await response.text();
-    return { text: response.ok ? text : `memnest error ${response.status}: ${text}`, error: !response.ok };
+    return {
+      text: response.ok ? text : `memnest error ${response.status}: ${text}`,
+      error: !response.ok
+    };
   } catch (error) {
-    return { text: `memnest unreachable at ${URL}: ${error?.message ?? error}`, error: true };
+    return {
+      text: `memnest unreachable at ${URL}: ${error?.message ?? error}`,
+      error: true
+    };
   }
 }
 function result(text, error = false) {
-  return { content: [{ type: "text", text: error ? `Error: ${text}` : text }], details: void 0 };
+  return {
+    content: [{ type: "text", text: error ? `Error: ${text}` : text }],
+    details: void 0
+  };
 }
 function project(cwd) {
   return cwd?.split(/[\\/]/).filter(Boolean).pop() || void 0;
@@ -4552,103 +4564,273 @@ function register(pi) {
   pi.registerCommand?.("memnest", {
     description: "Show Memnest status and dashboard URL",
     handler: async (_args, ctx) => {
-      const health = await call("/health", void 0, "GET");
-      const message = `Memnest ${health.error ? "unreachable" : "ok"}
+      const [health, stats] = await Promise.all([
+        call("/health", void 0, "GET"),
+        call("/stats", void 0, "GET")
+      ]);
+      if (health.error) {
+        const message2 = `Memnest unreachable
 Dashboard: ${URL}/`;
-      ctx.ui.setStatus("memnest", message.replace("\n", ": "));
-      ctx.ui.notify(message, health.error ? "error" : "info");
+        ctx.ui.setStatus("memnest", "Memnest: unreachable");
+        ctx.ui.notify(message2, "error");
+        return;
+      }
+      const healthData = JSON.parse(health.text);
+      const count = stats.error ? "unavailable" : JSON.parse(stats.text).total_chunks;
+      const message = `Memnest ok
+Memories: ${count}
+Data: ${healthData.data_dir}
+Dashboard: ${URL}/`;
+      ctx.ui.setStatus("memnest", `Memnest: ok, ${count} memories`);
+      ctx.ui.notify(message, "info");
     }
   });
-  registerTool(pi, "memory_remember", "Memory: remember", "Save durable memory. Sensitive values must use secret_set.", typebox_exports.Object({
-    text: typebox_exports.String(),
-    project: typebox_exports.Optional(typebox_exports.String()),
-    importance: typebox_exports.Optional(typebox_exports.Union([typebox_exports.Literal("log"), typebox_exports.Literal("knowledge"), typebox_exports.Literal("decision"), typebox_exports.Literal("preference")], { default: "knowledge" })),
-    memory_kind: typebox_exports.Optional(typebox_exports.Union([typebox_exports.Literal("record"), typebox_exports.Literal("fact"), typebox_exports.Literal("rule"), typebox_exports.Literal("procedure")], { default: "record" })),
-    confidence: typebox_exports.Optional(typebox_exports.Number({ minimum: 0, maximum: 1 })),
-    source_ids: typebox_exports.Optional(typebox_exports.Array(typebox_exports.String())),
-    supersedes: typebox_exports.Optional(typebox_exports.String()),
-    sensitive: typebox_exports.Optional(typebox_exports.Boolean({ description: "Must be false; use secret_set." }))
-  }), async (_id, p, _s, _u, ctx) => {
-    const scope = p.project ?? project(ctx.cwd);
-    if (!scope) return result("current project is unavailable; pass project explicitly", true);
-    const r = await call("/add", { text: p.text, project: scope, metadata: { chunk_type: "manual", importance: p.importance ?? "knowledge", memory_kind: p.memory_kind ?? "record", confidence: p.confidence, source_ids: p.source_ids ?? [], supersedes: p.supersedes, sensitive: p.sensitive ?? false, adapter: "pi" } });
-    return result(r.text, r.error);
-  });
-  registerTool(pi, "memory_search", "Memory: search", "Hybrid memory search. Omit project to use the current workspace; project=all explicitly searches across projects.", typebox_exports.Object({
-    query: typebox_exports.String(),
-    project: typebox_exports.Optional(typebox_exports.String()),
-    n_results: typebox_exports.Optional(typebox_exports.Integer({ default: 3, minimum: 1, maximum: 50 })),
-    recent_first: typebox_exports.Optional(typebox_exports.Boolean({ default: false })),
-    category: typebox_exports.Optional(typebox_exports.String())
-  }), async (_id, p, _s, _u, ctx) => {
-    const scope = p.project ?? project(ctx.cwd);
-    if (!scope) return result("current project is unavailable; pass project explicitly (use project=all for cross-project search)", true);
-    const body = { ...p, project: scope, adapter: "pi" };
-    const r = await call("/search", body);
-    if (r.error) return result(r.text, true);
-    try {
-      const data = JSON.parse(r.text);
-      const lines = [`=== memory search results (${p.query}) ===`, `recall_id=${data.recall_id}`];
-      for (const [i, item] of (data.results ?? []).entries()) lines.push(`[${i + 1}] project=${item.project} score=${Number(item.score).toFixed(4)} id=${item.id}
-    ${item.document}`);
-      if (!(data.results ?? []).length) lines.push("no results");
-      return result(lines.join("\n"));
-    } catch {
-      return result(r.text);
+  registerTool(
+    pi,
+    "memory_remember",
+    "Memory: remember",
+    "Save durable memory. Sensitive values must use secret_set.",
+    typebox_exports.Object({
+      text: typebox_exports.String(),
+      project: typebox_exports.Optional(typebox_exports.String()),
+      importance: typebox_exports.Optional(
+        typebox_exports.Union(
+          [
+            typebox_exports.Literal("log"),
+            typebox_exports.Literal("knowledge"),
+            typebox_exports.Literal("decision"),
+            typebox_exports.Literal("preference")
+          ],
+          { default: "knowledge" }
+        )
+      ),
+      memory_kind: typebox_exports.Optional(
+        typebox_exports.Union(
+          [
+            typebox_exports.Literal("record"),
+            typebox_exports.Literal("fact"),
+            typebox_exports.Literal("rule"),
+            typebox_exports.Literal("procedure")
+          ],
+          { default: "record" }
+        )
+      ),
+      confidence: typebox_exports.Optional(typebox_exports.Number({ minimum: 0, maximum: 1 })),
+      source_ids: typebox_exports.Optional(typebox_exports.Array(typebox_exports.String())),
+      supersedes: typebox_exports.Optional(typebox_exports.String()),
+      sensitive: typebox_exports.Optional(
+        typebox_exports.Boolean({ description: "Must be false; use secret_set." })
+      )
+    }),
+    async (_id, p, _s, _u, ctx) => {
+      const scope = p.project ?? project(ctx.cwd);
+      if (!scope)
+        return result(
+          "current project is unavailable; pass project explicitly",
+          true
+        );
+      const r = await call("/add", {
+        text: p.text,
+        project: scope,
+        metadata: {
+          chunk_type: "manual",
+          importance: p.importance ?? "knowledge",
+          memory_kind: p.memory_kind ?? "record",
+          confidence: p.confidence,
+          source_ids: p.source_ids ?? [],
+          supersedes: p.supersedes,
+          sensitive: p.sensitive ?? false,
+          adapter: "pi"
+        }
+      });
+      return result(r.text, r.error);
     }
-  });
-  registerTool(pi, "memory_get", "Memory: get", "Fetch one memory by id.", typebox_exports.Object({ id: typebox_exports.String() }), async (_id, p) => {
-    const r = await call(`/chunk/${encodeURIComponent(p.id)}`, void 0, "GET");
-    if (r.error) return result(r.text, true);
-    try {
-      const c = JSON.parse(r.text);
-      return result(`id=${c.id} project=${c.project} type=${c.chunk_type} importance=${c.importance} created=${c.timestamp}
-${c.document}`);
-    } catch {
-      return result(r.text);
+  );
+  registerTool(
+    pi,
+    "memory_search",
+    "Memory: search",
+    "Hybrid memory search. Omit project to use the current workspace; project=all explicitly searches across projects.",
+    typebox_exports.Object({
+      query: typebox_exports.String(),
+      project: typebox_exports.Optional(typebox_exports.String()),
+      n_results: typebox_exports.Optional(
+        typebox_exports.Integer({ default: 3, minimum: 1, maximum: 50 })
+      ),
+      recent_first: typebox_exports.Optional(typebox_exports.Boolean({ default: false })),
+      category: typebox_exports.Optional(typebox_exports.String())
+    }),
+    async (_id, p, _s, _u, ctx) => {
+      const scope = p.project ?? project(ctx.cwd);
+      if (!scope)
+        return result(
+          "current project is unavailable; pass project explicitly (use project=all for cross-project search)",
+          true
+        );
+      const body = { ...p, project: scope, adapter: "pi" };
+      const r = await call("/search", body);
+      if (r.error) return result(r.text, true);
+      try {
+        const data = JSON.parse(r.text);
+        const lines = [
+          `=== memory search results (${p.query}) ===`,
+          `recall_id=${data.recall_id}`
+        ];
+        for (const [i, item] of (data.results ?? []).entries())
+          lines.push(
+            `[${i + 1}] project=${item.project} score=${Number(item.score).toFixed(4)} id=${item.id}
+    ${item.document}`
+          );
+        if (!(data.results ?? []).length) lines.push("no results");
+        return result(lines.join("\n"));
+      } catch {
+        return result(r.text);
+      }
     }
-  });
-  registerTool(pi, "memory_update", "Memory: update", "Update one memory and refresh indexes.", typebox_exports.Object({
-    id: typebox_exports.String(),
-    text: typebox_exports.Optional(typebox_exports.String()),
-    project: typebox_exports.Optional(typebox_exports.String()),
-    importance: typebox_exports.Optional(typebox_exports.Union([typebox_exports.Literal("log"), typebox_exports.Literal("knowledge"), typebox_exports.Literal("decision"), typebox_exports.Literal("preference")])),
-    chunk_type: typebox_exports.Optional(typebox_exports.Union([typebox_exports.Literal("auto_log"), typebox_exports.Literal("manual"), typebox_exports.Literal("filtered"), typebox_exports.Literal("consolidated")])),
-    sensitive: typebox_exports.Optional(typebox_exports.Boolean({ description: "Must be false; use secret_set." }))
-  }), async (_id, p) => {
-    const body = p.sensitive ? { ...p, metadata: { sensitive: true } } : p;
-    const r = await call("/update", body);
-    return result(r.text, r.error);
-  });
-  registerTool(pi, "memory_delete", "Memory: delete", "Soft-delete one memory.", typebox_exports.Object({ id: typebox_exports.String() }), async (_id, p) => {
-    const r = await call("/delete", { ids: [p.id] });
-    return result(r.text, r.error);
-  });
-  registerTool(pi, "memory_feedback", "Memory: feedback", "Record recall telemetry. Ranking changes only when memory_id identifies one returned result.", typebox_exports.Object({
-    recall_id: typebox_exports.String(),
-    memory_id: typebox_exports.Optional(typebox_exports.String()),
-    outcome: typebox_exports.Union([typebox_exports.Literal("helpful"), typebox_exports.Literal("harmful"), typebox_exports.Literal("ignored")]),
-    note: typebox_exports.Optional(typebox_exports.String())
-  }), async (_id, p) => {
-    const r = await call("/feedback", p);
-    return result(r.text, r.error);
-  });
-  registerTool(pi, "secret_set", "Secret: set", "Store an encrypted credential.", typebox_exports.Object({ key: typebox_exports.String(), value: typebox_exports.String(), kind: typebox_exports.Optional(typebox_exports.String()), note: typebox_exports.Optional(typebox_exports.String()) }), async (_id, p) => {
-    const r = await call("/secrets", p);
-    return result(r.text, r.error);
-  });
-  registerTool(pi, "secret_get", "Secret: get", "Retrieve and decrypt a credential.", typebox_exports.Object({ key: typebox_exports.String() }), async (_id, p) => {
-    const r = await call(`/secrets/${encodeURIComponent(p.key)}`, void 0, "GET");
-    return result(r.text, r.error);
-  });
-  registerTool(pi, "secret_list", "Secret: list", "List credential metadata without values.", Empty, async () => {
-    const r = await call("/secrets", void 0, "GET");
-    return result(r.text, r.error);
-  });
-  registerTool(pi, "secret_delete", "Secret: delete", "Permanently delete a credential.", typebox_exports.Object({ key: typebox_exports.String() }), async (_id, p) => {
-    const r = await call(`/secrets/${encodeURIComponent(p.key)}`, void 0, "DELETE");
-    return result(r.text, r.error);
-  });
+  );
+  registerTool(
+    pi,
+    "memory_get",
+    "Memory: get",
+    "Fetch one memory by id.",
+    typebox_exports.Object({ id: typebox_exports.String() }),
+    async (_id, p) => {
+      const r = await call(`/chunk/${encodeURIComponent(p.id)}`, void 0, "GET");
+      if (r.error) return result(r.text, true);
+      try {
+        const c = JSON.parse(r.text);
+        return result(
+          `id=${c.id} project=${c.project} type=${c.chunk_type} importance=${c.importance} created=${c.timestamp}
+${c.document}`
+        );
+      } catch {
+        return result(r.text);
+      }
+    }
+  );
+  registerTool(
+    pi,
+    "memory_update",
+    "Memory: update",
+    "Update one memory and refresh indexes.",
+    typebox_exports.Object({
+      id: typebox_exports.String(),
+      text: typebox_exports.Optional(typebox_exports.String()),
+      project: typebox_exports.Optional(typebox_exports.String()),
+      importance: typebox_exports.Optional(
+        typebox_exports.Union([
+          typebox_exports.Literal("log"),
+          typebox_exports.Literal("knowledge"),
+          typebox_exports.Literal("decision"),
+          typebox_exports.Literal("preference")
+        ])
+      ),
+      chunk_type: typebox_exports.Optional(
+        typebox_exports.Union([
+          typebox_exports.Literal("auto_log"),
+          typebox_exports.Literal("manual"),
+          typebox_exports.Literal("filtered"),
+          typebox_exports.Literal("consolidated")
+        ])
+      ),
+      sensitive: typebox_exports.Optional(
+        typebox_exports.Boolean({ description: "Must be false; use secret_set." })
+      )
+    }),
+    async (_id, p) => {
+      const body = p.sensitive ? { ...p, metadata: { sensitive: true } } : p;
+      const r = await call("/update", body);
+      return result(r.text, r.error);
+    }
+  );
+  registerTool(
+    pi,
+    "memory_delete",
+    "Memory: delete",
+    "Soft-delete one memory.",
+    typebox_exports.Object({ id: typebox_exports.String() }),
+    async (_id, p) => {
+      const r = await call("/delete", { ids: [p.id] });
+      return result(r.text, r.error);
+    }
+  );
+  registerTool(
+    pi,
+    "memory_feedback",
+    "Memory: feedback",
+    "Record recall telemetry. Ranking changes only when memory_id identifies one returned result.",
+    typebox_exports.Object({
+      recall_id: typebox_exports.String(),
+      memory_id: typebox_exports.Optional(typebox_exports.String()),
+      outcome: typebox_exports.Union([
+        typebox_exports.Literal("helpful"),
+        typebox_exports.Literal("harmful"),
+        typebox_exports.Literal("ignored")
+      ]),
+      note: typebox_exports.Optional(typebox_exports.String())
+    }),
+    async (_id, p) => {
+      const r = await call("/feedback", p);
+      return result(r.text, r.error);
+    }
+  );
+  registerTool(
+    pi,
+    "secret_set",
+    "Secret: set",
+    "Store an encrypted credential.",
+    typebox_exports.Object({
+      key: typebox_exports.String(),
+      value: typebox_exports.String(),
+      kind: typebox_exports.Optional(typebox_exports.String()),
+      note: typebox_exports.Optional(typebox_exports.String())
+    }),
+    async (_id, p) => {
+      const r = await call("/secrets", p);
+      return result(r.text, r.error);
+    }
+  );
+  registerTool(
+    pi,
+    "secret_get",
+    "Secret: get",
+    "Retrieve and decrypt a credential.",
+    typebox_exports.Object({ key: typebox_exports.String() }),
+    async (_id, p) => {
+      const r = await call(
+        `/secrets/${encodeURIComponent(p.key)}`,
+        void 0,
+        "GET"
+      );
+      return result(r.text, r.error);
+    }
+  );
+  registerTool(
+    pi,
+    "secret_list",
+    "Secret: list",
+    "List credential metadata without values.",
+    Empty,
+    async () => {
+      const r = await call("/secrets", void 0, "GET");
+      return result(r.text, r.error);
+    }
+  );
+  registerTool(
+    pi,
+    "secret_delete",
+    "Secret: delete",
+    "Permanently delete a credential.",
+    typebox_exports.Object({ key: typebox_exports.String() }),
+    async (_id, p) => {
+      const r = await call(
+        `/secrets/${encodeURIComponent(p.key)}`,
+        void 0,
+        "DELETE"
+      );
+      return result(r.text, r.error);
+    }
+  );
 }
 export {
   register as default

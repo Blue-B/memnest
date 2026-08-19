@@ -4,7 +4,7 @@
 
 A local memnest bridge for pi.
 
-`pi-memnest` connects [pi](https://github.com/badlogic/pi-mono) to a running [memnest](https://github.com/Blue-B/memnest) HTTP service. It gives pi explicit memory, note, fact, collection, health, and secret tools. It can also retrieve a small memory card before selected prompts and optionally record conversations.
+`pi-memnest` connects [pi](https://github.com/badlogic/pi-mono) to a running [memnest](https://github.com/Blue-B/memnest) HTTP service. It gives pi the canonical six memory tools and four secret tools. It can also retrieve a small project-scoped memory card before selected prompts.
 
 This extension does not contain the memory engine. Start the Rust core before installing it.
 

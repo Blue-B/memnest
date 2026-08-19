@@ -11,7 +11,10 @@ process.env.MEMNEST_URL = "http://127.0.0.1:3111";
 const requests = [];
 globalThis.fetch = async (url, init = {}) => {
 	requests.push({ url: String(url), init });
-	return new Response('{"status":"ok","total_chunks":0}', { status: 200 });
+	const body = String(url).endsWith("/health")
+		? '{"status":"ok","data_dir":"/tmp/memnest"}'
+		: '{"total_chunks":7}';
+	return new Response(body, { status: 200 });
 };
 
 const hooks = new Map();
@@ -62,14 +65,16 @@ await command.handler("", {
 		},
 	},
 });
+assert.match(notices[0], /Memories: 7/);
+assert.match(notices[0], /Data: \/tmp\/memnest/);
 assert.match(notices[0], /Dashboard:/);
 assert.ok(
 	requests
-		.filter((request) => request.url.endsWith("/health"))
+		.filter((request) => /\/(health|stats)$/.test(request.url))
 		.every(
 			(request) => request.init.headers.authorization === "Bearer test-token",
 		),
-	"status requests should carry bearer auth",
+	"health and stats requests should carry bearer auth",
 );
 
 console.log("pi auth, command, and no-AutoLog assertions passed");
