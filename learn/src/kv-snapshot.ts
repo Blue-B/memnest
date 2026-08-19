@@ -12,7 +12,6 @@
 export type SnapshotReason =
   | "session_start"
   | "before_compact"
-  | "long_term_write"
   | "day_rollover"
   | "first_turn";
 
@@ -21,11 +20,10 @@ export interface SnapshotState {
   takenAt: string | null;
   takenOnDate: string | null;
   reason: SnapshotReason | null;
-  dirty: boolean;
 }
 
 export function emptySnapshot(): SnapshotState {
-  return { text: null, takenAt: null, takenOnDate: null, reason: null, dirty: false };
+  return { text: null, takenAt: null, takenOnDate: null, reason: null };
 }
 
 export interface Clock {
@@ -43,8 +41,14 @@ export const systemClock: Clock = {
  *
  * `refresh` is the only place the (possibly expensive, cache-busting) builder
  * runs. `get` returns the cached bytes and refreshes lazily only when a
- * checkpoint condition is met: never-built, explicitly marked dirty (a rare
- * long-term write), or the captured day no longer matches today.
+ * checkpoint condition is met: never-built, or the captured day no longer
+ * matches today.
+ *
+ * There is deliberately no "a memory was written, rebuild now" path. Capture
+ * writes land on nearly every turn, and rebuilding on each one would change the
+ * snapshot header and invalidate the whole prompt prefix cache, which costs far
+ * more than showing a new memory one session late. New memories surface at the
+ * next session_start, compaction, or day rollover.
  */
 export class MemorySnapshot {
   private state: SnapshotState = emptySnapshot();
@@ -59,28 +63,16 @@ export class MemorySnapshot {
       takenAt: this.clock.isoNow(),
       takenOnDate: this.clock.today(),
       reason,
-      dirty: false,
     };
-  }
-
-  /** Mark the snapshot stale so the next `get` rebuilds (e.g. after a write). */
-  markDirty(): void {
-    this.state.dirty = true;
   }
 
   /** True when `get` would rebuild rather than serve the cached bytes. */
   needsRefresh(): boolean {
-    return (
-      this.state.text === null ||
-      this.state.dirty ||
-      this.state.takenOnDate !== this.clock.today()
-    );
+    return this.state.text === null || this.state.takenOnDate !== this.clock.today();
   }
 
   private nextReason(): SnapshotReason {
-    if (this.state.text === null) return "first_turn";
-    if (this.state.dirty) return "long_term_write";
-    return "day_rollover";
+    return this.state.text === null ? "first_turn" : "day_rollover";
   }
 
   /**

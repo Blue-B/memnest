@@ -748,6 +748,28 @@ pub struct NeighborItem {
     pub chunk_type: String,
 }
 
+/// How many candidates to pull from the global vector index for a neighbours
+/// query. The index is global but chunks are project-scoped and the project
+/// filter runs per candidate, so a scoped query that fetches only `k + 1` is
+/// starved whenever one bucket dominates the store: the whole candidate set
+/// comes back as that bucket and the scoped caller gets nothing. Unscoped
+/// queries keep taking exactly the global top `k + 1`.
+///
+/// ponytail: flat 2000-candidate floor when scoped, scaling to 4000 for large
+/// k. Sized against a store whose smallest bucket is ~0.05% of live index
+/// entries, where 160 candidates returned nothing and 2000 returned that
+/// bucket's nearest rows. Measured cost of the deep fetch is ~0.15s, and every
+/// scoped caller is a background dedup pass rather than the user's critical
+/// path. A bucket rarer than this floor can still come back short; the upgrade
+/// path is a per-project vector index, not a bigger constant.
+fn neighbor_candidates(project: &str, k: usize) -> usize {
+    if project == "all" {
+        k + 1
+    } else {
+        ((k + 1) * 40).clamp(2000, 4000)
+    }
+}
+
 /// Cosine nearest-neighbours of a chunk (by `id`) or of free `text`, straight
 /// from the HNSW index. This is the robust primitive for the learning layer's
 /// consolidation: client-side lexical similarity (trigrams) misses paraphrase
@@ -777,11 +799,14 @@ pub async fn neighbors(
         return Json(Vec::new());
     };
     let k = req.k.clamp(1, 100);
+    // Scoped queries over-fetch so the per-candidate project filter below has
+    // something to keep; see `neighbor_candidates`.
+    let candidates = neighbor_candidates(&req.project, k);
     let raw = sys
         .vector_index
         .read()
         .await
-        .search(&embedding, k + 1)
+        .search(&embedding, candidates)
         .unwrap_or_default();
     let db = sys.db.read().await;
     let mut out = Vec::new();
@@ -5829,5 +5854,130 @@ pub(crate) mod retrieval_eval {
             "nearest neighbour should be a search-topic doc: {:?}",
             out[0]
         );
+    }
+
+    /// A project-scoped query returns only its own bucket, and respects k.
+    ///
+    /// Note on scope: this does NOT reproduce the starvation bug. At this
+    /// corpus size HNSW scans the whole index (ef floors at 64), so the tiny
+    /// bucket is reachable even with the old k+1 fetch. Reproducing starvation
+    /// needs a store far larger than a unit test should embed; the candidate
+    /// arithmetic that fixes it is pinned by
+    /// `scoped_neighbor_queries_overfetch_unscoped_do_not` instead.
+    #[tokio::test]
+    async fn neighbors_reaches_a_bucket_dwarfed_by_the_store() {
+        let (_tmp, system) = build_system().await;
+
+        // One bucket holds almost everything and sits close to the query topic.
+        let bulk_ids: Vec<String> = (0..40).map(|i| format!("bulk_{i}")).collect();
+        let bulk_texts: Vec<String> = (0..40)
+            .map(|i| {
+                format!("HNSW approximate nearest neighbour vector index note {i} on ef_construction and cosine recall")
+            })
+            .collect();
+        let mut corpus: Vec<(&str, &str, &str)> = bulk_ids
+            .iter()
+            .zip(bulk_texts.iter())
+            .map(|(id, text)| (id.as_str(), "bulk", text.as_str()))
+            .collect();
+        // The rare bucket the scoped caller actually wants.
+        corpus.push((
+            "tiny_a",
+            "tiny",
+            "HNSW approximate nearest neighbour vector index recall behaviour",
+        ));
+        corpus.push((
+            "tiny_b",
+            "tiny",
+            "The user prefers minimal diffs and verified claims over prose",
+        ));
+        ingest(&system, &corpus).await;
+
+        let out = neighbors(
+            State(system.clone()),
+            Json(NeighborsRequest {
+                text: "HNSW vector index nearest neighbour recall".to_string(),
+                id: String::new(),
+                k: 1,
+                max_distance: 0.0,
+                project: "tiny".to_string(),
+            }),
+        )
+        .await
+        .0;
+
+        assert!(
+            !out.is_empty(),
+            "a project-scoped query must reach a bucket holding 2 rows out of 42"
+        );
+        assert!(
+            out.iter().all(|n| n.project == "tiny"),
+            "scoped query leaked another bucket: {:?}",
+            out.iter().map(|n| &n.project).collect::<Vec<_>>()
+        );
+        assert!(out.len() <= 1, "k must still bound the returned count");
+    }
+
+    /// The unscoped path must keep taking the global top k+1 unchanged, so the
+    /// scoped over-fetch cannot alter what a `project: "all"` query returns.
+    #[tokio::test]
+    async fn neighbors_all_projects_still_returns_the_global_nearest() {
+        let (_tmp, system) = build_system().await;
+        ingest(&system, &labeled_corpus()).await;
+        let out = neighbors(
+            State(system.clone()),
+            Json(NeighborsRequest {
+                text: String::new(),
+                id: "d_hnsw".to_string(),
+                k: 3,
+                max_distance: 0.0,
+                project: "all".to_string(),
+            }),
+        )
+        .await
+        .0;
+        assert_eq!(out.len(), 3, "k must bound the unscoped result count");
+        assert!(
+            out.iter().all(|n| n.id != "d_hnsw"),
+            "self must be excluded"
+        );
+        for w in out.windows(2) {
+            assert!(
+                w[0].distance <= w[1].distance + 1e-6,
+                "distances must stay ascending"
+            );
+        }
+    }
+
+    /// Pins the fix itself. A scoped query must over-fetch far beyond k so the
+    /// per-candidate project filter has something to keep, while an unscoped
+    /// query must still take exactly the global top k+1. Reverting
+    /// `neighbor_candidates` to a bare `k + 1` fails the first assertion.
+    #[test]
+    fn scoped_neighbor_queries_overfetch_unscoped_do_not() {
+        // scoped: deep enough that a bucket far rarer than the store survives
+        for k in [1usize, 3, 10, 100] {
+            let scoped = neighbor_candidates("_user_model", k);
+            assert!(
+                scoped >= 2000,
+                "scoped k={k} fetched only {scoped}, too shallow to reach a rare bucket"
+            );
+            assert!(
+                scoped <= 4000,
+                "scoped k={k} fetched {scoped}, above the ceiling"
+            );
+            assert!(
+                scoped > k + 1,
+                "scoped k={k} must fetch more than the unscoped k+1"
+            );
+        }
+        // unscoped: unchanged, exactly the global top k+1
+        for k in [1usize, 3, 10, 100] {
+            assert_eq!(
+                neighbor_candidates("all", k),
+                k + 1,
+                "the unscoped path must not change"
+            );
+        }
     }
 }

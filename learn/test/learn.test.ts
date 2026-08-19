@@ -18,6 +18,7 @@ import {
 } from "../src/consolidate.js";
 import { captureMemories } from "../src/capture.js";
 import { MemnestClient, type FetchLike } from "../src/memnest-client.js";
+import { rankByDurability } from "../src/types.js";
 import type { SearchItem } from "../src/types.js";
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -40,19 +41,69 @@ test("snapshot is byte-stable across turns until a checkpoint", async () => {
   expect(calls).toBe(1);
 });
 
-test("snapshot rebuilds on markDirty and on day rollover", async () => {
+// A memory write must NOT rebuild the snapshot: that would change the header
+// bytes and drop the whole prompt prefix cache. Only a checkpoint may rebuild,
+// and a day rollover is the one that fires on its own.
+test("snapshot holds its bytes across turns and rebuilds on day rollover", async () => {
   let calls = 0;
   const builder = async () => `ctx#${++calls}`;
   const clock = { day: "2026-06-02", iso: "2026-06-02T00:00:00Z" };
   const snap = new MemorySnapshot({ isoNow: () => clock.iso, today: () => clock.day });
   await snap.get(builder); // build #1
-  snap.markDirty();
-  const afterDirty = await snap.get(builder); // build #2
-  expect(afterDirty.text).toBe("ctx#2");
+  expect((await snap.get(builder)).text).toBe("ctx#1"); // no rebuild
   clock.day = "2026-06-03"; // day rollover
-  const afterRollover = await snap.get(builder); // build #3
-  expect(afterRollover.text).toBe("ctx#3");
-  expect(calls).toBe(3);
+  const afterRollover = await snap.get(builder); // build #2
+  expect(afterRollover.text).toBe("ctx#2");
+  expect(afterRollover.reason).toBe("day_rollover");
+  expect(calls).toBe(2);
+});
+
+// ── durability ranking (prompt-independent selection) ───────────────────────
+// The injection block has no query to be relevant to, so it ranks by how
+// durable a memory is: importance, then net recall feedback, then recency,
+// then id. The id key makes the comparator a total order, which is what keeps
+// the rendered block byte-identical across rebuilds over the same rows.
+test("rankByDurability orders by importance, then feedback, then recency", () => {
+  const row = (over: Partial<SearchItem>): SearchItem => ({
+    id: "x", project: "playbook", document: "d", score: 0,
+    timestamp: "2026-01-01T00:00:00Z", chunk_type: "Manual",
+    importance: "Knowledge", category: "general", ...over,
+  });
+  // Engine casing is PascalCase on the way out; ranking must not care.
+  const ranked = rankByDurability([
+    row({ id: "log", importance: "Log" }),
+    row({ id: "old-pref", importance: "Preference", timestamp: "2026-01-01T00:00:00Z" }),
+    row({ id: "knowledge", importance: "Knowledge" }),
+    row({ id: "new-pref", importance: "Preference", timestamp: "2026-08-01T00:00:00Z" }),
+    row({ id: "decision", importance: "Decision" }),
+    row({ id: "helpful-pref", importance: "Preference", helpful_count: 5 }),
+  ]);
+  expect(ranked.map((r) => r.id)).toEqual([
+    "helpful-pref", // preference, and feedback outranks recency
+    "new-pref",
+    "old-pref",
+    "decision",
+    "knowledge",
+    "log",
+  ]);
+});
+
+test("rankByDurability is a total order and leaves its input alone", () => {
+  const tied: SearchItem[] = ["c", "a", "b"].map((id) => ({
+    id, project: "p", document: "d", score: 0, timestamp: "2026-01-01T00:00:00Z",
+    chunk_type: "Manual", importance: "Preference", category: "preference",
+  }));
+  // Tied on every durability signal: the id tiebreak must still yield one fixed
+  // order, or an unchanged bucket could render different bytes on each rebuild.
+  expect(rankByDurability(tied).map((r) => r.id)).toEqual(["a", "b", "c"]);
+  expect(rankByDurability(tied.slice().reverse()).map((r) => r.id)).toEqual(["a", "b", "c"]);
+  expect(tied.map((r) => r.id)).toEqual(["c", "a", "b"]); // input untouched
+  // A memory marked harmful sinks below an unrated one of equal importance.
+  const rated = rankByDurability([
+    { ...tied[0]!, id: "harmful", harmful_count: 3 },
+    { ...tied[0]!, id: "neutral" },
+  ]);
+  expect(rated.map((r) => r.id)).toEqual(["neutral", "harmful"]);
 });
 
 // ── working memory ───────────────────────────────────────────────────────────

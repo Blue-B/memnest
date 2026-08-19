@@ -154,15 +154,24 @@ test("updateUserModel dedups two restated facets within one batch", async () => 
   expect(adds).toHaveLength(1);
 });
 
-test("userModelContext formats top facets, empty when none", async () => {
+// Reads the bucket rather than searching it: there is no prompt to be relevant
+// to, so facets are picked by durability and rendered in that order.
+test("userModelContext renders the most durable facets, empty when none", async () => {
+  const facet = (over: Record<string, unknown>) => ({
+    id: "1", project: "_user_model", document: "doc", score: 0, timestamp: "2026-01-01T00:00:00Z",
+    chunk_type: "manual", importance: "Preference", category: "preference", ...over,
+  });
   const withFacets = {
-    search: async () => [
-      { id: "1", project: "_user_model", document: "Prefers Bun", score: 1, timestamp: "", chunk_type: "manual", importance: "preference", category: "preference" },
+    collection: async () => [
+      facet({ id: "low", document: "Logs a lot", importance: "Log" }),
+      facet({ id: "top", document: "Prefers Bun" }),
     ],
   } as unknown as MemnestClient;
-  const block = await userModelContext(withFacets, "");
-  expect(block).toBe("user_profile:\n- Prefers Bun");
+  expect(await userModelContext(withFacets)).toBe(
+    "user_profile:\n- Prefers Bun\n- Logs a lot",
+  );
+  expect(await userModelContext(withFacets, { max: 1 })).toBe("user_profile:\n- Prefers Bun");
 
-  const empty = { search: async () => [] } as unknown as MemnestClient;
-  expect(await userModelContext(empty, "")).toBe("");
+  const empty = { collection: async () => [] } as unknown as MemnestClient;
+  expect(await userModelContext(empty)).toBe("");
 });

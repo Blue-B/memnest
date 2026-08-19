@@ -31,6 +31,7 @@ import { consolidateByEmbedding } from "./consolidate.js";
 import { LlmBudget } from "./budget.js";
 import { improveSkills, SKILL_PROJECT } from "./skills.js";
 import { updateUserModel, userModelContext } from "./user-model.js";
+import { rankByDurability } from "./types.js";
 import type { LearnedMemory } from "./types.js";
 import {
 	appendDaily,
@@ -50,9 +51,9 @@ const SCRATCHPAD_FILE = path.join(LEARN_DIR, "SCRATCHPAD.md");
 const DAILY_DIR = path.join(LEARN_DIR, "daily");
 const CAPTURE_EVERY_TURNS = Number(process.env.MEMNEST_CAPTURE_TURNS ?? 10);
 const LEARN_INJECT = process.env.MEMNEST_LEARN_INJECT !== "0";
-const LEARN_RULE_MIN_SCORE = Number(
-	process.env.MEMNEST_LEARN_RULE_MIN_SCORE ?? "0.12",
-);
+// How many playbook rules to inject. There is no companion score threshold:
+// rules are chosen by durability, not by similarity to a query, so there is no
+// score to threshold on.
 const LEARN_RULE_TOP = Math.max(
 	1,
 	Number(process.env.MEMNEST_LEARN_RULE_TOP ?? "2") || 2,
@@ -157,16 +158,28 @@ async function learnFromMemories(
 	]);
 }
 
-// ── injection block (byte-stable) ────────────────────────────────────────────
-async function buildInjection(prompt: string): Promise<string> {
+// ── injection block (byte-stable, prompt-independent) ────────────────────────
+//
+// This block is STANDING context: who the user is, what is open, the rules they
+// keep restating. It is snapshotted at checkpoints and the same bytes are
+// re-emitted every turn to keep the model's prefix cache warm, so by
+// construction it cannot answer the current prompt, and it does not try to.
+// Prompt-aware retrieval is a separate job that pi-extension/src/autocontext.ts
+// already does, risk-gated and on demand.
+//
+// It used to take a `prompt` and thread it into every retrieval. That argument
+// was dead on the normal path: session_start pre-builds with "", and
+// MemorySnapshot.get only runs the builder when a checkpoint fires, so the
+// prompt passed by before_agent_start was never read. Every slot therefore
+// searched for a hardcoded placeholder and ranked rows by how much they
+// resembled that placeholder. Selection is now by durability (importance, then
+// recall feedback, then recency), which is a property of the memory rather than
+// of a string nobody chose.
+async function buildInjection(): Promise<string> {
 	const parts: string[] = [];
 	// 1) who the user is (deepening user model) — kept first so it's always seen
 	try {
-		const profile = await userModelContext(
-			client,
-			prompt || "user preferences working style",
-			{ max: 3 },
-		);
+		const profile = await userModelContext(client, { max: 3 });
 		if (profile.trim()) parts.push(profile);
 	} catch (e) {
 		warn(e); /* user model unavailable — degrade */
@@ -177,26 +190,19 @@ async function buildInjection(prompt: string): Promise<string> {
 		parts.push("open_tasks:");
 		for (const i of open) parts.push(`- [ ] ${i.text}`);
 	}
-	// 3) learned rules — pull corrections/preferences straight from the curated
-	// `playbook` bucket and inject them as their own slot. The old code only ran
-	// the project:"all" /context search below, so these few high-signal rules had
-	// to compete against tens of thousands of `root` autolog chunks; when the
-	// prompt wording didn't lexically overlap a rule it dropped out of the top-k
-	// entirely, the agent never saw it, and the same mistake repeated (the user
-	// kept re-correcting the same thing). Searching playbook directly guarantees
-	// the rules are always injected, isolated from autolog noise.
+	// 3) learned rules — the corrections and preferences the user keeps restating,
+	// read straight from the curated `playbook` bucket so they never compete with
+	// the tens of thousands of `root` autolog chunks. `capture.ts` routes every
+	// preference/decision memory here, and this is the only slot that reads it
+	// back, so the two halves have to agree on the bucket or the loop is open.
 	try {
-		const rules = (
-			await client.search(prompt || "user corrections and preferences", {
-				project: "playbook",
-				nResults: Math.max(4, LEARN_RULE_TOP * 2),
-			})
-		)
-			.filter((r) => r.score >= LEARN_RULE_MIN_SCORE)
-			.slice(0, LEARN_RULE_TOP);
+		const rules = rankByDurability(await client.collection("playbook")).slice(
+			0,
+			LEARN_RULE_TOP,
+		);
 		if (rules.length > 0) {
 			parts.push(
-				"learned_rules (relevant prior corrections; verify before applying):",
+				"learned_rules (durable prior corrections; verify before applying):",
 			);
 			for (const r of rules) {
 				parts.push(`- ${r.document.replace(/\s+/g, " ").trim().slice(0, 260)}`);
@@ -205,12 +211,20 @@ async function buildInjection(prompt: string): Promise<string> {
 	} catch (e) {
 		warn(e); /* playbook unreachable — degrade to context pack */
 	}
-	// 4) project-local, budget-bounded context pack. Cross-project preferences
-	// already have their own curated slot above, so broad autolog recall is waste.
+	// 4) project-local curated context: the notes and facts the engine keeps per
+	// project. `nResults: 0` asks for those and skips /context's query-driven
+	// memory search, which had nothing honest to search for here. Notes and facts
+	// are keyed and hand-curated, so they are already prompt-independent.
+	//
+	// The retrieved-memories half is deliberately not replaced with a
+	// durability-ranked read of the project bucket. That bucket is where the old
+	// correction fast-path dumped raw undistilled complaints, all tagged
+	// `decision`, so ranking it by importance just surfaces the loudest of them.
+	// Cross-project lessons are curated into `playbook` and already have slot 3.
 	try {
-		const { prompt: pack } = await client.context(prompt || "recent work", {
+		const { prompt: pack } = await client.context("", {
 			project: currentProject(),
-			nResults: 3,
+			nResults: 0,
 			maxNotes: 4,
 			maxFacts: 4,
 			maxChars: 1800,
@@ -230,17 +244,17 @@ export default function (pi: ExtensionAPI) {
 		recentTurns = [];
 		turnCounter = 0;
 		if (LEARN_INJECT)
-			await snapshot.refresh("session_start", () => buildInjection(""));
+			await snapshot.refresh("session_start", buildInjection);
 	});
 
 	// before_agent_start: inject the byte-stable memory block only when enabled.
 	if (LEARN_INJECT) {
 		pi.on(
 			"before_agent_start",
-			async (event: { prompt?: string; systemPrompt: string }) => {
-				const { text, reason, takenAt } = await snapshot.get(() =>
-					buildInjection(event.prompt ?? ""),
-				);
+			// `event.prompt` is deliberately unused: this block is standing context,
+			// not a reply to this turn. See buildInjection's header.
+			async (event: { systemPrompt: string }) => {
+				const { text, reason, takenAt } = await snapshot.get(buildInjection);
 				if (!text.trim()) return;
 				const header = [
 					"\n\n## Memory (memnest-learn)",
@@ -297,8 +311,9 @@ export default function (pi: ExtensionAPI) {
 				const slice = recentTurns.slice(-40);
 				captureMemories(slice, llm, client, { project, max: 8 })
 					.then(async (r) => {
-						// No markDirty (cache note above); captures land in the next
-						// snapshot at session_start / compaction / day rollover.
+						// A capture does not rebuild the snapshot: that would change the
+						// header bytes and drop the prompt prefix cache. New memories land
+						// in the next one at session_start / compaction / day rollover.
 						await learnFromMemories(r.memories, llm);
 					})
 					.catch(warn)
@@ -330,7 +345,7 @@ export default function (pi: ExtensionAPI) {
 					.catch(warn);
 			}
 			// compaction is the one intentional cache boundary — refresh the snapshot
-			await snapshot.refresh("before_compact", () => buildInjection(""));
+			await snapshot.refresh("before_compact", buildInjection);
 		},
 	);
 

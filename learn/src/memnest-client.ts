@@ -64,6 +64,14 @@ export class MemnestClient {
     private readonly fetchFn: FetchLike,
   ) {}
 
+  private async get(path: string, signal?: AbortSignal): Promise<any> {
+    const res = await this.fetchFn(`${this.baseUrl}${path}`, { method: "GET", signal });
+    if (!res.ok) {
+      throw new Error(`memnest ${path} -> HTTP ${res.status}: ${await safeText(res)}`);
+    }
+    return res.json();
+  }
+
   private async post(path: string, body: unknown, signal?: AbortSignal): Promise<any> {
     const res = await this.fetchFn(`${this.baseUrl}${path}`, {
       method: "POST",
@@ -117,6 +125,25 @@ export class MemnestClient {
     if ((opts as any).category) body.category = (opts as any).category;
     const out = await this.post("/search", body);
     return (out?.results ?? []) as SearchItem[];
+  }
+
+  /**
+   * Every chunk in one bucket, newest first, with no query involved.
+   *
+   * `/search` and `/neighbors` both start from a query embedding, so they can
+   * only answer "what looks like this string". A standing injection block has no
+   * such string, and feeding them a placeholder ranks by similarity to that
+   * placeholder rather than by anything meaningful. This reads the bucket
+   * directly instead, which is what makes durability ranking possible.
+   *
+   * The engine caps the response at 100 rows server-side (`get_chunks_by_project`
+   * is a `ORDER BY created_at DESC LIMIT 100`), which is ample for the curated
+   * buckets this is used on (`playbook`, `_user_model`) and bounds the payload
+   * on large ones.
+   */
+  async collection(name: string): Promise<SearchItem[]> {
+    const out = await this.get(`/collection/${encodeURIComponent(name)}`);
+    return (Array.isArray(out) ? out : []) as SearchItem[];
   }
 
   /** Budget-bounded prompt pack (notes + facts + retrieved memories). */
