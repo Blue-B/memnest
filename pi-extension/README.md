@@ -124,26 +124,16 @@ Common controls:
 
 Run `memnest_autocontext_status` to see the active mode, counters, and a test retrieval.
 
-## AutoLog
+## Automatic conversation capture
 
-AutoLog is off by default. Enable it explicitly:
-
-```bash
-MEMNEST_AUTOLOG=1 pi
-```
-
-When enabled, lifecycle hooks send user messages and assistant final messages to memnest without blocking the agent loop. Thinking content, short noise, and memnest's own tool calls are skipped. Pending writes are drained when the session ends.
-
-Tool-result capture remains off unless `MEMNEST_AUTOLOG_TOOLS=1` is set. Tool results are higher volume and are truncated before storage.
-
-AutoLog records with log importance have a 30-day core retention period by default. Configure that policy on the core with `MEMNEST_TTL_AUTOLOG_DAYS`.
+The extension does not install AutoLog event hooks. Use `memnest watch` as the single capture path so pi conversations are not stored twice. Watch stores redacted user and assistant transcript text without summarization, keeps long turns in ordered chunks without truncation, and retains AutoLog until explicit deletion.
 
 ## Outside pi
 
-Autocontext and AutoLog need hooks into a host's session events, which MCP does not describe; it covers tool calls a model chooses to make. Those two behaviours therefore used to require an extension, and pi was the only host that had one. The core now provides them directly, so another host is not left with tools alone:
+MCP does not describe host session events. The core provides host-neutral automatic behavior instead:
 
-- `memnest hook` reads a host's prompt hook payload on stdin and answers with a context pack, in the shape that host expects.
-- `memnest watch` follows the session transcripts a host already writes and stores the turns it finds, with no host configuration.
+- `memnest hook` reads a host's hook payload on stdin and answers with a context pack, in the shape that host expects.
+- `memnest watch` follows Claude Code, pi, and Codex transcripts and stores visible conversation text, with no host extension hooks.
 
 See [automatic memory](../README.md#automatic-memory) in the root README. Inside pi this extension remains the fuller surface, since it adds the 20 tools above and the `/memnest` command.
 

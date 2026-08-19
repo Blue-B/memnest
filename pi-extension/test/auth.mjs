@@ -33,42 +33,22 @@ const bundle = join(here, "..", "dist", "index.mjs");
 const extension = await import(`${bundle}?auth-test`);
 extension.default(pi);
 
-for (const handler of hooks.get("session_start") ?? []) {
-	await handler({}, { cwd: "/tmp/auth-project", ui: { setStatus() {} } });
-}
-for (const handler of hooks.get("input") ?? []) {
-	await handler(
-		{ text: "remember this authenticated event", source: "interactive" },
-		{ cwd: "/tmp/auth-project", ui: { setStatus() {} } },
-	);
-}
-await new Promise((resolve) => setTimeout(resolve, 20));
-
-const autolog = requests.find((request) => request.url.endsWith("/add"));
-assert.ok(autolog, "AutoLog should POST /add");
-assert.equal(autolog.init.headers.Authorization, "Bearer test-token");
-
-const beforeAssistant = requests.length;
-for (const handler of hooks.get("message_end") ?? []) {
-	await handler({
-		message: {
-			role: "assistant",
-			content: [
-				{ type: "toolCall", name: "bash", arguments: { command: "echo fixture" } },
-				{ type: "text", text: "final summary" },
-			],
-		},
-	});
-}
-await new Promise((resolve) => setTimeout(resolve, 20));
-const assistantAdds = requests
-	.slice(beforeAssistant)
-	.filter((request) => request.url.endsWith("/add"));
-assert.equal(assistantAdds.length, 1, "assistant text should be saved once");
-const assistantBody = JSON.parse(assistantAdds[0].init.body).text;
-assert.match(assistantBody, /final summary/);
+const autologHooks = [
+	"input",
+	"message_end",
+	"tool_execution_end",
+	"session_compact",
+	"agent_end",
+	"session_shutdown",
+];
 assert.ok(
-	!assistantBody.includes("toolCall") && !assistantBody.includes("echo fixture"),
+	autologHooks.every((name) => !hooks.has(name)),
+	"AutoLog hooks must stay absent even when MEMNEST_AUTOLOG=1",
+);
+assert.equal(
+	requests.filter((request) => request.url.endsWith("/add")).length,
+	0,
+	"extension registration must not write transcript data",
 );
 
 const command = commands.get("memnest");
@@ -95,4 +75,4 @@ assert.ok(
 	"status requests should carry bearer auth",
 );
 
-console.log("pi auth and command: 5 assertions passed");
+console.log("pi auth, command, and no-AutoLog assertions passed");

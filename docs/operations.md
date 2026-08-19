@@ -60,11 +60,9 @@ Retention depends on memory type and importance:
 
 - manual and consolidated memories do not expire automatically
 - knowledge, decision, and preference memories do not expire automatically
-- AutoLog records with log importance expire after 30 days by default
+- AutoLog conversation records do not expire automatically
 - filtered records expire after 7 days
 - pinned memories are excluded from automatic retention and from normal prune requests
-
-Set `MEMNEST_TTL_AUTOLOG_DAYS` to a positive day count to change the AutoLog window. Use `0`, `off`, or `unlimited` to keep those records indefinitely.
 
 Expired and manually deleted memories move to `_trash` first, where search does not return them. Restore by id while they are still there:
 
@@ -121,7 +119,7 @@ memnest --help
 
 Common options: `--host`, `--port`, `--data-dir`, `--backup-dir`, `--restore-dir`, `--import-jsonl`, `--import-facts-json`.
 
-`hook` reads a host's hook payload on stdin and writes the reply on stdout, choosing the shape from the payload unless `--format` pins it. It never blocks a prompt: an unreachable service means no output and exit 0. `watch` follows the transcript directories a host already writes, currently Claude Code and pi, and keeps a byte offset per file in `<data-dir>/watch-state.json` so a restart neither repeats nor loses a turn. It follows new files from the end unless `--backfill` asks for existing history. Both talk to the service over HTTP and take `--url`, falling back to `MEMNEST_URL`. See the README for the host configuration each one needs.
+`hook` reads a host's hook payload on stdin and writes the reply on stdout, choosing the shape from the payload unless `--format` pins it. It never blocks a prompt: an unreachable service means no output and exit 0. `watch` is the single automatic capture path for Claude Code, pi, and Codex transcripts. It keeps a byte offset per file in `<data-dir>/watch-state.json`, follows new files from the end unless `--backfill` asks for existing history, and advances only after storage succeeds or an idempotent retry is confirmed. Both talk to the service over HTTP and take `--url`, falling back to `MEMNEST_URL`.
 
 `--viewer-port` is deprecated. The dashboard is served on `--port` alongside the API.
 
@@ -133,7 +131,6 @@ Common options: `--host`, `--port`, `--data-dir`, `--backup-dir`, `--restore-dir
 | `MEMNEST_TOKEN` | Required for a non-local bind; clients send `Authorization: Bearer <token>` |
 | `MEMNEST_EMBED_MODEL` | Embedding model, defaults to `intfloat/multilingual-e5-base` |
 | `MEMNEST_EMBED_DIM` | Embedding dimension, defaults to 768 |
-| `MEMNEST_TTL_AUTOLOG_DAYS` | AutoLog retention window |
 | `MEMNEST_ARCHIVE` | Set to `0` to stop writing archive JSONL before hard deletion |
 
 ## Development checks

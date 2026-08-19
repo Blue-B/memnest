@@ -36,9 +36,11 @@ if (!existsSync(BUNDLE)) {
 
 const tools = new Map();
 const commands = new Map();
+const hooks = [];
 const fakePi = {
 	registerTool: (t) => tools.set(t.name, t),
 	registerCommand: (name, command) => commands.set(name, command),
+	on: (name) => hooks.push(name),
 };
 // Tolerate any other pi.* methods the extension may call.
 const noop = () => {};
@@ -55,6 +57,19 @@ assert("ESM bundle loads", typeof mod.default === "function");
 await mod.default(proxy);
 assert("register() called without throwing", true);
 assert("/memnest command registered", commands.has("memnest"));
+const AUTOLOG_HOOKS = [
+	"input",
+	"message_end",
+	"tool_execution_end",
+	"session_compact",
+	"agent_end",
+	"session_shutdown",
+];
+assert(
+	"no AutoLog hooks are installed",
+	AUTOLOG_HOOKS.every((name) => !hooks.includes(name)),
+	`installed hooks: ${hooks.join(", ")}`,
+);
 
 const EXPECTED = [
 	"memory_remember",

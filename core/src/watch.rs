@@ -19,23 +19,20 @@
 //! the watcher on cannot flood the store with months of old sessions.
 
 use crate::models::{ChunkType, Importance, Metadata};
+use crate::redaction::redact_text;
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// Transcript locations checked when no `--path` is given.
-const DEFAULT_ROOTS: &[&str] = &[".claude/projects", ".pi/agent/sessions"];
+const DEFAULT_ROOTS: &[&str] = &[".claude/projects", ".pi/agent/sessions", ".codex/sessions"];
 
-/// Shorter turns are acknowledgements ("ok", "go on") that cost an embedding
-/// and match nothing later. Counted in characters so the budget means the same
-/// for Korean as for English.
-const MIN_TEXT_CHARS: usize = 12;
-
-/// Upper bound on one stored turn, matching the pi extension's AutoLog cap.
+/// Maximum conversation characters in one independently searchable chunk.
 const MAX_TEXT_CHARS: usize = 8000;
 
 /// Bytes read from one file per cycle. A first `backfill` pass over a large
@@ -57,8 +54,9 @@ struct Event {
     text: String,
     session_id: String,
     cwd: Option<String>,
-    /// Host's own id for the line, so a stored chunk can be traced back.
-    event_id: Option<String>,
+    /// Stable identity for this transcript event. The host id is preferred;
+    /// otherwise this is derived from a hashed file identity and byte offset.
+    event_id: String,
 }
 
 impl Event {
@@ -75,16 +73,19 @@ impl Event {
             .to_string()
     }
 
-    /// Rendered document, matching the prefixes the pi extension already writes
-    /// so both paths read alike in search results.
-    fn document(&self) -> (String, bool) {
+    /// Render deterministic ordered chunks after credential redaction. No
+    /// conversation text is discarded, including turns larger than one chunk.
+    fn documents(&self) -> Vec<String> {
         let label = if self.role == "user" {
             "User said"
         } else {
             "Assistant answered"
         };
-        let (text, truncated) = clip(&self.text, MAX_TEXT_CHARS);
-        (format!("{label}: {text}"), truncated)
+        let redacted = redact_text(&self.text);
+        split_chars(&redacted, MAX_TEXT_CHARS)
+            .into_iter()
+            .map(|part| format!("{label}: {part}"))
+            .collect()
     }
 }
 
@@ -98,6 +99,8 @@ struct FileState {
     session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     cwd: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    sidechain: bool,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -116,12 +119,15 @@ struct Pending {
     event: Option<Event>,
 }
 
-fn clip(text: &str, max_chars: usize) -> (String, bool) {
-    if text.chars().count() <= max_chars {
-        return (text.to_string(), false);
+fn split_chars(text: &str, max_chars: usize) -> Vec<String> {
+    if text.is_empty() || max_chars == 0 {
+        return Vec::new();
     }
-    let head: String = text.chars().take(max_chars).collect();
-    (format!("{head}\n…[truncated]"), true)
+    let chars: Vec<char> = text.chars().collect();
+    chars
+        .chunks(max_chars)
+        .map(|part| part.iter().collect())
+        .collect()
 }
 
 /// Remove `<system-reminder>` blocks, which are context the harness injects
@@ -166,7 +172,21 @@ fn message_text(message: &Value, text_part: &str) -> String {
 }
 
 fn is_storable(text: &str) -> bool {
-    text.chars().count() >= MIN_TEXT_CHARS
+    let normalized = text.trim().to_ascii_lowercase();
+    !normalized.is_empty()
+        && !matches!(
+            normalized.as_str(),
+            "y" | "yes"
+                | "yep"
+                | "ok"
+                | "okay"
+                | "sure"
+                | "thanks"
+                | "thank you"
+                | "got it"
+                | "go on"
+                | "continue"
+        )
 }
 
 /// Claude Code: one object per line, `type` carries the role, and `cwd` and
@@ -208,14 +228,15 @@ fn parse_claude_code(line: &Value) -> Option<Event> {
         event_id: line
             .get("uuid")
             .and_then(Value::as_str)
-            .map(str::to_string),
+            .unwrap_or_default()
+            .to_string(),
     })
 }
 
 /// pi: `type` is always `message` and the role sits inside. `toolResult` is a
 /// role of its own, which keeps tool output out without inspecting parts.
 fn parse_pi(line: &Value, state: &FileState) -> Option<Event> {
-    if line.get("type").and_then(Value::as_str) != Some("message") {
+    if state.sidechain || line.get("type").and_then(Value::as_str) != Some("message") {
         return None;
     }
     let message = line.get("message")?;
@@ -234,7 +255,45 @@ fn parse_pi(line: &Value, state: &FileState) -> Option<Event> {
         text,
         session_id: state.session_id.clone().unwrap_or_default(),
         cwd: state.cwd.clone(),
-        event_id: line.get("id").and_then(Value::as_str).map(str::to_string),
+        event_id: line
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+    })
+}
+
+/// Codex keeps conversation events under `event_msg`; only the two visible
+/// message variants are conversation text. Developer messages, reasoning,
+/// images, and tool traffic have different event types and are ignored.
+fn parse_codex(line: &Value, state: &FileState) -> Option<Event> {
+    if state.sidechain || line.get("type").and_then(Value::as_str) != Some("event_msg") {
+        return None;
+    }
+    let payload = line.get("payload")?;
+    let role = match payload.get("type").and_then(Value::as_str) {
+        Some("user_message") => "user",
+        Some("agent_message") => "assistant",
+        _ => return None,
+    };
+    let text = strip_reminders(payload.get("message")?.as_str()?)
+        .trim()
+        .to_string();
+    if !is_storable(&text) {
+        return None;
+    }
+    Some(Event {
+        host: "codex",
+        role,
+        text,
+        session_id: state.session_id.clone().unwrap_or_default(),
+        cwd: state.cwd.clone(),
+        event_id: line
+            .get("id")
+            .or_else(|| payload.get("id"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
     })
 }
 
@@ -242,10 +301,11 @@ fn parse_pi(line: &Value, state: &FileState) -> Option<Event> {
 /// handled the same way. Header lines update the cached session identity.
 fn parse_line(raw: &str, state: &mut FileState) -> Option<Event> {
     let line: Value = serde_json::from_str(raw.trim()).ok()?;
-    if let Some(header) = pi_header(&line) {
-        let (session_id, cwd) = header;
+    if let Some(header) = transcript_header(&line) {
+        let (session_id, cwd, sidechain) = header;
         state.session_id = session_id;
         state.cwd = cwd;
+        state.sidechain = sidechain;
         return None;
     }
     if let Some(event) = parse_claude_code(&line) {
@@ -255,25 +315,51 @@ fn parse_line(raw: &str, state: &mut FileState) -> Option<Event> {
         state.cwd = event.cwd.clone();
         return Some(event);
     }
-    parse_pi(&line, state)
+    parse_pi(&line, state).or_else(|| parse_codex(&line, state))
 }
 
-/// pi opens a transcript with a `session` line holding the id and cwd.
-fn pi_header(line: &Value) -> Option<(Option<String>, Option<String>)> {
-    if line.get("type").and_then(Value::as_str) != Some("session") {
-        return None;
+/// pi and Codex open transcripts with a line holding session identity.
+fn transcript_header(line: &Value) -> Option<(Option<String>, Option<String>, bool)> {
+    match line.get("type").and_then(Value::as_str) {
+        Some("session") => Some((
+            line.get("id").and_then(Value::as_str).map(str::to_string),
+            line.get("cwd")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .filter(|cwd| !cwd.is_empty()),
+            line.get("parentSessionId")
+                .or_else(|| line.get("parent_session_id"))
+                .and_then(Value::as_str)
+                .is_some_and(|id| !id.is_empty()),
+        )),
+        Some("session_meta") => {
+            let payload = line.get("payload")?;
+            let thread_source = payload
+                .get("thread_source")
+                .map(Value::to_string)
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            Some((
+                payload
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                payload
+                    .get("cwd")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .filter(|cwd| !cwd.is_empty()),
+                thread_source.contains("subagent")
+                    || thread_source.contains("sub_agent")
+                    || thread_source.contains("parent_thread_id"),
+            ))
+        }
+        _ => None,
     }
-    Some((
-        line.get("id").and_then(Value::as_str).map(str::to_string),
-        line.get("cwd")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .filter(|cwd| !cwd.is_empty()),
-    ))
 }
 
 /// Recover session identity when reading resumes past the header line.
-fn scan_header(path: &Path) -> Option<(Option<String>, Option<String>)> {
+fn scan_header(path: &Path) -> Option<(Option<String>, Option<String>, bool)> {
     let file = std::fs::File::open(path).ok()?;
     let mut reader = BufReader::new(file);
     let mut buf = Vec::new();
@@ -285,15 +371,22 @@ fn scan_header(path: &Path) -> Option<(Option<String>, Option<String>)> {
         let Ok(line) = serde_json::from_slice::<Value>(&buf) else {
             continue;
         };
-        if let Some(header) = pi_header(&line) {
+        if let Some(header) = transcript_header(&line) {
             return Some(header);
         }
         // A Claude Code line carries the same facts on its face.
         if let Some(event) = parse_claude_code(&line) {
-            return Some((Some(event.session_id), event.cwd));
+            return Some((Some(event.session_id), event.cwd, false));
         }
     }
     None
+}
+
+fn file_identity(path: &Path) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(path.to_string_lossy().as_bytes());
+    let digest = format!("{:x}", hasher.finalize());
+    digest[..32].to_string()
 }
 
 /// Read whatever has been appended since the last successful send. Only whole
@@ -310,11 +403,13 @@ fn read_pending(path: &Path, state: &mut FileState) -> Result<Vec<Pending>> {
     if len == state.offset {
         return Ok(Vec::new());
     }
-    if state.offset > 0 && state.session_id.is_none()
-        && let Some((session_id, cwd)) = scan_header(path)
+    if state.offset > 0
+        && state.session_id.is_none()
+        && let Some((session_id, cwd, sidechain)) = scan_header(path)
     {
         state.session_id = session_id;
         state.cwd = cwd;
+        state.sidechain = sidechain;
     }
 
     let mut reader = BufReader::new(file);
@@ -322,9 +417,11 @@ fn read_pending(path: &Path, state: &mut FileState) -> Result<Vec<Pending>> {
 
     let mut pending = Vec::new();
     let mut consumed = 0u64;
+    let identity = file_identity(path);
     let mut buf = Vec::new();
     loop {
         buf.clear();
+        let start_offset = state.offset + consumed;
         let read = reader.read_until(b'\n', &mut buf)?;
         if read == 0 || !buf.ends_with(b"\n") {
             break;
@@ -333,9 +430,15 @@ fn read_pending(path: &Path, state: &mut FileState) -> Result<Vec<Pending>> {
         // Transcripts are UTF-8; a damaged byte should cost one character, not
         // the whole file.
         let line = String::from_utf8_lossy(&buf);
+        let mut event = parse_line(&line, state);
+        if let Some(event) = &mut event
+            && event.event_id.is_empty()
+        {
+            event.event_id = format!("file-{identity}:{start_offset}");
+        }
         pending.push(Pending {
             end_offset: state.offset + consumed,
-            event: parse_line(&line, state),
+            event,
         });
         if consumed >= MAX_BYTES_PER_CYCLE {
             break;
@@ -391,51 +494,56 @@ fn save_state(path: &Path, state: &WatchState) -> Result<()> {
     Ok(())
 }
 
-/// Outcome of one send. A rejected event is dropped instead of retried: a line
-/// the service refuses would otherwise block the file forever.
 enum Sent {
-    Stored,
-    Rejected(String),
+    Stored(usize),
 }
 
 async fn post_event(client: &reqwest::Client, base_url: &str, event: &Event) -> Result<Sent> {
-    let (document, truncated) = event.document();
-    let metadata = Metadata {
-        chunk_type: ChunkType::AutoLog,
-        importance: Importance::Log,
-        session_id: event.session_id.clone(),
-        cwd: event.cwd.clone(),
-        source: Some(format!("{}.transcript", event.host)),
-        adapter: Some(event.host.to_string()),
-        adapter_version: Some(env!("CARGO_PKG_VERSION").to_string()),
-        role: Some(event.role.to_string()),
-        event_id: event.event_id.clone(),
-        truncated,
-        ..Default::default()
-    };
-    let mut request = client
-        .post(format!("{}/add", base_url.trim_end_matches('/')))
-        .json(&json!({
-            "text": document,
-            "project": event.project(),
-            "metadata": metadata,
-        }));
-    if let Ok(token) = std::env::var("MEMNEST_TOKEN")
-        && !token.trim().is_empty()
-    {
-        request = request.bearer_auth(token.trim());
-    }
+    let documents = event.documents();
+    let total = documents.len() as i64;
+    for (index, document) in documents.into_iter().enumerate() {
+        let metadata = Metadata {
+            chunk_type: ChunkType::AutoLog,
+            importance: Importance::Log,
+            session_id: event.session_id.clone(),
+            cwd: event.cwd.clone(),
+            source: Some(format!("{}.transcript", event.host)),
+            adapter: Some(event.host.to_string()),
+            adapter_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            role: Some(event.role.to_string()),
+            event_id: Some(event.event_id.clone()),
+            sequence: Some(index as i64 + 1),
+            total: Some(total),
+            truncated: false,
+            ..Default::default()
+        };
+        let mut request = client
+            .post(format!("{}/add", base_url.trim_end_matches('/')))
+            .json(&json!({
+                "text": document,
+                "project": event.project(),
+                "metadata": metadata,
+            }));
+        if let Ok(token) = std::env::var("MEMNEST_TOKEN")
+            && !token.trim().is_empty()
+        {
+            request = request.bearer_auth(token.trim());
+        }
 
-    let response = request.send().await.context("service unreachable")?;
-    let status = response.status();
-    if status.is_success() {
-        Ok(Sent::Stored)
-    } else if status.is_client_error() {
-        Ok(Sent::Rejected(status.to_string()))
-    } else {
-        // 5xx is the service having a bad moment; the turn is worth retrying.
-        Err(anyhow!("service returned {status}"))
+        let response = request.send().await.context("service unreachable")?;
+        let http_status = response.status();
+        let body: Value = response
+            .json()
+            .await
+            .context("service returned a non-JSON /add response")?;
+        let add_status = body.get("status").and_then(Value::as_str).unwrap_or("");
+        if !http_status.is_success() || !matches!(add_status, "succeeded" | "deduplicated") {
+            return Err(anyhow!(
+                "service /add returned HTTP {http_status} status={add_status:?}"
+            ));
+        }
     }
+    Ok(Sent::Stored(total as usize))
 }
 
 /// Send one file's pending turns, advancing the offset only past turns that
@@ -451,10 +559,7 @@ async fn drain_file(
     for item in pending {
         if let Some(event) = &item.event {
             match post_event(client, base_url, event).await {
-                Ok(Sent::Stored) => stored += 1,
-                Ok(Sent::Rejected(status)) => {
-                    tracing::warn!("watch: {} rejected a turn ({status})", path.display());
-                }
+                Ok(Sent::Stored(parts)) => stored += parts,
                 Err(e) => return Err(e),
             }
         }
@@ -480,9 +585,10 @@ async fn sweep(
             // First sighting: follow from the end, like `tail -f`, so enabling
             // the watcher does not import every past session.
             entry.offset = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-            if let Some((session_id, cwd)) = scan_header(&path) {
+            if let Some((session_id, cwd, sidechain)) = scan_header(&path) {
                 entry.session_id = session_id;
                 entry.cwd = cwd;
+                entry.sidechain = sidechain;
             }
             continue;
         }
@@ -524,7 +630,7 @@ pub async fn run(
     state.version = 1;
 
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(120))
         .build()?;
     let interval = Duration::from_secs(interval_secs.max(1));
 
@@ -541,7 +647,7 @@ pub async fn run(
     loop {
         let stored = sweep(&client, &base_url, &roots, &mut state, backfill).await;
         if stored > 0 {
-            tracing::info!("watch: stored {stored} turn(s)");
+            tracing::info!("watch: stored {stored} transcript chunk(s)");
         }
         if let Err(e) = save_state(&state_path, &state) {
             tracing::warn!("watch: could not save progress ({e:#})");
@@ -558,7 +664,6 @@ mod tests {
     use super::*;
     use std::io::Write;
 
-    /// Long enough to clear MIN_TEXT_CHARS without being a real conversation.
     const BODY: &str = "the deploy port is eight three two zero";
 
     fn claude_line(role: &str, text: &str) -> String {
@@ -610,18 +715,17 @@ mod tests {
         assert_eq!(event.cwd.as_deref(), Some("/home/dev/acme"));
         // The engine buckets by cwd basename, not by the whole path.
         assert_eq!(event.project(), "acme");
-        assert!(event.document().0.starts_with("User said: "));
+        assert!(event.documents()[0].starts_with("User said: "));
 
         let assistant = parse_line(&claude_line("assistant", BODY), &mut state).unwrap();
         assert_eq!(assistant.role, "assistant");
-        assert!(assistant.document().0.starts_with("Assistant answered: "));
+        assert!(assistant.documents()[0].starts_with("Assistant answered: "));
     }
 
     #[test]
     fn pi_turns_take_identity_from_the_session_header() {
         let mut state = FileState::default();
-        let header =
-            json!({"type":"session","id":"pi-9","cwd":"/home/dev/widgets"}).to_string();
+        let header = json!({"type":"session","id":"pi-9","cwd":"/home/dev/widgets"}).to_string();
         // The header itself stores nothing but teaches the parser who is talking.
         assert!(parse_line(&header, &mut state).is_none());
         assert_eq!(state.session_id.as_deref(), Some("pi-9"));
@@ -636,13 +740,62 @@ mod tests {
         assert_eq!(event.host, "pi");
         assert_eq!(event.session_id, "pi-9");
         assert_eq!(event.project(), "widgets");
-        assert_eq!(event.event_id.as_deref(), Some("m-3"));
+        assert_eq!(event.event_id, "m-3");
 
         // A transcript with no cwd anywhere still has to land somewhere.
         let mut bare = FileState::default();
-        parse_line(&json!({"type":"session","id":"pi-0"}).to_string(), &mut bare);
+        parse_line(
+            &json!({"type":"session","id":"pi-0"}).to_string(),
+            &mut bare,
+        );
         let orphan = parse_line(&line, &mut bare).unwrap();
         assert_eq!(orphan.project(), "root");
+    }
+
+    #[test]
+    fn codex_turns_use_session_meta_and_exclude_non_conversation_events() {
+        let mut state = FileState::default();
+        let header = json!({
+            "type":"session_meta",
+            "payload":{"id":"codex-7","cwd":"/home/dev/gizmo","cli_version":"1.2.3"}
+        });
+        assert!(parse_line(&header.to_string(), &mut state).is_none());
+
+        for (kind, role) in [("user_message", "user"), ("agent_message", "assistant")] {
+            let line = json!({"type":"event_msg","payload":{"type":kind,"message":BODY}});
+            let event = parse_line(&line.to_string(), &mut state).unwrap();
+            assert_eq!(event.host, "codex");
+            assert_eq!(event.role, role);
+            assert_eq!(event.session_id, "codex-7");
+            assert_eq!(event.project(), "gizmo");
+        }
+
+        let sidechain_header = json!({
+            "type":"session_meta",
+            "payload":{"id":"child","cwd":"/tmp/x","thread_source":{"sub_agent":{"parent_thread_id":"p"}}}
+        });
+        parse_line(&sidechain_header.to_string(), &mut state);
+        assert!(
+            parse_line(
+                &json!({"type":"event_msg","payload":{"type":"agent_message","message":BODY}})
+                    .to_string(),
+                &mut state,
+            )
+            .is_none()
+        );
+
+        state.sidechain = false;
+        for line in [
+            json!({"type":"event_msg","payload":{"type":"developer_message","message":BODY}}),
+            json!({"type":"event_msg","payload":{"type":"agent_reasoning","text":BODY}}),
+            json!({"type":"response_item","payload":{"type":"function_call_output","output":BODY}}),
+            json!({"type":"event_msg","payload":{"type":"user_message","message":"","images":["data:image/png"]}}),
+        ] {
+            assert!(
+                parse_line(&line.to_string(), &mut state).is_none(),
+                "stored Codex noise: {line}"
+            );
+        }
     }
 
     #[test]
@@ -727,7 +880,10 @@ mod tests {
 
         // A transcript is appended to while we read it; consuming a fragment
         // now would drop the rest of the line forever.
-        let mut file = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
         write!(file, "{{\"type\":\"user\",\"sess").unwrap();
         file.flush().unwrap();
         assert!(drain(&path, &mut state).is_empty());
@@ -792,17 +948,117 @@ mod tests {
     }
 
     #[test]
-    fn long_turns_are_clipped_in_characters() {
-        let (short, truncated) = clip("짧은 문장", MAX_TEXT_CHARS);
-        assert_eq!(short, "짧은 문장");
-        assert!(!truncated);
+    fn long_turns_are_completely_split_in_order_after_redaction() {
+        let secret = "sk-abcdefghijklmnopqrstuvwxyz";
+        let text = format!("{}\n{} tail", "한".repeat(MAX_TEXT_CHARS + 10), secret);
+        let event = Event {
+            host: "pi",
+            role: "assistant",
+            text,
+            session_id: "s".into(),
+            cwd: None,
+            event_id: "e".into(),
+        };
+        let documents = event.documents();
+        assert_eq!(documents.len(), 2);
+        let rebuilt = documents
+            .iter()
+            .map(|part| part.strip_prefix("Assistant answered: ").unwrap())
+            .collect::<String>();
+        assert_eq!(
+            rebuilt,
+            format!(
+                "{}\n[REDACTED_SECRET] tail",
+                "한".repeat(MAX_TEXT_CHARS + 10)
+            )
+        );
+        assert!(!rebuilt.contains(secret));
+        assert!(documents[0].chars().count() > documents[1].chars().count());
+    }
 
-        // Counting bytes would cut a Korean turn at a third of the budget.
-        let long: String = "한".repeat(MAX_TEXT_CHARS + 10);
-        let (clipped, truncated) = clip(&long, MAX_TEXT_CHARS);
-        assert!(truncated);
-        assert!(clipped.starts_with(&"한".repeat(MAX_TEXT_CHARS)));
-        assert!(clipped.ends_with("[truncated]"));
+    #[test]
+    fn short_technical_text_is_kept_but_ack_noise_is_not() {
+        for kept in ["404", "x7", "deadbeef", "/a", "E1", "42"] {
+            assert!(is_storable(kept), "dropped technical token: {kept}");
+        }
+        for dropped in ["", "  ", "ok", "YES", "thanks", "go on"] {
+            assert!(!is_storable(dropped), "kept acknowledgement: {dropped:?}");
+        }
+    }
+
+    #[test]
+    fn repeated_identical_turns_get_distinct_fallback_identities() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pi.jsonl");
+        let line = json!({
+            "type":"message",
+            "message":{"role":"user","content":[{"type":"text","text":"404"}]}
+        })
+        .to_string();
+        write_lines(&path, &[line.clone(), line]);
+        let events = drain(&path, &mut FileState::default());
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].text, events[1].text);
+        assert_ne!(events[0].event_id, events[1].event_id);
+        assert!(
+            events
+                .iter()
+                .all(|event| !event.event_id.contains(path.to_string_lossy().as_ref()))
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_2xx_is_retried_and_duplicate_success_advances_offset() {
+        use axum::{Json, Router, routing::post};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let server_calls = calls.clone();
+        let app = Router::new().route(
+            "/add",
+            post(move || {
+                let attempt = server_calls.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if attempt == 0 {
+                        Json(json!({"status":"failed"}))
+                    } else {
+                        Json(json!({"status":"deduplicated"}))
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("retry.jsonl");
+        write_lines(&path, &[claude_line("user", BODY)]);
+        let mut state = FileState::default();
+        let client = reqwest::Client::new();
+        let base_url = format!("http://{address}");
+
+        assert!(
+            drain_file(&client, &base_url, &path, &mut state)
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            state.offset, 0,
+            "failed JSON status must not consume the line"
+        );
+        assert_eq!(
+            drain_file(&client, &base_url, &path, &mut state)
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(state.offset, std::fs::metadata(&path).unwrap().len());
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        server.abort();
     }
 
     #[test]
