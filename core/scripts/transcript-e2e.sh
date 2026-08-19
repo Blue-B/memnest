@@ -19,8 +19,8 @@ import json, sys
 path, token = sys.argv[1:]
 rows = [
     {"type": "session_meta", "payload": {"id": "scratch-session", "cwd": "/tmp/scratch-project", "thread_source": "user"}},
-    {"type": "event_msg", "payload": {"type": "user_message", "message": token}},
-    {"type": "event_msg", "payload": {"type": "user_message", "message": token}},
+    {"type": "event_msg", "id": "reused-host-id", "payload": {"type": "user_message", "message": token}},
+    {"type": "event_msg", "id": "reused-host-id", "payload": {"type": "user_message", "message": token}},
 ]
 with open(path, "w", encoding="utf-8") as handle:
     for row in rows:

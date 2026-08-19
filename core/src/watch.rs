@@ -60,9 +60,10 @@ struct Event {
     text: String,
     session_id: String,
     cwd: Option<String>,
-    /// Stable identity for this transcript event. The host id is preferred;
-    /// otherwise this is derived from a hashed file identity and byte offset.
+    /// Stable identity derived from transcript file identity and byte offset.
     event_id: String,
+    /// Host-provided id retained as provenance, never used alone for dedup.
+    host_event_id: Option<String>,
 }
 
 impl Event {
@@ -229,11 +230,8 @@ fn parse_claude_code(line: &Value) -> Option<Event> {
             .and_then(Value::as_str)
             .map(str::to_string)
             .filter(|cwd| !cwd.is_empty()),
-        event_id: line
-            .get("uuid")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
+        event_id: String::new(),
+        host_event_id: line.get("uuid").and_then(Value::as_str).map(str::to_string),
     })
 }
 
@@ -259,11 +257,8 @@ fn parse_pi(line: &Value, state: &FileState) -> Option<Event> {
         text,
         session_id: state.session_id.clone().unwrap_or_default(),
         cwd: state.cwd.clone(),
-        event_id: line
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
+        event_id: String::new(),
+        host_event_id: line.get("id").and_then(Value::as_str).map(str::to_string),
     })
 }
 
@@ -292,20 +287,19 @@ fn parse_codex(line: &Value, state: &FileState) -> Option<Event> {
         text,
         session_id: state.session_id.clone().unwrap_or_default(),
         cwd: state.cwd.clone(),
-        event_id: line
+        event_id: String::new(),
+        host_event_id: line
             .get("id")
             .or_else(|| payload.get("id"))
             .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
+            .map(str::to_string),
     })
 }
 
 /// Recognise the host from the line itself, so a transcript found anywhere is
 /// handled the same way. Header lines update the cached session identity.
-fn parse_line(raw: &str, state: &mut FileState) -> Option<Event> {
-    let line: Value = serde_json::from_str(raw.trim()).ok()?;
-    if let Some(header) = transcript_header(&line) {
+fn parse_value(line: &Value, state: &mut FileState) -> Option<Event> {
+    if let Some(header) = transcript_header(line) {
         let (session_id, cwd, sidechain) = header;
         state.session_id = session_id;
         state.cwd = cwd;
@@ -313,7 +307,7 @@ fn parse_line(raw: &str, state: &mut FileState) -> Option<Event> {
         state.header_scanned = true;
         return None;
     }
-    if let Some(event) = parse_claude_code(&line) {
+    if let Some(event) = parse_claude_code(line) {
         // Claude Code repeats the identity on every line; keep it so the state
         // file stays useful for inspection.
         state.session_id = Some(event.session_id.clone());
@@ -321,7 +315,13 @@ fn parse_line(raw: &str, state: &mut FileState) -> Option<Event> {
         state.header_scanned = true;
         return Some(event);
     }
-    parse_pi(&line, state).or_else(|| parse_codex(&line, state))
+    parse_pi(line, state).or_else(|| parse_codex(line, state))
+}
+
+#[cfg(test)]
+fn parse_line(raw: &str, state: &mut FileState) -> Option<Event> {
+    let line: Value = serde_json::from_str(raw.trim()).ok()?;
+    parse_value(&line, state)
 }
 
 /// pi and Codex open transcripts with a line holding session identity.
@@ -510,15 +510,38 @@ fn read_pending(path: &Path, state: &mut FileState) -> Result<Vec<Pending>> {
             break;
         }
         consumed += line.bytes_read;
-        // Oversized or invalid UTF-8 machinery is consumed without allocating
-        // an unbounded replacement string.
-        let mut event = (!line.oversized)
-            .then(|| std::str::from_utf8(&buf).ok())
-            .flatten()
-            .and_then(|raw| parse_line(raw, state));
-        if let Some(event) = &mut event
-            && event.event_id.is_empty()
-        {
+        let mut event = if line.oversized {
+            tracing::warn!(
+                "watch: skipped oversized transcript line in {} at byte {} (limit {} bytes)",
+                path.display(),
+                start_offset,
+                MAX_JSONL_LINE_BYTES
+            );
+            None
+        } else {
+            match std::str::from_utf8(&buf) {
+                Err(_) => {
+                    tracing::warn!(
+                        "watch: skipped invalid UTF-8 transcript line in {} at byte {}",
+                        path.display(),
+                        start_offset
+                    );
+                    None
+                }
+                Ok(raw) => match serde_json::from_str::<Value>(raw.trim()) {
+                    Ok(value) => parse_value(&value, state),
+                    Err(_) => {
+                        tracing::warn!(
+                            "watch: skipped malformed JSON transcript line in {} at byte {}",
+                            path.display(),
+                            start_offset
+                        );
+                        None
+                    }
+                },
+            }
+        };
+        if let Some(event) = &mut event {
             event.event_id = format!("file-{identity}:{start_offset}");
         }
         pending.push(Pending {
@@ -560,11 +583,28 @@ fn default_roots() -> Vec<PathBuf> {
     DEFAULT_ROOTS.iter().map(|dir| home.join(dir)).collect()
 }
 
-fn load_state(path: &Path) -> WatchState {
-    let mut state: WatchState = std::fs::read_to_string(path)
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default();
+fn load_state(path: &Path) -> Result<WatchState> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(WatchState {
+                version: STATE_VERSION,
+                ..Default::default()
+            });
+        }
+        Err(error) => {
+            return Err(error).with_context(|| format!("read watch state {}", path.display()));
+        }
+    };
+    let mut state: WatchState = serde_json::from_str(&raw)
+        .with_context(|| format!("parse watch state {}", path.display()))?;
+    if state.version > STATE_VERSION {
+        return Err(anyhow!(
+            "unsupported watch state version {} (maximum {})",
+            state.version,
+            STATE_VERSION
+        ));
+    }
     if state.version < STATE_VERSION {
         // Version 1 stored sidechain as a plain false default, so old entries
         // must rescan their headers to distinguish a main session from a child.
@@ -573,7 +613,7 @@ fn load_state(path: &Path) -> WatchState {
         }
         state.version = STATE_VERSION;
     }
-    state
+    Ok(state)
 }
 
 /// Write through a temporary file so an interrupted save cannot leave a
@@ -606,6 +646,7 @@ async fn post_event(client: &reqwest::Client, base_url: &str, event: &Event) -> 
             adapter_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             role: Some(event.role.to_string()),
             event_id: Some(event.event_id.clone()),
+            source_ids: event.host_event_id.clone().into_iter().collect(),
             sequence: Some(index as i64 + 1),
             total: Some(total),
             truncated: false,
@@ -721,7 +762,7 @@ pub async fn run(
     }
 
     let state_path = state_dir.join(STATE_FILE);
-    let mut state = load_state(&state_path);
+    let mut state = load_state(&state_path)?;
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(120))
@@ -842,7 +883,8 @@ mod tests {
         assert_eq!(event.host, "pi");
         assert_eq!(event.session_id, "pi-9");
         assert_eq!(event.project(), "widgets");
-        assert_eq!(event.event_id, "m-3");
+        assert_eq!(event.host_event_id.as_deref(), Some("m-3"));
+        assert!(event.event_id.is_empty());
 
         // A transcript with no cwd anywhere still has to land somewhere.
         let mut bare = FileState::default();
@@ -976,7 +1018,7 @@ mod tests {
             .files
             .insert(path.to_string_lossy().to_string(), state.clone());
         save_state(&state_path, &saved).unwrap();
-        let reloaded = load_state(&state_path);
+        let reloaded = load_state(&state_path).unwrap();
         let mut restored = reloaded.files[&path.to_string_lossy().to_string()].clone();
         assert_eq!(restored.offset, state.offset);
         assert!(drain(&path, &mut restored).is_empty());
@@ -1199,7 +1241,7 @@ mod tests {
         );
         save_state(&state_path, &old_state).unwrap();
 
-        let mut upgraded = load_state(&state_path);
+        let mut upgraded = load_state(&state_path).unwrap();
         assert_eq!(upgraded.version, STATE_VERSION);
         let entry = upgraded
             .files
@@ -1211,6 +1253,61 @@ mod tests {
         assert!(entry.sidechain);
         append_lines(&path, &[message]);
         assert!(drain(&path, entry).is_empty());
+    }
+
+    #[test]
+    fn load_state_only_defaults_when_the_file_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing.json");
+        let state = load_state(&missing).unwrap();
+        assert_eq!(state.version, STATE_VERSION);
+        assert!(state.files.is_empty());
+
+        let unreadable = dir.path().join("state-directory");
+        std::fs::create_dir(&unreadable).unwrap();
+        assert!(load_state(&unreadable).is_err());
+    }
+
+    #[test]
+    fn malformed_or_future_state_fails_without_changing_offsets() {
+        let dir = tempfile::tempdir().unwrap();
+        let state_path = dir.path().join(STATE_FILE);
+        let malformed = br#"{"version":2,"files":{"session":{"offset":73}}"#;
+        std::fs::write(&state_path, malformed).unwrap();
+        assert!(load_state(&state_path).is_err());
+        assert_eq!(std::fs::read(&state_path).unwrap(), malformed);
+
+        let future = json!({
+            "version": STATE_VERSION + 1,
+            "files": {"session": {"offset": 91}}
+        })
+        .to_string();
+        std::fs::write(&state_path, &future).unwrap();
+        assert!(load_state(&state_path).is_err());
+        assert_eq!(std::fs::read_to_string(&state_path).unwrap(), future);
+    }
+
+    #[test]
+    fn reused_host_event_ids_still_produce_distinct_retry_stable_identities() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("claude.jsonl");
+        write_lines(
+            &path,
+            &[
+                claude_line("user", "first document"),
+                claude_line("assistant", "second document"),
+            ],
+        );
+
+        let first_pass = drain(&path, &mut FileState::default());
+        let retry_pass = drain(&path, &mut FileState::default());
+        assert_eq!(first_pass.len(), 2);
+        assert_eq!(first_pass[0].host_event_id.as_deref(), Some("u-1"));
+        assert_eq!(first_pass[1].host_event_id.as_deref(), Some("u-1"));
+        assert_ne!(first_pass[0].event_id, first_pass[1].event_id);
+        assert_eq!(first_pass[0].event_id, retry_pass[0].event_id);
+        assert_eq!(first_pass[1].event_id, retry_pass[1].event_id);
+        assert_ne!(first_pass[0].text, first_pass[1].text);
     }
 
     #[test]
