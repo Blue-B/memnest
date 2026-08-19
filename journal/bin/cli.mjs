@@ -71,6 +71,9 @@ async function cmdInit(args) {
     "vectors/",
     "",
   ].join("\n"));
+  await Promise.all(["chunks", "facts", "notes", "secrets", "sessions"].map((sub) =>
+    mkdir(join(dir, sub), { recursive: true }),
+  ));
   console.log(`initialized journal at ${dir}`);
 }
 
