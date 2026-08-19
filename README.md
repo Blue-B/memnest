@@ -139,7 +139,7 @@ Searching only helps when the agent decides to search. These two subcommands clo
 
 The payload shape decides the reply, so any host whose command hook appends stdout works with the same command; `--format` pins it when you would rather be explicit. It never blocks a prompt: if the service is down or slow it prints nothing, exits 0, and reports the reason on stderr.
 
-**`memnest watch` records conversations with no host configuration at all.** It follows the session transcripts your host already writes, currently Claude Code and pi, and stores the turns it finds.
+**`memnest watch` records conversations with no host configuration at all.** It is the single automatic capture path for Claude Code, pi, and Codex session transcripts. It stores redacted user and assistant text directly, without summarization or extraction.
 
 ```bash
 memnest watch                  # follow the known transcript directories
@@ -147,7 +147,7 @@ memnest watch --once           # single pass, useful in a cron job
 memnest watch --backfill       # import existing history, not just new turns
 ```
 
-Tool calls, tool results, and reasoning blocks are skipped, so the store gets the conversation rather than the machinery. Progress lives in `<data-dir>/watch-state.json` as a byte offset per file, which is what keeps a restart from storing the same turn twice, and an offset only advances once the turn is stored. Pass `RUST_LOG=info` to see what it is doing.
+System and developer prompts, reminders, tool calls and results, reasoning, images, and subagent sidechains are skipped, so the store gets the visible conversation rather than the machinery. Long turns are split into ordered searchable chunks without truncation, and distinct repeated turns remain distinct. Progress lives in `<data-dir>/watch-state.json` as a byte offset per file; an offset advances only after every chunk is stored or confirmed as an idempotent retry. Pass `RUST_LOG=info` to see what it is doing.
 
 ### Everything else
 

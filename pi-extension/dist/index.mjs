@@ -4565,13 +4565,8 @@ function installAutocontext(pi) {
 
 // src/index.ts
 var ENV = globalThis.process?.env ?? {};
-var cwd = () => globalThis.process?.cwd?.() ?? "";
 var MEMNEST_URL2 = ENV.MEMNEST_URL ?? "http://127.0.0.1:3111";
 var MEMNEST_TOKEN2 = ENV.MEMNEST_TOKEN;
-var AUTOLOG_ENABLED = ENV.MEMNEST_AUTOLOG === "1";
-var AUTOLOG_MIN_USER_LEN = Number(ENV.MEMNEST_AUTOLOG_MIN_USER_LEN ?? "3");
-var AUTOLOG_MAX_CHARS = Number(ENV.MEMNEST_AUTOLOG_MAX_CHARS ?? "8000");
-var AUTOLOG_TOOLS = (ENV.MEMNEST_AUTOLOG_TOOLS ?? "0") !== "0";
 async function call(path, body, method = "POST") {
   try {
     const init = {
@@ -4600,199 +4595,10 @@ function textResult(text, isError = false) {
     details: void 0
   };
 }
-function inferProject(cwd2) {
-  if (!cwd2) return "default";
-  const parts = cwd2.split(/[\\/]/).filter(Boolean);
+function inferProject(cwd) {
+  if (!cwd) return "default";
+  const parts = cwd.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] || "default";
-}
-var inFlight = /* @__PURE__ */ new Set();
-function fireAndForget(path, body) {
-  try {
-    const p = fetch(`${MEMNEST_URL2}${path}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...MEMNEST_TOKEN2 ? { Authorization: `Bearer ${MEMNEST_TOKEN2}` } : {}
-      },
-      body: JSON.stringify(body)
-    }).catch(() => {
-    });
-    inFlight.add(p);
-    p.finally(() => inFlight.delete(p));
-  } catch {
-  }
-}
-async function drainInFlight(timeoutMs = 3e3) {
-  if (inFlight.size === 0) return;
-  await Promise.race([
-    Promise.allSettled([...inFlight]),
-    new Promise((resolve) => setTimeout(resolve, timeoutMs))
-  ]);
-}
-function messageToText(message) {
-  if (!message) return "";
-  const content = message.content;
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  const parts = [];
-  for (const c of content) {
-    if (!c || typeof c !== "object") continue;
-    switch (c.type) {
-      case "text":
-        if (typeof c.text === "string") parts.push(c.text);
-        break;
-      case "thinking":
-        break;
-      case "image":
-        parts.push(`[image ${c.mimeType ?? ""}]`);
-        break;
-      default:
-        break;
-    }
-  }
-  return parts.join("\n").trim();
-}
-function truncate(s, max) {
-  if (s.length <= max) return { text: s, truncated: false };
-  return {
-    text: s.slice(0, max) + `
-\u2026[truncated ${s.length - max} chars]`,
-    truncated: true
-  };
-}
-function installAutoLog(pi) {
-  if (!AUTOLOG_ENABLED) return;
-  let currentCwd = cwd();
-  let sessionId = `pi-${Date.now().toString(36)}`;
-  pi.on("session_start", () => {
-    currentCwd = cwd();
-    sessionId = `pi-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  });
-  pi.on("input", (event) => {
-    try {
-      const e = event;
-      const text = typeof e.text === "string" ? e.text : "";
-      if (!text || text.length < AUTOLOG_MIN_USER_LEN) return;
-      const { text: clipped, truncated } = truncate(text, AUTOLOG_MAX_CHARS);
-      fireAndForget("/add", {
-        project: "root",
-        text: `User said: ${clipped}`,
-        metadata: {
-          chunk_type: "auto_log",
-          importance: "log",
-          session_id: sessionId,
-          source: "pi.chat.message",
-          adapter: "pi",
-          role: "user",
-          input_source: e.source ?? "unknown",
-          truncated,
-          cwd: currentCwd
-        }
-      });
-    } catch {
-    }
-  });
-  pi.on("message_end", (event) => {
-    try {
-      const msg = event.message;
-      if (!msg || msg.role !== "assistant") return;
-      const body = messageToText(msg);
-      if (!body) return;
-      const { text: clipped, truncated } = truncate(body, AUTOLOG_MAX_CHARS);
-      fireAndForget("/add", {
-        project: "root",
-        text: `Assistant answered: ${clipped}`,
-        metadata: {
-          chunk_type: "auto_log",
-          importance: "log",
-          session_id: sessionId,
-          source: "pi.text.complete",
-          adapter: "pi",
-          role: "assistant",
-          model: msg.model,
-          stop_reason: msg.stopReason,
-          truncated,
-          cwd: currentCwd
-        }
-      });
-    } catch {
-    }
-  });
-  pi.on("tool_execution_end", (event) => {
-    if (!AUTOLOG_TOOLS) return;
-    try {
-      const e = event;
-      const toolName = e.toolName ?? "unknown";
-      if (toolName.startsWith("memory_") || toolName.startsWith("secret_") || toolName.startsWith("note_") || toolName.startsWith("notes_") || toolName === "collections_list") {
-        return;
-      }
-      const result = e.result;
-      let resultText;
-      if (typeof result === "string") {
-        resultText = result;
-      } else if (result && Array.isArray(result.content)) {
-        resultText = result.content.map((c) => c?.type === "text" ? c.text : "").filter(Boolean).join("\n");
-      } else {
-        try {
-          resultText = JSON.stringify(result).slice(0, AUTOLOG_MAX_CHARS);
-        } catch {
-          resultText = String(result);
-        }
-      }
-      if (!resultText) return;
-      const { text: clipped, truncated } = truncate(resultText, AUTOLOG_MAX_CHARS);
-      const label = e.isError ? "Tool error" : "Tool result";
-      fireAndForget("/add", {
-        project: "root",
-        text: `${label} (${toolName}): ${clipped}`,
-        metadata: {
-          chunk_type: "auto_log",
-          importance: e.isError ? "log" : "knowledge",
-          session_id: sessionId,
-          source: "pi.tool.execute.after",
-          adapter: "pi",
-          tool: toolName,
-          is_error: !!e.isError,
-          truncated,
-          cwd: currentCwd
-        }
-      });
-    } catch {
-    }
-  });
-  pi.on("agent_end", async () => {
-    await drainInFlight(2e3);
-  });
-  pi.on("session_shutdown", async () => {
-    await drainInFlight(2e3);
-  });
-  pi.on("session_compact", (event) => {
-    try {
-      const e = event;
-      const summary = e?.compaction?.summary ?? e?.summary;
-      if (!summary) return;
-      const { text: clipped } = truncate(summary, AUTOLOG_MAX_CHARS * 2);
-      fireAndForget("/add", {
-        // Project bucket, not "root": every retrieval path excludes the
-        // reserved buckets, so a summary stored there is write-only.
-        project: inferProject(currentCwd),
-        text: `Session summary: ${clipped}`,
-        metadata: {
-          // "session_summary" is not a ChunkType variant — typed serde 422'd
-          // every one of these writes silently. "consolidated" is the variant
-          // that survives the 30-day autolog TTL.
-          chunk_type: "consolidated",
-          importance: "knowledge",
-          session_id: sessionId,
-          source: "pi.session.compact",
-          adapter: "pi",
-          memory_kind: "record",
-          cwd: currentCwd
-        }
-      });
-    } catch {
-    }
-  });
 }
 var RESERVED_AUTOLOG_PROJECTS = /* @__PURE__ */ new Set(["root", "default", "global"]);
 function resolveProject(args, ctx) {
@@ -4813,7 +4619,6 @@ function resolveMemoryKind(args) {
 }
 var EmptyParams = typebox_exports.Object({});
 function register(pi) {
-  installAutoLog(pi);
   installAutocontext(pi);
   pi.registerCommand?.("memnest", {
     description: "Show Memnest status and the dashboard URL",

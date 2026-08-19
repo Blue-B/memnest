@@ -85,7 +85,7 @@ enum CliCommand {
         #[arg(long)]
         url: Option<String>,
         /// Transcript directory to follow. Repeatable; defaults to the known
-        /// Claude Code and pi locations.
+        /// Claude Code, pi, and Codex locations.
         #[arg(long = "path")]
         paths: Vec<String>,
         /// Make one pass and exit instead of following.
@@ -274,8 +274,8 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    // Kick off the daily TTL prune loop (gated by config). Without this,
-    // AutoLog chunks accumulate indefinitely.
+    // Kick off lifecycle pruning for expiring filtered data and trash GC.
+    // Conversation AutoLog is retained until explicitly deleted.
     if config.enable_lifecycle {
         memnest::lifecycle::spawn_periodic_lifecycle(system.clone());
     } else {

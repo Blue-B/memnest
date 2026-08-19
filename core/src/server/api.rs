@@ -3,6 +3,7 @@ use axum::{
     response::{Html, IntoResponse, Json, Response},
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -842,6 +843,38 @@ pub async fn neighbors(
     Json(out)
 }
 
+fn is_transcript_chunk(metadata: &Metadata) -> bool {
+    metadata.chunk_type == ChunkType::AutoLog
+        && metadata
+            .event_id
+            .as_deref()
+            .is_some_and(|id| !id.is_empty())
+        && metadata
+            .source
+            .as_deref()
+            .is_some_and(|source| source.ends_with(".transcript"))
+}
+
+fn transcript_chunk_id(project: &str, metadata: &Metadata) -> Option<String> {
+    if !is_transcript_chunk(metadata) {
+        return None;
+    }
+    let mut hasher = Sha256::new();
+    let sequence = metadata.sequence.unwrap_or(1).to_string();
+    for field in [
+        project,
+        metadata.adapter.as_deref().unwrap_or_default(),
+        &metadata.session_id,
+        metadata.event_id.as_deref().unwrap_or_default(),
+        &sequence,
+    ] {
+        hasher.update(field.as_bytes());
+        hasher.update([0]);
+    }
+    let digest = format!("{:x}", hasher.finalize());
+    Some(format!("transcript_{}", &digest[..32]))
+}
+
 pub async fn add(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<AddRequest>,
@@ -871,12 +904,20 @@ pub async fn add(
         .unwrap_or_else(|| "http".to_string());
     metadata.adapter.get_or_insert_with(|| adapter.clone());
 
+    let transcript_id = transcript_chunk_id(&project, &metadata);
     {
         let sys = system.read().await;
         let db = sys.db.read().await;
-        if let Ok(Some(existing_id)) = db.find_exact_duplicate(&project, &text) {
-            drop(db);
-            let _ = sys.db.write().await.touch_chunk(&existing_id);
+        let duplicate = if let Some(id) = &transcript_id {
+            db.get_chunk(id).ok().flatten().map(|_| id.clone())
+        } else {
+            db.find_exact_duplicate(&project, &text).ok().flatten()
+        };
+        if let Some(existing_id) = duplicate {
+            if transcript_id.is_none() {
+                drop(db);
+                let _ = sys.db.write().await.touch_chunk(&existing_id);
+            }
             let mut map = HashMap::new();
             map.insert("status".to_string(), "deduplicated".to_string());
             map.insert("id".to_string(), existing_id);
@@ -885,7 +926,7 @@ pub async fn add(
         }
     }
 
-    let id = format!("manual_{}", uuid::Uuid::new_v4().simple());
+    let id = transcript_id.unwrap_or_else(|| format!("manual_{}", uuid::Uuid::new_v4().simple()));
     let job_id = format!("job_{}", uuid::Uuid::new_v4().simple());
     let now = chrono::Utc::now();
     let mut job = ProcessingJob {
@@ -955,9 +996,10 @@ pub(crate) async fn persist_chunk_async(
         .await
         .map_err(|e| anyhow::anyhow!("embed join: {e}"))??;
 
-    // Semantic dedup: cosine distance < 0.05 (~95% similar) suppresses the
-    // insert and just refreshes the existing chunk. Mirrors mcp::persist_chunk.
-    {
+    // Transcript chunks are event records: repeated words in distinct turns
+    // must remain distinct. Their deterministic id above provides retry-only
+    // deduplication, so content exact/semantic dedup does not apply.
+    if !is_transcript_chunk(&metadata) {
         let index = sys.vector_index.read().await;
         let neighbors = index.search(&embedding, 5)?;
         drop(index);
@@ -4676,7 +4718,8 @@ pub async fn viewer_collections(State(system): State<Arc<RwLock<MemorySystem>>>)
         ));
     }
     if rows.is_empty() {
-        rows = r#"<div class="col-empty" data-i18n="empty.collections">No collections yet</div>"#.to_string();
+        rows = r#"<div class="col-empty" data-i18n="empty.collections">No collections yet</div>"#
+            .to_string();
     }
 
     // Summary strip: totals + kind breakdown
@@ -5139,6 +5182,48 @@ fn mmr_select(
         selected.push(candidates.remove(best_idx));
     }
     selected.into_iter().map(|(it, _)| it).collect()
+}
+
+#[cfg(test)]
+mod transcript_tests {
+    use super::*;
+
+    fn metadata(event_id: &str, sequence: i64) -> Metadata {
+        Metadata {
+            chunk_type: ChunkType::AutoLog,
+            session_id: "session-1".into(),
+            source: Some("pi.transcript".into()),
+            adapter: Some("pi".into()),
+            event_id: Some(event_id.into()),
+            sequence: Some(sequence),
+            total: Some(2),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn transcript_retry_id_is_stable_but_repeated_events_and_parts_are_distinct() {
+        let first = transcript_chunk_id("project", &metadata("event-1", 1)).unwrap();
+        assert_eq!(
+            first,
+            transcript_chunk_id("project", &metadata("event-1", 1)).unwrap()
+        );
+        assert_ne!(
+            first,
+            transcript_chunk_id("project", &metadata("event-1", 2)).unwrap()
+        );
+        assert_ne!(
+            first,
+            transcript_chunk_id("project", &metadata("event-2", 1)).unwrap()
+        );
+    }
+
+    #[test]
+    fn only_transcript_autolog_uses_event_identity_dedup() {
+        let mut manual = metadata("event-1", 1);
+        manual.chunk_type = ChunkType::Manual;
+        assert!(transcript_chunk_id("project", &manual).is_none());
+    }
 }
 
 #[cfg(test)]
@@ -5704,7 +5789,11 @@ pub(crate) mod retrieval_eval {
                 created_at: now,
                 updated_at: now,
             };
-            for (id, h, x) in [("doc_helpful", 5, 0), ("doc_neutral", 0, 0), ("doc_harmful", 0, 5)] {
+            for (id, h, x) in [
+                ("doc_helpful", 5, 0),
+                ("doc_neutral", 0, 0),
+                ("doc_harmful", 0, 5),
+            ] {
                 let chunk = mk(id, h, x);
                 sys.db.write().await.insert_chunk(&chunk).expect("insert");
                 sys.add_text_doc(id, "pay", text).await.expect("text");

@@ -27,12 +27,13 @@ already built rather than downloading one.
   events, plain text otherwise, or whatever `--format` pins. It never blocks a
   prompt, so an unreachable or slow service means no output, exit 0, and a line
   on stderr.
-- **`memnest watch`.** Follows the session transcripts a host already writes and
-  stores the turns it finds, currently Claude Code and pi, recognised by line
-  shape rather than path. Tool calls, tool results, and reasoning blocks are
-  dropped. Progress is a byte offset per file in `watch-state.json`, advanced
-  only after a turn is stored, so a restart neither repeats nor loses one.
-  `--backfill` imports existing history instead of following from the end.
+- **`memnest watch`.** Follows Claude Code, pi, and Codex transcripts, recognised
+  by line shape rather than path. It stores redacted user and assistant text
+  directly, excludes prompts and execution machinery, and splits long turns
+  into ordered searchable chunks without truncation. Progress is a byte offset
+  per file in `watch-state.json`, advanced only after storage succeeds or an
+  idempotent retry is confirmed. `--backfill` imports existing history instead
+  of following from the end.
 - `recall_events` and `processing_jobs` tables with 90 day retention, holding
   redacted queries and status metadata only, never memory bodies or secrets.
 - `/operations` and `/feedback` endpoints, a `recall_id` on every search, and

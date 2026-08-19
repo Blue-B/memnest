@@ -16,30 +16,10 @@ pub struct LifecycleStatus {
     pub ttl_autolog_days: Option<i64>,
 }
 
-/// TTL policy by `(chunk_type, importance)`.
-///
-/// Mirrors the old Factory hook policy: throwaway auto-logged chat decays
-/// within a month, automatic-filter outputs are even shorter-lived, and any
-/// user-curated content (Manual + Knowledge/Decision/Preference) is kept
-/// forever. Returning `None` means "never expire".
-///
-/// The AutoLog window is overridable via `MEMNEST_TTL_AUTOLOG_DAYS`:
-/// `0` / `off` / `unlimited` disables expiry entirely (dialogue kept forever
-/// for long-range recall); any positive integer replaces the 30-day default.
-/// Invalid values fall back to 30.
+/// TTL policy by `(chunk_type, importance)`. Conversation AutoLog is preserved
+/// until explicitly deleted; filtered automation remains short-lived.
 fn autolog_ttl_days() -> Option<i64> {
-    static TTL: std::sync::OnceLock<Option<i64>> = std::sync::OnceLock::new();
-    *TTL.get_or_init(|| match std::env::var("MEMNEST_TTL_AUTOLOG_DAYS") {
-        Err(_) => Some(30),
-        Ok(raw) => {
-            let v = raw.trim();
-            if v == "0" || v.eq_ignore_ascii_case("off") || v.eq_ignore_ascii_case("unlimited") {
-                None
-            } else {
-                v.parse::<i64>().ok().filter(|d| *d > 0).or(Some(30))
-            }
-        }
-    })
+    None
 }
 
 fn ttl_days_for(chunk_type: &ChunkType, importance: &Importance) -> Option<i64> {
@@ -53,7 +33,7 @@ fn ttl_days_for(chunk_type: &ChunkType, importance: &Importance) -> Option<i64> 
     match chunk_type {
         ChunkType::Manual => None,
         ChunkType::Consolidated => None, // summaries replace raw logs, keep them
-        ChunkType::AutoLog => autolog_ttl_days(),
+        ChunkType::AutoLog => None,
         ChunkType::Filtered => Some(7),
     }
 }
@@ -181,7 +161,12 @@ pub async fn prune_expired(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
         0
     };
 
-    append_audit_log(&sys.config.data_dir, "ttl", trashed, serde_json::Value::Null);
+    append_audit_log(
+        &sys.config.data_dir,
+        "ttl",
+        trashed,
+        serde_json::Value::Null,
+    );
 
     {
         let mut status = sys.lifecycle_status.write().await;
@@ -250,7 +235,9 @@ pub async fn prune_trash(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
     let mut to_delete: Vec<crate::models::MemoryChunk> = Vec::new();
     {
         let db = sys.db.read().await;
-        let trash = db.get_chunks_by_project("_trash", 1_000_000).unwrap_or_default();
+        let trash = db
+            .get_chunks_by_project("_trash", 1_000_000)
+            .unwrap_or_default();
         for chunk in trash {
             let expired = chunk
                 .metadata
@@ -294,7 +281,12 @@ pub async fn prune_trash(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
         0
     };
 
-    append_audit_log(&sys.config.data_dir, "trash_gc", deleted, serde_json::Value::Null);
+    append_audit_log(
+        &sys.config.data_dir,
+        "trash_gc",
+        deleted,
+        serde_json::Value::Null,
+    );
     Ok(deleted)
 }
 
@@ -376,6 +368,16 @@ mod tests {
     }
 
     #[test]
+    fn autolog_has_no_automatic_ttl() {
+        assert_eq!(autolog_ttl_days(), None);
+        assert_eq!(ttl_days_for(&ChunkType::AutoLog, &Importance::Log), None);
+        assert_eq!(
+            ttl_days_for(&ChunkType::Filtered, &Importance::Log),
+            Some(7)
+        );
+    }
+
+    #[test]
     fn audit_log_line_has_required_fields() {
         let dir = tempfile::tempdir().unwrap();
         append_audit_log(dir.path(), "api", 5, serde_json::json!({"project": "test"}));
@@ -419,7 +421,9 @@ mod tests {
     fn archive_writes_jsonl_when_enabled() {
         let dir = tempfile::tempdir().unwrap();
         // force enable (default)
-        unsafe { std::env::remove_var("MEMNEST_ARCHIVE"); }
+        unsafe {
+            std::env::remove_var("MEMNEST_ARCHIVE");
+        }
         let chunk = crate::models::MemoryChunk {
             id: "arch1".into(),
             project: "_trash".into(),
@@ -440,7 +444,9 @@ mod tests {
     #[test]
     fn archive_disabled_by_env() {
         let dir = tempfile::tempdir().unwrap();
-        unsafe { std::env::set_var("MEMNEST_ARCHIVE", "0"); }
+        unsafe {
+            std::env::set_var("MEMNEST_ARCHIVE", "0");
+        }
         let chunk = crate::models::MemoryChunk {
             id: "arch0".into(),
             project: "_trash".into(),
@@ -451,10 +457,14 @@ mod tests {
             updated_at: chrono::Utc::now(),
         };
         archive_chunk_before_delete(dir.path(), &chunk);
-        unsafe { std::env::remove_var("MEMNEST_ARCHIVE"); }
+        unsafe {
+            std::env::remove_var("MEMNEST_ARCHIVE");
+        }
         let month = chrono::Utc::now().format("%Y-%m");
         let path = dir.path().join("archive").join(format!("{month}.jsonl"));
-        assert!(!path.exists(), "archive must not exist when MEMNEST_ARCHIVE=0");
+        assert!(
+            !path.exists(),
+            "archive must not exist when MEMNEST_ARCHIVE=0"
+        );
     }
-
 }
