@@ -147,7 +147,7 @@ memnest watch --once           # single pass, useful in a cron job
 memnest watch --backfill       # import existing history, not just new turns
 ```
 
-System and developer prompts, reminders, tool calls and results, reasoning, images, and subagent sidechains are skipped, so the store gets the visible conversation rather than the machinery. Long turns are split into ordered searchable chunks without truncation, and distinct repeated turns remain distinct. Progress lives in `<data-dir>/watch-state.json` as a byte offset per file; an offset advances only after every chunk is stored or confirmed as an idempotent retry. Pass `RUST_LOG=info` to see what it is doing.
+System and developer prompts, reminders, tool calls and results, reasoning, images, and subagent sidechains are skipped, so the store gets the visible conversation rather than the machinery. Long turns are split into ordered searchable chunks without truncation, and distinct repeated turns remain distinct. Individual JSONL records are read with an explicit 16 MiB allocation ceiling; any record above that hard safety bound is consumed and skipped without allocating its full body. Progress lives in `<data-dir>/watch-state.json` as a byte offset per file; an offset advances only after every chunk is stored or confirmed as an idempotent retry. Pass `RUST_LOG=info` to see what it is doing.
 
 ### Everything else
 

@@ -32,6 +32,8 @@ jobs:
         run: cargo test --quiet
       - name: Release build
         run: cargo build --release
+      - name: Transcript identity and retry E2E
+        run: bash scripts/transcript-e2e.sh target/release/memnest
 
   windows:
     runs-on: windows-latest

@@ -35,6 +35,11 @@ const DEFAULT_ROOTS: &[&str] = &[".claude/projects", ".pi/agent/sessions", ".cod
 /// Maximum conversation characters in one independently searchable chunk.
 const MAX_TEXT_CHARS: usize = 8000;
 
+/// Hard allocation ceiling for one JSONL record. The reader still consumes an
+/// oversized record through its newline, but skips parsing it. This safely
+/// bounds machinery blobs while allowing conversation turns up to 16 MiB.
+const MAX_JSONL_LINE_BYTES: usize = 16 * 1024 * 1024;
+
 /// Bytes read from one file per cycle. A first `backfill` pass over a large
 /// transcript is spread across cycles instead of loaded at once.
 const MAX_BYTES_PER_CYCLE: u64 = 4 * 1024 * 1024;
@@ -43,6 +48,7 @@ const MAX_BYTES_PER_CYCLE: u64 = 4 * 1024 * 1024;
 const HEADER_SCAN_LINES: usize = 200;
 
 const STATE_FILE: &str = "watch-state.json";
+const STATE_VERSION: u32 = 2;
 
 /// One conversation turn worth storing.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,14 +69,17 @@ impl Event {
     /// Collection name. The engine buckets by cwd basename, and a transcript
     /// without a cwd belongs to the same root bucket as other unattributed logs.
     fn project(&self) -> String {
-        self.cwd
+        match self
+            .cwd
             .as_deref()
             .map(Path::new)
             .and_then(Path::file_name)
             .and_then(|name| name.to_str())
             .filter(|name| !name.is_empty())
-            .unwrap_or("root")
-            .to_string()
+        {
+            Some("_trash" | "_superseded") | None => "root".to_string(),
+            Some(name) => name.to_string(),
+        }
     }
 
     /// Render deterministic ordered chunks after credential redaction. No
@@ -101,6 +110,8 @@ struct FileState {
     cwd: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     sidechain: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    header_scanned: bool,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -172,21 +183,7 @@ fn message_text(message: &Value, text_part: &str) -> String {
 }
 
 fn is_storable(text: &str) -> bool {
-    let normalized = text.trim().to_ascii_lowercase();
-    !normalized.is_empty()
-        && !matches!(
-            normalized.as_str(),
-            "y" | "yes"
-                | "yep"
-                | "ok"
-                | "okay"
-                | "sure"
-                | "thanks"
-                | "thank you"
-                | "got it"
-                | "go on"
-                | "continue"
-        )
+    !text.trim().is_empty()
 }
 
 /// Claude Code: one object per line, `type` carries the role, and `cwd` and
@@ -205,6 +202,13 @@ fn parse_claude_code(line: &Value) -> Option<Event> {
         return None;
     }
     let message = line.get("message")?;
+    if message
+        .get("role")
+        .and_then(Value::as_str)
+        .is_some_and(|inner| inner != role)
+    {
+        return None;
+    }
     // A `user` line whose parts are all tool_result is tool output wearing the
     // user role; keeping only `text` parts drops it.
     let text = message_text(message, "text");
@@ -306,6 +310,7 @@ fn parse_line(raw: &str, state: &mut FileState) -> Option<Event> {
         state.session_id = session_id;
         state.cwd = cwd;
         state.sidechain = sidechain;
+        state.header_scanned = true;
         return None;
     }
     if let Some(event) = parse_claude_code(&line) {
@@ -313,6 +318,7 @@ fn parse_line(raw: &str, state: &mut FileState) -> Option<Event> {
         // file stays useful for inspection.
         state.session_id = Some(event.session_id.clone());
         state.cwd = event.cwd.clone();
+        state.header_scanned = true;
         return Some(event);
     }
     parse_pi(&line, state).or_else(|| parse_codex(&line, state))
@@ -327,7 +333,8 @@ fn transcript_header(line: &Value) -> Option<(Option<String>, Option<String>, bo
                 .and_then(Value::as_str)
                 .map(str::to_string)
                 .filter(|cwd| !cwd.is_empty()),
-            line.get("parentSessionId")
+            line.get("parentSession")
+                .or_else(|| line.get("parentSessionId"))
                 .or_else(|| line.get("parent_session_id"))
                 .and_then(Value::as_str)
                 .is_some_and(|id| !id.is_empty()),
@@ -364,9 +371,12 @@ fn scan_header(path: &Path) -> Option<(Option<String>, Option<String>, bool)> {
     let mut reader = BufReader::new(file);
     let mut buf = Vec::new();
     for _ in 0..HEADER_SCAN_LINES {
-        buf.clear();
-        if reader.read_until(b'\n', &mut buf).ok()? == 0 {
+        let line = read_bounded_line(&mut reader, &mut buf, MAX_JSONL_LINE_BYTES).ok()?;
+        if line.bytes_read == 0 || !line.complete {
             break;
+        }
+        if line.oversized {
+            continue;
         }
         let Ok(line) = serde_json::from_slice::<Value>(&buf) else {
             continue;
@@ -380,6 +390,80 @@ fn scan_header(path: &Path) -> Option<(Option<String>, Option<String>, bool)> {
         }
     }
     None
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct BoundedLine {
+    bytes_read: u64,
+    complete: bool,
+    oversized: bool,
+}
+
+/// Read and consume one complete line while retaining at most `max_bytes`.
+/// An incomplete trailing line is consumed only in this temporary reader; its
+/// persisted offset remains unchanged so the next pass rereads it from disk.
+fn read_bounded_line<R: BufRead>(
+    reader: &mut R,
+    buf: &mut Vec<u8>,
+    max_bytes: usize,
+) -> std::io::Result<BoundedLine> {
+    buf.clear();
+    let mut bytes_read = 0u64;
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            return Ok(BoundedLine {
+                bytes_read,
+                complete: false,
+                oversized: bytes_read > max_bytes as u64,
+            });
+        }
+        let consumed = available
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(available.len(), |index| index + 1);
+        let remaining = max_bytes.saturating_sub(buf.len());
+        buf.extend_from_slice(&available[..consumed.min(remaining)]);
+        let complete = available[consumed - 1] == b'\n';
+        reader.consume(consumed);
+        bytes_read += consumed as u64;
+        if complete {
+            return Ok(BoundedLine {
+                bytes_read,
+                complete: true,
+                oversized: bytes_read > max_bytes as u64,
+            });
+        }
+    }
+}
+
+fn final_complete_line_offset(path: &Path) -> Result<u64> {
+    const WINDOW: u64 = 8192;
+    let mut file = std::fs::File::open(path)?;
+    let len = file.metadata()?.len();
+    if len == 0 {
+        return Ok(0);
+    }
+    file.seek(SeekFrom::End(-1))?;
+    let mut last = [0u8; 1];
+    std::io::Read::read_exact(&mut file, &mut last)?;
+    if last[0] == b'\n' {
+        return Ok(len);
+    }
+
+    let mut end = len;
+    let mut buf = Vec::new();
+    while end > 0 {
+        let start = end.saturating_sub(WINDOW);
+        buf.resize((end - start) as usize, 0);
+        file.seek(SeekFrom::Start(start))?;
+        std::io::Read::read_exact(&mut file, &mut buf)?;
+        if let Some(index) = buf.iter().rposition(|byte| *byte == b'\n') {
+            return Ok(start + index as u64 + 1);
+        }
+        end = start;
+    }
+    Ok(0)
 }
 
 fn file_identity(path: &Path) -> String {
@@ -400,16 +484,16 @@ fn read_pending(path: &Path, state: &mut FileState) -> Result<Vec<Pending>> {
         tracing::debug!("watch: {} shrank, rereading from the start", path.display());
         *state = FileState::default();
     }
+    if state.offset > 0 && !state.header_scanned {
+        if let Some((session_id, cwd, sidechain)) = scan_header(path) {
+            state.session_id = session_id;
+            state.cwd = cwd;
+            state.sidechain = sidechain;
+        }
+        state.header_scanned = true;
+    }
     if len == state.offset {
         return Ok(Vec::new());
-    }
-    if state.offset > 0
-        && state.session_id.is_none()
-        && let Some((session_id, cwd, sidechain)) = scan_header(path)
-    {
-        state.session_id = session_id;
-        state.cwd = cwd;
-        state.sidechain = sidechain;
     }
 
     let mut reader = BufReader::new(file);
@@ -420,17 +504,18 @@ fn read_pending(path: &Path, state: &mut FileState) -> Result<Vec<Pending>> {
     let identity = file_identity(path);
     let mut buf = Vec::new();
     loop {
-        buf.clear();
         let start_offset = state.offset + consumed;
-        let read = reader.read_until(b'\n', &mut buf)?;
-        if read == 0 || !buf.ends_with(b"\n") {
+        let line = read_bounded_line(&mut reader, &mut buf, MAX_JSONL_LINE_BYTES)?;
+        if line.bytes_read == 0 || !line.complete {
             break;
         }
-        consumed += read as u64;
-        // Transcripts are UTF-8; a damaged byte should cost one character, not
-        // the whole file.
-        let line = String::from_utf8_lossy(&buf);
-        let mut event = parse_line(&line, state);
+        consumed += line.bytes_read;
+        // Oversized or invalid UTF-8 machinery is consumed without allocating
+        // an unbounded replacement string.
+        let mut event = (!line.oversized)
+            .then(|| std::str::from_utf8(&buf).ok())
+            .flatten()
+            .and_then(|raw| parse_line(raw, state));
         if let Some(event) = &mut event
             && event.event_id.is_empty()
         {
@@ -476,10 +561,19 @@ fn default_roots() -> Vec<PathBuf> {
 }
 
 fn load_state(path: &Path) -> WatchState {
-    std::fs::read_to_string(path)
+    let mut state: WatchState = std::fs::read_to_string(path)
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if state.version < STATE_VERSION {
+        // Version 1 stored sidechain as a plain false default, so old entries
+        // must rescan their headers to distinguish a main session from a child.
+        for file in state.files.values_mut() {
+            file.header_scanned = false;
+        }
+        state.version = STATE_VERSION;
+    }
+    state
 }
 
 /// Write through a temporary file so an interrupted save cannot leave a
@@ -582,14 +676,15 @@ async fn sweep(
         let known = state.files.contains_key(&key);
         let entry = state.files.entry(key).or_default();
         if !known && !backfill {
-            // First sighting: follow from the end, like `tail -f`, so enabling
-            // the watcher does not import every past session.
-            entry.offset = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            // Follow only complete history. A writer may currently be midway
+            // through its final JSON object, which must be reread once finished.
+            entry.offset = final_complete_line_offset(&path).unwrap_or(0);
             if let Some((session_id, cwd, sidechain)) = scan_header(&path) {
                 entry.session_id = session_id;
                 entry.cwd = cwd;
                 entry.sidechain = sidechain;
             }
+            entry.header_scanned = true;
             continue;
         }
         match drain_file(client, base_url, &path, entry).await {
@@ -627,7 +722,6 @@ pub async fn run(
 
     let state_path = state_dir.join(STATE_FILE);
     let mut state = load_state(&state_path);
-    state.version = 1;
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(120))
@@ -720,6 +814,14 @@ mod tests {
         let assistant = parse_line(&claude_line("assistant", BODY), &mut state).unwrap();
         assert_eq!(assistant.role, "assistant");
         assert!(assistant.documents()[0].starts_with("Assistant answered: "));
+
+        let conflicting = json!({
+            "type": "user",
+            "sessionId": "s-1",
+            "cwd": "/home/dev/acme",
+            "message": { "role": "assistant", "content": BODY }
+        });
+        assert!(parse_line(&conflicting.to_string(), &mut state).is_none());
     }
 
     #[test]
@@ -750,6 +852,20 @@ mod tests {
         );
         let orphan = parse_line(&line, &mut bare).unwrap();
         assert_eq!(orphan.project(), "root");
+
+        for reserved in ["_trash", "_superseded"] {
+            bare.cwd = Some(format!("/tmp/{reserved}"));
+            assert_eq!(parse_line(&line, &mut bare).unwrap().project(), "root");
+        }
+
+        let mut child = FileState::default();
+        parse_line(
+            &json!({"type":"session","id":"child","cwd":"/tmp/x","parentSession":"parent"})
+                .to_string(),
+            &mut child,
+        );
+        assert!(child.sidechain);
+        assert!(parse_line(&line, &mut child).is_none());
     }
 
     #[test]
@@ -813,9 +929,6 @@ mod tests {
             // pi keeps tool output under a role of its own.
             json!({"type":"message","id":"m","message":{"role":"toolResult",
                 "content":[{"type":"text","text":"exit status 0 and a long tail of output"}]}}),
-            // Acknowledgements carry nothing to retrieve on.
-            json!({"type":"user","sessionId":"s","cwd":"/tmp/x","message":{"role":"user",
-                "content":[{"type":"text","text":"ok"}]}}),
             // Subagent chatter is not the user's conversation.
             json!({"type":"user","sessionId":"s","cwd":"/tmp/x","isSidechain":true,
                 "message":{"role":"user","content":[{"type":"text","text":BODY}]}}),
@@ -897,6 +1010,66 @@ mod tests {
         assert_eq!(events[0].text, BODY);
     }
 
+    #[tokio::test]
+    async fn first_seen_partial_line_starts_at_its_last_complete_newline() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("first-partial.jsonl");
+        let first = claude_line("user", "old complete turn");
+        let second = claude_line("assistant", "new completed turn");
+        let split = second.len() / 2;
+        let mut file = std::fs::File::create(&path).unwrap();
+        writeln!(file, "{first}").unwrap();
+        write!(file, "{}", &second[..split]).unwrap();
+        file.flush().unwrap();
+
+        let expected_offset = first.len() as u64 + 1;
+        let mut state = WatchState::default();
+        let client = reqwest::Client::new();
+        assert_eq!(
+            sweep(
+                &client,
+                "http://127.0.0.1:1",
+                &[dir.path().to_path_buf()],
+                &mut state,
+                false,
+            )
+            .await,
+            0
+        );
+        let entry = state
+            .files
+            .get_mut(path.to_string_lossy().as_ref())
+            .unwrap();
+        assert_eq!(entry.offset, expected_offset);
+
+        writeln!(file, "{}", &second[split..]).unwrap();
+        file.flush().unwrap();
+        let events = drain(&path, entry);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].text, "new completed turn");
+    }
+
+    #[test]
+    fn bounded_line_reader_consumes_oversized_records_without_allocating_them() {
+        let input = format!("{}\nnext\n", "x".repeat(128));
+        let mut reader = BufReader::new(input.as_bytes());
+        let mut buf = Vec::new();
+        let first = read_bounded_line(&mut reader, &mut buf, 32).unwrap();
+        assert_eq!(
+            first,
+            BoundedLine {
+                bytes_read: 129,
+                complete: true,
+                oversized: true,
+            }
+        );
+        assert_eq!(buf.len(), 32);
+        let second = read_bounded_line(&mut reader, &mut buf, 32).unwrap();
+        assert!(second.complete && !second.oversized);
+        assert_eq!(buf, b"next\n");
+        assert_eq!(MAX_JSONL_LINE_BYTES, 16 * 1024 * 1024);
+    }
+
     #[test]
     fn a_shrunken_file_is_reread_from_the_start() {
         let dir = tempfile::tempdir().unwrap();
@@ -951,14 +1124,10 @@ mod tests {
     fn long_turns_are_completely_split_in_order_after_redaction() {
         let secret = "sk-abcdefghijklmnopqrstuvwxyz";
         let text = format!("{}\n{} tail", "한".repeat(MAX_TEXT_CHARS + 10), secret);
-        let event = Event {
-            host: "pi",
-            role: "assistant",
-            text,
-            session_id: "s".into(),
-            cwd: None,
-            event_id: "e".into(),
-        };
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("long.jsonl");
+        write_lines(&path, &[claude_line("assistant", &text)]);
+        let event = drain(&path, &mut FileState::default()).remove(0);
         let documents = event.documents();
         assert_eq!(documents.len(), 2);
         let rebuilt = documents
@@ -977,13 +1146,71 @@ mod tests {
     }
 
     #[test]
-    fn short_technical_text_is_kept_but_ack_noise_is_not() {
-        for kept in ["404", "x7", "deadbeef", "/a", "E1", "42"] {
-            assert!(is_storable(kept), "dropped technical token: {kept}");
+    fn every_non_empty_visible_text_is_storable() {
+        for kept in [
+            "404", "x7", "deadbeef", "/a", "E1", "42", "ok", "YES", "thanks", "go on",
+        ] {
+            assert!(is_storable(kept), "dropped visible text: {kept}");
+            assert_eq!(
+                parse_line(&claude_line("user", kept), &mut FileState::default())
+                    .unwrap()
+                    .text,
+                kept
+            );
         }
-        for dropped in ["", "  ", "ok", "YES", "thanks", "go on"] {
-            assert!(!is_storable(dropped), "kept acknowledgement: {dropped:?}");
+        for dropped in ["", "  ", "\n\t"] {
+            assert!(!is_storable(dropped), "kept empty text: {dropped:?}");
         }
+    }
+
+    #[test]
+    fn version_one_state_rescans_real_pi_parent_session_headers() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("child.jsonl");
+        let message = json!({
+            "type":"message",
+            "id":"m-1",
+            "message":{"role":"assistant","content":[{"type":"text","text":BODY}]}
+        })
+        .to_string();
+        write_lines(
+            &path,
+            &[
+                json!({"type":"session","id":"child","cwd":"/tmp/x","parentSession":"parent"})
+                    .to_string(),
+                message.clone(),
+            ],
+        );
+        let old_offset = std::fs::metadata(&path).unwrap().len();
+        let state_path = dir.path().join(STATE_FILE);
+        let mut old_state = WatchState {
+            version: 1,
+            ..Default::default()
+        };
+        old_state.files.insert(
+            path.to_string_lossy().to_string(),
+            FileState {
+                offset: old_offset,
+                session_id: Some("child".into()),
+                cwd: Some("/tmp/x".into()),
+                sidechain: false,
+                header_scanned: false,
+            },
+        );
+        save_state(&state_path, &old_state).unwrap();
+
+        let mut upgraded = load_state(&state_path);
+        assert_eq!(upgraded.version, STATE_VERSION);
+        let entry = upgraded
+            .files
+            .get_mut(path.to_string_lossy().as_ref())
+            .unwrap();
+        assert!(!entry.header_scanned);
+        assert!(drain(&path, entry).is_empty());
+        assert!(entry.header_scanned);
+        assert!(entry.sidechain);
+        append_lines(&path, &[message]);
+        assert!(drain(&path, entry).is_empty());
     }
 
     #[test]

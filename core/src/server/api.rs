@@ -875,6 +875,21 @@ fn transcript_chunk_id(project: &str, metadata: &Metadata) -> Option<String> {
     Some(format!("transcript_{}", &digest[..32]))
 }
 
+async fn repair_transcript_indexes(sys: &MemorySystem, chunk: &MemoryChunk) -> anyhow::Result<()> {
+    sys.add_text_doc(&chunk.id, &chunk.project, &chunk.document)
+        .await?;
+    let embedding = chunk
+        .embedding
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("transcript chunk {} has no embedding", chunk.id))?;
+    let mut vector_index = sys.vector_index.write().await;
+    if !vector_index.contains(&chunk.id) {
+        vector_index.add(&chunk.id, embedding)?;
+    }
+    vector_index.save()?;
+    Ok(())
+}
+
 pub async fn add(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<AddRequest>,
@@ -905,19 +920,48 @@ pub async fn add(
     metadata.adapter.get_or_insert_with(|| adapter.clone());
 
     let transcript_id = transcript_chunk_id(&project, &metadata);
-    {
+    if let Some(id) = &transcript_id {
+        let existing = {
+            let sys = system.read().await;
+            let db = sys.db.read().await;
+            db.get_chunk(id)
+        };
+        match existing {
+            Ok(Some(chunk)) => {
+                let repair = {
+                    let sys = system.read().await;
+                    repair_transcript_indexes(&sys, &chunk).await
+                };
+                let mut map = HashMap::new();
+                map.insert("id".to_string(), id.clone());
+                map.insert("project".to_string(), project);
+                match repair {
+                    Ok(()) => {
+                        map.insert("status".to_string(), "deduplicated".to_string());
+                    }
+                    Err(error) => {
+                        map.insert("status".to_string(), "failed".to_string());
+                        map.insert("error".to_string(), error.to_string());
+                    }
+                }
+                return Json(map);
+            }
+            Ok(None) => {}
+            Err(error) => {
+                let mut map = HashMap::new();
+                map.insert("status".to_string(), "failed".to_string());
+                map.insert("id".to_string(), id.clone());
+                map.insert("project".to_string(), project);
+                map.insert("error".to_string(), error.to_string());
+                return Json(map);
+            }
+        }
+    } else {
         let sys = system.read().await;
         let db = sys.db.read().await;
-        let duplicate = if let Some(id) = &transcript_id {
-            db.get_chunk(id).ok().flatten().map(|_| id.clone())
-        } else {
-            db.find_exact_duplicate(&project, &text).ok().flatten()
-        };
-        if let Some(existing_id) = duplicate {
-            if transcript_id.is_none() {
-                drop(db);
-                let _ = sys.db.write().await.touch_chunk(&existing_id);
-            }
+        if let Ok(Some(existing_id)) = db.find_exact_duplicate(&project, &text) {
+            drop(db);
+            let _ = sys.db.write().await.touch_chunk(&existing_id);
             let mut map = HashMap::new();
             map.insert("status".to_string(), "deduplicated".to_string());
             map.insert("id".to_string(), existing_id);
@@ -1047,7 +1091,11 @@ pub(crate) async fn persist_chunk_async(
     {
         let mut vector_index = sys.vector_index.write().await;
         vector_index.add(&chunk.id, &embedding)?;
-        let _ = vector_index.save();
+        if is_transcript_chunk(&chunk.metadata) {
+            vector_index.save()?;
+        } else {
+            let _ = vector_index.save();
+        }
     }
     Ok(None)
 }
@@ -5223,6 +5271,71 @@ mod transcript_tests {
         let mut manual = metadata("event-1", 1);
         manual.chunk_type = ChunkType::Manual;
         assert!(transcript_chunk_id("project", &manual).is_none());
+    }
+
+    #[tokio::test]
+    async fn transcript_retry_repairs_indexes_after_partial_store_failure() {
+        let (_tmp, system) = super::retrieval_eval::build_system().await;
+        let metadata = metadata("partial-event", 1);
+        let id = transcript_chunk_id("repair", &metadata).unwrap();
+        let document = "User said: searchable partial repair token";
+        let embedding = {
+            let sys = system.read().await;
+            sys.embedder.encode_document(document).unwrap()
+        };
+        let now = chrono::Utc::now();
+        let chunk = MemoryChunk {
+            id: id.clone(),
+            project: "repair".into(),
+            document: document.into(),
+            embedding: Some(embedding.clone()),
+            metadata: metadata.clone(),
+            created_at: now,
+            updated_at: now,
+        };
+        {
+            let sys = system.read().await;
+            sys.db.write().await.insert_chunk(&chunk).unwrap();
+            assert!(!sys.vector_index.read().await.contains(&id));
+            assert!(
+                sys.text_search("searchable partial repair", 5)
+                    .await
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+
+        let response = add(
+            State(system.clone()),
+            Json(AddRequest {
+                text: document.into(),
+                project: "repair".into(),
+                metadata: Some(metadata),
+            }),
+        )
+        .await;
+        assert_eq!(
+            response.0.get("status").map(String::as_str),
+            Some("deduplicated")
+        );
+
+        let sys = system.read().await;
+        assert!(
+            sys.text_search("searchable partial repair", 5)
+                .await
+                .unwrap()
+                .iter()
+                .any(|(result_id, _)| result_id == &id)
+        );
+        assert!(
+            sys.vector_index
+                .read()
+                .await
+                .search(&embedding, 5)
+                .unwrap()
+                .iter()
+                .any(|(result_id, _)| result_id == &id)
+        );
     }
 }
 
