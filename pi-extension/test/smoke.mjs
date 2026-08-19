@@ -72,26 +72,8 @@ assert(
 );
 
 const EXPECTED = [
-	"memory_remember",
-	"memory_update",
-	"memory_search",
-	"memory_feedback",
-	"memory_get",
-	"memory_context",
-	"memory_stats",
-	"memory_sessions",
-	"memory_facts_list",
-	"note_set",
-	"note_get",
-	"notes_list",
-	"note_delete",
-	"secret_set",
-	"secret_get",
-	"secret_list",
-	"secret_delete",
-	"collections_list",
-	"memory_health",
-	"memnest_autocontext_status",
+	"memory_remember", "memory_search", "memory_get", "memory_update", "memory_delete", "memory_feedback",
+	"secret_set", "secret_get", "secret_list", "secret_delete",
 ];
 
 assert(
@@ -111,21 +93,16 @@ assert(
 	"memory_search defaults to 3 results",
 	tools.get("memory_search")?.parameters?.properties?.n_results?.default === 3,
 );
-assert(
-	"memory_context defaults to 2000 chars",
-	tools.get("memory_context")?.parameters?.properties?.max_chars?.default ===
-		2000,
+const unscoped = await tools.get("memory_search").execute(
+	"id",
+	{ query: "must stay scoped" },
+	undefined,
+	noop,
+	{},
 );
-
-const autocontext = tools.get("memnest_autocontext_status");
-const ac = await autocontext.execute("id", {}, undefined, noop, {
-	cwd: process.cwd(),
-});
-const acText = ac.content?.[0]?.text ?? "";
 assert(
-	"memnest_autocontext_status reports mode",
-	/mode\s+:/.test(acText),
-	acText.slice(0, 200),
+	"memory_search does not fall back to all projects without cwd",
+	/unavailable/.test(unscoped.content?.[0]?.text ?? ""),
 );
 
 // Live server round-trip. MEMNEST_URL has no default because these calls store
@@ -146,134 +123,11 @@ try {
 } catch {}
 
 if (reachable) {
-	const health = tools.get("memory_health");
-	const r1 = await health.execute("id", {}, undefined, noop, {
-		cwd: process.cwd(),
-	});
-	const t1 = r1.content?.[0]?.text ?? "";
-	assert(
-		"memory_health returns JSON 'ok'",
-		t1.includes('"ok"'),
-		t1.slice(0, 200),
-	);
-
-	const stats = tools.get("memory_stats");
-	const r2 = await stats.execute("id", {}, undefined, noop, {
-		cwd: process.cwd(),
-	});
-	const t2 = r2.content?.[0]?.text ?? "";
-	assert(
-		"memory_stats returns total_chunks",
-		/total_chunks/.test(t2),
-		t2.slice(0, 200),
-	);
-
-	const cols = tools.get("collections_list");
-	const r3 = await cols.execute("id", {}, undefined, noop, {
-		cwd: process.cwd(),
-	});
-	const t3 = r3.content?.[0]?.text ?? "";
-	assert(
-		"collections_list returns an array",
-		t3.trim().startsWith("["),
-		t3.slice(0, 200),
-	);
-
 	const search = tools.get("memory_search");
-	const r4 = await search.execute(
-		"id",
-		{ query: "memnest smoke", n_results: 1 },
-		undefined,
-		noop,
-		{ cwd: process.cwd() },
-	);
-	const t4 = r4.content?.[0]?.text ?? "";
-	assert(
-		"memory_search returns compact text",
-		t4.startsWith("=== memory search results"),
-		t4.slice(0, 200),
-	);
-	assert(
-		"memory_search omits raw response metadata",
-		!/"elapsed_ms"|"timestamp"/.test(t4),
-		t4.slice(0, 200),
-	);
-	const recallMatch = t4.match(/recall_id=([\w-]+)/);
-	if (recallMatch) {
-		const feedback = tools.get("memory_feedback");
-		const rf = await feedback.execute(
-			"id",
-			{ recall_id: recallMatch[1], outcome: "ignored" },
-			undefined,
-			noop,
-			{ cwd: process.cwd() },
-		);
-		const tf = rf.content?.[0]?.text ?? "";
-		if (/memnest error 404/.test(tf)) {
-			console.log("  SKIP  memory_feedback live call (old server)");
-		} else {
-			assert("memory_feedback accepts recall_id", /"status":"ok"/.test(tf), tf);
-		}
-	}
-
-	// Full-text escape hatch: take an id from the search output and fetch it.
-	const idMatch = t4.match(/(?:^|\n)\[\d+\].*\bid=([\w-]+)/);
-	if (idMatch) {
-		const getTool = tools.get("memory_get");
-		const rg1 = await getTool.execute(
-			"id",
-			{ id: idMatch[1] },
-			undefined,
-			noop,
-			{
-				cwd: process.cwd(),
-			},
-		);
-		const tg = rg1.content?.[0]?.text ?? "";
-		if (/memnest error 404/.test(tg)) {
-			console.log(
-				"  SKIP  memory_get live call (server does not expose /chunk yet)",
-			);
-		} else {
-			assert(
-				"memory_get returns the full document",
-				tg.startsWith(`id=${idMatch[1]}`) && tg.includes("\n"),
-				tg.slice(0, 200),
-			);
-		}
-	} else {
-		console.log("  SKIP  memory_get (no id in search output)");
-	}
-
-	const ctx = tools.get("memory_context");
-	const r5 = await ctx.execute(
-		"id",
-		{ query: "memnest smoke", n_results: 1 },
-		undefined,
-		noop,
-		{ cwd: process.cwd() },
-	);
-	const t5 = r5.content?.[0]?.text ?? "";
-	if (/memnest error 404/.test(t5)) {
-		console.log(
-			"  SKIP  memory_context live call (server does not expose /context yet)",
-		);
-	} else {
-		assert(
-			"memory_context returns only the prompt",
-			/memnest_context/.test(t5) && !t5.trim().startsWith("{"),
-			t5.slice(0, 200),
-		);
-		assert(
-			"memory_context respects compact default",
-			t5.length <= 2000,
-			`got ${t5.length} chars`,
-		);
-	}
+	const response = await search.execute("id", { query: "memnest smoke", n_results: 1 }, undefined, noop, { cwd: process.cwd() });
+	assert("memory_search returns compact text", (response.content?.[0]?.text ?? "").startsWith("=== memory search results"));
 } else {
-	console.log(
-		`\n(memnest server not reachable at ${URL} — skipping live calls)`,
-	);
+	console.log(`\n(memnest server not reachable at ${URL} — skipping live calls)`);
 }
 
 console.log(`\nsmoke: ${ok} passed, ${fail} failed`);

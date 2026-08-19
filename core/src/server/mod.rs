@@ -1,5 +1,6 @@
 pub mod api;
 pub mod mcp;
+pub mod operations;
 
 use axum::{
     Router,
@@ -18,8 +19,18 @@ use tower_http::services::ServeDir;
 
 use crate::MemorySystem;
 
+pub fn normalize_token(value: Option<String>) -> Option<String> {
+    value
+        .map(|token| token.trim().to_string())
+        .filter(|token| !token.is_empty())
+}
+
+pub fn auth_token() -> Option<String> {
+    normalize_token(std::env::var("MEMNEST_TOKEN").ok())
+}
+
 async fn auth_middleware(request: Request, next: Next) -> Result<Response, StatusCode> {
-    if let Ok(token) = std::env::var("MEMNEST_TOKEN") {
+    if let Some(token) = auth_token() {
         let auth_header = request
             .headers()
             .get("authorization")
@@ -106,4 +117,17 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
         .layer(middleware::from_fn(security_headers_middleware))
         .layer(middleware::from_fn(auth_middleware))
         .with_state(system)
+}
+
+#[cfg(test)]
+mod auth_tests {
+    #[test]
+    fn empty_and_whitespace_tokens_are_disabled() {
+        assert_eq!(super::normalize_token(None), None);
+        assert_eq!(super::normalize_token(Some("  ".into())), None);
+        assert_eq!(
+            super::normalize_token(Some(" token ".into())).as_deref(),
+            Some("token")
+        );
+    }
 }

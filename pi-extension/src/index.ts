@@ -1,636 +1,91 @@
-/**
- * pi-memnest
- *
- * Bridges pi's tool system to a locally running memnest server (default
- * http://127.0.0.1:3111). Only HTTP endpoints that exist in the memnest
- * Axum router are exposed here, including memory search/update, context packs,
- * notes, facts, secrets, collections, and health checks.
- */
-
-import { Type } from "typebox";
 import { installAutocontext } from "./autocontext.js";
 
-type AgentToolResult<T = undefined> = {
-	content: Array<{ type: "text"; text: string }>;
-	details: T;
-};
+import { Type } from "typebox";
+
 type ExtensionAPI = any;
-type ExtensionContext = { cwd?: string };
+type Context = { cwd?: string };
+type Result = { content: Array<{ type: "text"; text: string }>; details: undefined };
+const env: Record<string, string | undefined> = (globalThis as any).process?.env ?? {};
+const URL = (env.MEMNEST_URL ?? "http://127.0.0.1:3111").replace(/\/$/, "");
+const TOKEN = env.MEMNEST_TOKEN?.trim() || undefined;
+const Empty = Type.Object({});
 
-const ENV: Record<string, string | undefined> =
-	(globalThis as any).process?.env ?? {};
-const MEMNEST_URL = ENV.MEMNEST_URL ?? "http://127.0.0.1:3111";
-const MEMNEST_TOKEN = ENV.MEMNEST_TOKEN;
-
-async function call(
-	path: string,
-	body?: unknown,
-	method: "GET" | "POST" | "DELETE" = "POST",
-): Promise<{ text: string; isError: boolean }> {
+async function call(path: string, body?: unknown, method: "GET" | "POST" | "DELETE" = "POST") {
 	try {
-		const init: RequestInit = {
+		const response = await fetch(`${URL}${path}`, {
 			method,
-			headers: {
-				"Content-Type": "application/json",
-				...(MEMNEST_TOKEN ? { Authorization: `Bearer ${MEMNEST_TOKEN}` } : {}),
-			},
-		};
-		if (body !== undefined && method !== "GET") init.body = JSON.stringify(body);
-		const res = await fetch(`${MEMNEST_URL}${path}`, init);
-		const text = await res.text();
-		if (!res.ok)
-			return { text: `memnest error ${res.status}: ${text}`, isError: true };
-		return { text, isError: false };
-	} catch (e: any) {
-		return {
-			text: `memnest unreachable at ${MEMNEST_URL}: ${e?.message ?? e}. Check: systemctl --user status memnest`,
-			isError: true,
-		};
+			headers: { "content-type": "application/json", ...(TOKEN ? { authorization: `Bearer ${TOKEN}` } : {}) },
+			...(body !== undefined && method !== "GET" ? { body: JSON.stringify(body) } : {}),
+		});
+		const text = await response.text();
+		return { text: response.ok ? text : `memnest error ${response.status}: ${text}`, error: !response.ok };
+	} catch (error: any) {
+		return { text: `memnest unreachable at ${URL}: ${error?.message ?? error}`, error: true };
 	}
 }
-
-/**
- * Wrap a string result in the AgentToolResult shape pi expects.
- * AgentToolResult has no `isError` field — errors are surfaced as text prefix.
- */
-function textResult(text: string, isError = false): AgentToolResult<undefined> {
-	return {
-		content: [{ type: "text", text: isError ? `Error: ${text}` : text }],
-		details: undefined,
-	};
+function result(text: string, error = false): Result {
+	return { content: [{ type: "text", text: error ? `Error: ${text}` : text }], details: undefined };
 }
-
-function inferProject(cwd?: string): string {
-	if (!cwd) return "default";
-	const parts = cwd.split(/[\\/]/).filter(Boolean);
-	return parts[parts.length - 1] || "default";
+function project(cwd?: string): string | undefined {
+	return cwd?.split(/[\\/]/).filter(Boolean).pop() || undefined;
 }
-
-// Collections that are reserved for autolog / noise. Manual lessons MUST NOT land here.
-const RESERVED_AUTOLOG_PROJECTS = new Set(["root", "default", "global"]);
-
-/**
- * Decide where a manual memory chunk should be stored.
- *
- * Rules (matches ~/.pi/agent/AGENTS.md "Collection convention"):
- *   1. importance=preference|decision  -> "playbook"   (cross-project knowledge, always)
- *   2. explicit project passed         -> honor it      (unless it's a reserved autolog bucket)
- *   3. importance=knowledge|log + cwd  -> cwd basename  (project-scoped)
- *   4. nothing usable                  -> "playbook"   (safer than dumping into default)
- */
-function resolveProject(args: any, ctx: any): string {
-	const explicit = (args.project ?? "").toString().trim();
-	const imp = args.importance ?? "knowledge";
-
-	if (imp === "preference" || imp === "decision") return "playbook";
-	if (explicit && !RESERVED_AUTOLOG_PROJECTS.has(explicit)) return explicit;
-
-	const inferred = inferProject(ctx?.cwd);
-	if (inferred !== "default") return inferred;
-
-	return "playbook";
+function registerTool(pi: ExtensionAPI, name: string, label: string, description: string, parameters: any, execute: any) {
+	pi.registerTool({ name, label, description, parameters, execute });
 }
-
-function resolveMemoryKind(
-	args: any,
-): "record" | "fact" | "rule" | "procedure" {
-	if (args.memory_kind) return args.memory_kind;
-	if (args.importance === "preference" || args.importance === "decision")
-		return "rule";
-	if (!args.importance || args.importance === "knowledge") return "fact";
-	return "record";
-}
-
-const EmptyParams = Type.Object({});
 
 export default function register(pi: ExtensionAPI): void {
 	installAutocontext(pi);
-
 	pi.registerCommand?.("memnest", {
-		description: "Show Memnest status and the dashboard URL",
+		description: "Show Memnest status and dashboard URL",
 		handler: async (_args: string, ctx: any) => {
-			const [health, stats] = await Promise.all([
-				call("/health", undefined, "GET"),
-				call("/stats", undefined, "GET"),
-			]);
-			const state = health.isError ? "unreachable" : "ok";
-			let dashboard = `${MEMNEST_URL.replace(/\/$/, "")}/`;
-			let detail = "";
-			try {
-				const h = JSON.parse(health.text);
-				const s = JSON.parse(stats.text);
-				dashboard = h.dashboard_url ?? dashboard;
-				detail = `\nMemories: ${s.total_chunks ?? 0}\nData: ${h.data_dir ?? "unknown"}`;
-			} catch {
-				// Old servers still get the canonical configured URL.
-			}
-			const message = `Memnest ${state}\nDashboard: ${dashboard}${detail}`;
-			ctx.ui.setStatus("memnest", `Memnest ${state}: ${dashboard}`);
-			ctx.ui.notify(message, health.isError ? "error" : "info");
+			const health = await call("/health", undefined, "GET");
+			const message = `Memnest ${health.error ? "unreachable" : "ok"}\nDashboard: ${URL}/`;
+			ctx.ui.setStatus("memnest", message.replace("\n", ": "));
+			ctx.ui.notify(message, health.error ? "error" : "info");
 		},
 	});
 
-	// ─── memory_remember (POST /add) ─────────────────────────────────────────
-	pi.registerTool({
-		name: "memory_remember",
-		label: "Memory: remember",
-		description:
-			"Save a memory chunk to memnest. Call this proactively whenever you discover something " +
-			"reusable across future sessions: project ports/paths, configuration choices, fixes installed, " +
-			"user preferences, corrections, gotchas. Persists in ~/.memnest/ and is shared with any " +
-			"other client (opencode, Claude Code, etc.) pointing at the same memnest server. " +
-			"Auto-routing: importance=preference|decision -> 'playbook' collection (cross-project knowledge). " +
-			"Other importance values land in the current project bucket (cwd basename) or 'playbook' if none. " +
-			"Reserved buckets ('root','default','global') are rejected for manual writes.",
-		parameters: Type.Object({
-			text: Type.String({
-				description: "Free-form memory content. Be specific and self-contained.",
-			}),
-			project: Type.Optional(
-				Type.String({
-					description:
-						"Project bucket. Usually omit — auto-routed by importance + cwd. Pass explicitly only for project-scoped knowledge/log when cwd is wrong.",
-				}),
-			),
-			importance: Type.Optional(
-				Type.Union(
-					[
-						Type.Literal("log"),
-						Type.Literal("knowledge"),
-						Type.Literal("decision"),
-						Type.Literal("preference"),
-					],
-					{
-						description:
-							"log=routine activity, knowledge=fact (default), decision=deliberate choice (-> playbook), preference=user pref/correction/gotcha (-> playbook)",
-					},
-				),
-			),
-			memory_kind: Type.Optional(
-				Type.Union([
-					Type.Literal("record"),
-					Type.Literal("fact"),
-					Type.Literal("rule"),
-					Type.Literal("procedure"),
-				]),
-			),
-			confidence: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
-			source_ids: Type.Optional(Type.Array(Type.String())),
-			supersedes: Type.Optional(Type.String()),
-			verified_at: Type.Optional(Type.String()),
-		}),
-		async execute(
-			_toolCallId: string,
-			params: any,
-			_signal: AbortSignal | undefined,
-			_onUpdate: unknown,
-			ctx: ExtensionContext,
-		) {
-			const project = resolveProject(params, ctx);
-			const r = await call("/add", {
-				project,
-				text: params.text,
-				metadata: {
-					chunk_type: "manual",
-					importance: params.importance ?? "knowledge",
-					adapter: "pi",
-					memory_kind: resolveMemoryKind(params),
-					confidence: params.confidence,
-					source_ids: params.source_ids ?? [],
-					supersedes: params.supersedes,
-					verified_at: params.verified_at,
-				},
-			});
-			return textResult(`[saved to '${project}'] ${r.text}`, r.isError);
-		},
+	registerTool(pi, "memory_remember", "Memory: remember", "Save durable memory. Sensitive values must use secret_set.", Type.Object({
+		text: Type.String(), project: Type.Optional(Type.String()),
+		importance: Type.Optional(Type.Union([Type.Literal("log"), Type.Literal("knowledge"), Type.Literal("decision"), Type.Literal("preference")], { default: "knowledge" })),
+		memory_kind: Type.Optional(Type.Union([Type.Literal("record"), Type.Literal("fact"), Type.Literal("rule"), Type.Literal("procedure")], { default: "record" })),
+		confidence: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })), source_ids: Type.Optional(Type.Array(Type.String())), supersedes: Type.Optional(Type.String()),
+		sensitive: Type.Optional(Type.Boolean({ description: "Must be false; use secret_set." })),
+	}), async (_id: string, p: any, _s: unknown, _u: unknown, ctx: Context) => {
+		const scope = p.project ?? project(ctx.cwd);
+		if (!scope) return result("current project is unavailable; pass project explicitly", true);
+		const r = await call("/add", { text: p.text, project: scope, metadata: { chunk_type: "manual", importance: p.importance ?? "knowledge", memory_kind: p.memory_kind ?? "record", confidence: p.confidence, source_ids: p.source_ids ?? [], supersedes: p.supersedes, sensitive: p.sensitive ?? false, adapter: "pi" } });
+		return result(r.text, r.error);
 	});
 
-	// ─── memory_update (POST /update) ───────────────────────────────────────
-	pi.registerTool({
-		name: "memory_update",
-		label: "Memory: update",
-		description:
-			"Update an existing memnest memory by id and refresh search indexes. Use this to correct stale facts " +
-			"instead of adding contradictory memories. Supports text, project, importance, and chunk_type changes.",
-		parameters: Type.Object({
-			id: Type.String({
-				description:
-					"Memory chunk id returned by memory_search or memory_remember.",
-			}),
-			text: Type.Optional(
-				Type.String({
-					description: "Replacement memory text. Omit to keep current text.",
-				}),
-			),
-			project: Type.Optional(
-				Type.String({
-					description: "Move the memory to a different collection.",
-				}),
-			),
-			importance: Type.Optional(
-				Type.Union([
-					Type.Literal("log"),
-					Type.Literal("knowledge"),
-					Type.Literal("decision"),
-					Type.Literal("preference"),
-				]),
-			),
-			chunk_type: Type.Optional(
-				Type.Union([
-					Type.Literal("auto_log"),
-					Type.Literal("manual"),
-					Type.Literal("filtered"),
-					Type.Literal("consolidated"),
-				]),
-			),
-		}),
-		async execute(_toolCallId: string, params: any) {
-			const r = await call("/update", params);
-			return textResult(r.text, r.isError);
-		},
+	registerTool(pi, "memory_search", "Memory: search", "Hybrid memory search. Omit project to use the current workspace; project=all explicitly searches across projects.", Type.Object({
+		query: Type.String(), project: Type.Optional(Type.String()), n_results: Type.Optional(Type.Integer({ default: 3, minimum: 1, maximum: 50 })), recent_first: Type.Optional(Type.Boolean({ default: false })), category: Type.Optional(Type.String()),
+	}), async (_id: string, p: any, _s: unknown, _u: unknown, ctx: Context) => {
+		const scope = p.project ?? project(ctx.cwd);
+		if (!scope) return result("current project is unavailable; pass project explicitly (use project=all for cross-project search)", true);
+		const body = { ...p, project: scope, adapter: "pi" };
+		const r = await call("/search", body); if (r.error) return result(r.text, true);
+		try {
+			const data = JSON.parse(r.text); const lines = [`=== memory search results (${p.query}) ===`, `recall_id=${data.recall_id}`];
+			for (const [i, item] of (data.results ?? []).entries()) lines.push(`[${i + 1}] project=${item.project} score=${Number(item.score).toFixed(4)} id=${item.id}\n    ${item.document}`);
+			if (!(data.results ?? []).length) lines.push("no results"); return result(lines.join("\n"));
+		} catch { return result(r.text); }
 	});
 
-	// ─── memory_search (POST /search) ────────────────────────────────────────
-	pi.registerTool({
-		name: "memory_search",
-		label: "Memory: search",
-		description:
-			"Hybrid BM25+vector search over memnest memory. Call at the START of tasks touching " +
-			"previously-discussed work. Prefer the exact project, use project='playbook' for preferences, " +
-			"and keep n_results small unless broader recall is necessary.",
-		parameters: Type.Object({
-			query: Type.String({ description: "Natural language query." }),
-			project: Type.Optional(
-				Type.String({
-					description:
-						"Restrict to the exact project bucket; omit for a compact cross-project search.",
-				}),
-			),
-			n_results: Type.Optional(
-				Type.Integer({ default: 3, minimum: 1, maximum: 50 }),
-			),
-		}),
-		async execute(_toolCallId: string, params: any) {
-			const requested = params.n_results ?? 3;
-			const crossProject = !params.project || params.project === "all";
-			const STUBS = 5;
-			const body: any = {
-				query: params.query,
-				adapter: "pi",
-				// Extra candidates serve two purposes: one-line stubs after the top
-				// results (so rank n+1 is visible, not silently lost), and headroom
-				// for the client-side reserved filter against pre-0.5.1 servers that
-				// ignore exclude_reserved.
-				n_results: Math.max(requested + STUBS, crossProject ? requested * 3 : 0),
-				exclude_reserved: crossProject,
-			};
-			if (params.project) body.project = params.project;
-			const r = await call("/search", body);
-			if (r.isError) return textResult(r.text, true);
-			try {
-				const parsed = JSON.parse(r.text);
-				const excluded = new Set(["root", "default", "global", "_superseded"]);
-				const results = (Array.isArray(parsed.results) ? parsed.results : [])
-					.filter((item: any) => !crossProject || !excluded.has(item.project))
-					.slice(0, requested + STUBS);
-				const flat = (item: any) =>
-					String(item.document ?? "")
-						.replace(/\s+/g, " ")
-						.trim();
-				const lines = [`=== memory search results (${params.query}) ===`];
-				if (parsed.recall_id) lines.push(`recall_id=${parsed.recall_id}`);
-				if (results.length === 0) lines.push("no results");
-				for (const [index, item] of results.slice(0, requested).entries()) {
-					lines.push(
-						`[${index + 1}] project=${item.project} score=${Number(item.score ?? 0).toFixed(4)} id=${item.id}`,
-					);
-					const doc = flat(item);
-					// doc_len (memnest >= 0.5.2) counts the full stored document; the
-					// server excerpt caps at 600. Flag clipped docs instead of letting
-					// a mid-sentence cut read as a complete memory.
-					const fullLen = Number(item.doc_len ?? 0);
-					const shownLen = Array.from(String(item.document ?? "")).length;
-					const clipped = fullLen > shownLen;
-					lines.push(
-						`    ${doc}${clipped ? ` …[+${fullLen - shownLen} chars — memory_get ${item.id}]` : ""}`,
-					);
-				}
-				if (results.length > requested) {
-					lines.push("more (one-line stubs; re-query or memory_get for detail):");
-					for (const [index, item] of results.slice(requested).entries()) {
-						lines.push(
-							`[${requested + index + 1}] project=${item.project} score=${Number(item.score ?? 0).toFixed(4)} id=${item.id} ${flat(item).slice(0, 80)}`,
-						);
-					}
-				}
-				return textResult(lines.join("\n"));
-			} catch {
-				return textResult(r.text);
-			}
-		},
+	registerTool(pi, "memory_get", "Memory: get", "Fetch one memory by id.", Type.Object({ id: Type.String() }), async (_id: string, p: any) => {
+		const r = await call(`/chunk/${encodeURIComponent(p.id)}`, undefined, "GET"); if (r.error) return result(r.text, true);
+		try { const c = JSON.parse(r.text); return result(`id=${c.id} project=${c.project} type=${c.chunk_type} importance=${c.importance} created=${c.timestamp}\n${c.document}`); } catch { return result(r.text); }
 	});
+	registerTool(pi, "memory_update", "Memory: update", "Update one memory and refresh indexes.", Type.Object({
+		id: Type.String(), text: Type.Optional(Type.String()), project: Type.Optional(Type.String()), importance: Type.Optional(Type.Union([Type.Literal("log"), Type.Literal("knowledge"), Type.Literal("decision"), Type.Literal("preference")])), chunk_type: Type.Optional(Type.Union([Type.Literal("auto_log"), Type.Literal("manual"), Type.Literal("filtered"), Type.Literal("consolidated")])), sensitive: Type.Optional(Type.Boolean({ description: "Must be false; use secret_set." })),
+	}), async (_id: string, p: any) => { const body = p.sensitive ? { ...p, metadata: { sensitive: true } } : p; const r = await call("/update", body); return result(r.text, r.error); });
+	registerTool(pi, "memory_delete", "Memory: delete", "Soft-delete one memory.", Type.Object({ id: Type.String() }), async (_id: string, p: any) => { const r = await call("/delete", { ids: [p.id] }); return result(r.text, r.error); });
+	registerTool(pi, "memory_feedback", "Memory: feedback", "Record recall telemetry. Ranking changes only when memory_id identifies one returned result.", Type.Object({
+		recall_id: Type.String(), memory_id: Type.Optional(Type.String()), outcome: Type.Union([Type.Literal("helpful"), Type.Literal("harmful"), Type.Literal("ignored")]), note: Type.Optional(Type.String()),
+	}), async (_id: string, p: any) => { const r = await call("/feedback", p); return result(r.text, r.error); });
 
-	// ─── memory_feedback (POST /feedback) ───────────────────────────────────
-	pi.registerTool({
-		name: "memory_feedback",
-		label: "Memory: feedback",
-		description:
-			"Record whether a memory recall helped or harmed the task. Use the recall_id returned by memory_search.",
-		parameters: Type.Object({
-			recall_id: Type.String(),
-			outcome: Type.Union([
-				Type.Literal("helpful"),
-				Type.Literal("harmful"),
-				Type.Literal("ignored"),
-			]),
-			note: Type.Optional(Type.String()),
-		}),
-		async execute(_toolCallId: string, params: any) {
-			const r = await call("/feedback", params);
-			return textResult(r.text, r.isError);
-		},
-	});
-
-	// ─── memory_get (GET /chunk/{id}) ──────────────────────────────────────
-	pi.registerTool({
-		name: "memory_get",
-		label: "Memory: get full text",
-		description:
-			"Fetch the FULL text of one memory by id. Search results are excerpts; " +
-			"call this when a result ends with a …[+N chars] truncation marker.",
-		parameters: Type.Object({
-			id: Type.String({
-				description: "Memory chunk id from memory_search results.",
-			}),
-		}),
-		async execute(_toolCallId: string, params: any) {
-			const r = await call(
-				`/chunk/${encodeURIComponent(params.id)}`,
-				undefined,
-				"GET",
-			);
-			if (r.isError) return textResult(r.text, true);
-			try {
-				const c = JSON.parse(r.text);
-				return textResult(
-					`id=${c.id} project=${c.project} type=${c.chunk_type} importance=${c.importance} created=${c.timestamp}\n${c.document ?? ""}`,
-				);
-			} catch {
-				return textResult(r.text);
-			}
-		},
-	});
-
-	// ─── memory_context (POST /context) ──────────────────────────────────────
-	pi.registerTool({
-		name: "memory_context",
-		label: "Memory: context",
-		description:
-			"Build a token-bounded prompt from notes, facts, and retrieved memories. Returns only the " +
-			"ready-to-use prompt; prefer the exact project and raise limits only when necessary.",
-		parameters: Type.Object({
-			query: Type.String({
-				description: "Question or topic to gather durable context for.",
-			}),
-			project: Type.Optional(
-				Type.String({
-					description: "Restrict retrieved memories to a project bucket.",
-				}),
-			),
-			n_results: Type.Optional(
-				Type.Integer({ default: 3, minimum: 1, maximum: 20 }),
-			),
-			max_notes: Type.Optional(
-				Type.Integer({ default: 4, minimum: 0, maximum: 50 }),
-			),
-			max_facts: Type.Optional(
-				Type.Integer({ default: 4, minimum: 0, maximum: 50 }),
-			),
-			max_chars: Type.Optional(
-				Type.Integer({ default: 2000, minimum: 200, maximum: 12000 }),
-			),
-		}),
-		async execute(
-			_toolCallId: string,
-			params: any,
-			_signal: AbortSignal | undefined,
-			_onUpdate: unknown,
-			ctx: ExtensionContext,
-		) {
-			// inferProject falls back to "default" (a reserved autolog bucket)
-			// when cwd is unavailable — search everything instead in that case.
-			const inferred = inferProject(ctx?.cwd);
-			const body: any = {
-				query: params.query,
-				adapter: "pi",
-				project: params.project ?? (inferred === "default" ? "all" : inferred),
-				n_results: params.n_results ?? 3,
-				max_notes: params.max_notes ?? 4,
-				max_facts: params.max_facts ?? 4,
-				max_chars: params.max_chars ?? 2000,
-			};
-			const r = await call("/context", body);
-			if (r.isError) return textResult(r.text, true);
-			try {
-				const prompt = String(JSON.parse(r.text).prompt ?? "").trim();
-				return textResult(prompt || "(no matching context)");
-			} catch {
-				return textResult(r.text);
-			}
-		},
-	});
-
-	// ─── memory_stats (GET /stats) ───────────────────────────────────────────
-	pi.registerTool({
-		name: "memory_stats",
-		label: "Memory: stats",
-		description:
-			"Memnest server statistics (total_chunks, total_sessions, total_facts, total_notes).",
-		parameters: EmptyParams,
-		async execute() {
-			const r = await call("/stats", undefined, "GET");
-			return textResult(r.text, r.isError);
-		},
-	});
-
-	// ─── memory_sessions (GET /sessions) ─────────────────────────────────────
-	pi.registerTool({
-		name: "memory_sessions",
-		label: "Memory: sessions",
-		description: "List recent session summaries stored in memnest.",
-		parameters: EmptyParams,
-		async execute() {
-			const r = await call("/sessions", undefined, "GET");
-			return textResult(r.text, r.isError);
-		},
-	});
-
-	// ─── memory_facts_list (GET /facts) ──────────────────────────────────────
-	pi.registerTool({
-		name: "memory_facts_list",
-		label: "Memory: facts",
-		description:
-			"List structured facts (subject-predicate-object triples) from the memnest knowledge graph.",
-		parameters: EmptyParams,
-		async execute() {
-			const r = await call("/facts", undefined, "GET");
-			return textResult(r.text, r.isError);
-		},
-	});
-
-	// ─── note_set / note_get / notes_list / note_delete ─────────────────────
-	pi.registerTool({
-		name: "note_set",
-		label: "Notes: set",
-		description:
-			"Set a durable memnest key-value note. Notes act like small always-available memory blocks " +
-			"for persona, user profile, active projects, or operating rules.",
-		parameters: Type.Object({
-			key: Type.String(),
-			value: Type.String(),
-		}),
-		async execute(_toolCallId: string, params: any) {
-			const r = await call("/notes", { key: params.key, value: params.value });
-			return textResult(r.text, r.isError);
-		},
-	});
-
-	pi.registerTool({
-		name: "note_get",
-		label: "Notes: get",
-		description: "Get a single memnest key-value note by key.",
-		parameters: Type.Object({ key: Type.String() }),
-		async execute(_toolCallId: string, params: any) {
-			const r = await call(
-				`/notes/${encodeURIComponent(params.key)}`,
-				undefined,
-				"GET",
-			);
-			return textResult(r.text, r.isError);
-		},
-	});
-
-	pi.registerTool({
-		name: "notes_list",
-		label: "Notes: list",
-		description: "List all memnest key-value notes.",
-		parameters: EmptyParams,
-		async execute() {
-			const r = await call("/notes", undefined, "GET");
-			return textResult(r.text, r.isError);
-		},
-	});
-
-	pi.registerTool({
-		name: "note_delete",
-		label: "Notes: delete",
-		description: "Delete a memnest key-value note by key.",
-		parameters: Type.Object({ key: Type.String() }),
-		async execute(_toolCallId: string, params: any) {
-			const r = await call(
-				`/notes/${encodeURIComponent(params.key)}`,
-				undefined,
-				"DELETE",
-			);
-			return textResult(r.text, r.isError);
-		},
-	});
-
-	// ─── secret_set (POST /secrets) ──────────────────────────────────────────
-	pi.registerTool({
-		name: "secret_set",
-		label: "Secret: set",
-		description:
-			"Store a credential (PAT, API key, password) AES-GCM encrypted in memnest. Plain value is only returned via secret_get.",
-		parameters: Type.Object({
-			key: Type.String(),
-			value: Type.String(),
-			kind: Type.Optional(
-				Type.String({
-					description: "free-form classifier e.g. github_pat, openai_key",
-				}),
-			),
-			note: Type.Optional(Type.String()),
-		}),
-		async execute(_toolCallId: string, params: any) {
-			const r = await call("/secrets", {
-				key: params.key,
-				value: params.value,
-				kind: params.kind,
-				note: params.note,
-			});
-			return textResult(r.text, r.isError);
-		},
-	});
-
-	// ─── secret_get (GET /secrets/:key) ──────────────────────────────────────
-	pi.registerTool({
-		name: "secret_get",
-		label: "Secret: get",
-		description: "Retrieve and decrypt a stored credential by key.",
-		parameters: Type.Object({ key: Type.String() }),
-		async execute(_toolCallId: string, params: any) {
-			const r = await call(
-				`/secrets/${encodeURIComponent(params.key)}`,
-				undefined,
-				"GET",
-			);
-			return textResult(r.text, r.isError);
-		},
-	});
-
-	// ─── secret_list (GET /secrets) ──────────────────────────────────────────
-	pi.registerTool({
-		name: "secret_list",
-		label: "Secret: list",
-		description: "List stored credential keys (values NEVER returned).",
-		parameters: EmptyParams,
-		async execute() {
-			const r = await call("/secrets", undefined, "GET");
-			return textResult(r.text, r.isError);
-		},
-	});
-	pi.registerTool({
-		name: "secret_delete",
-		label: "Secret: delete",
-		description:
-			"Permanently delete a stored credential by key. Irreversible. Pair with secret_list to confirm the key first.",
-		parameters: Type.Object({
-			key: Type.String({ description: "Exact key returned by secret_list." }),
-		}),
-		async execute(_toolCallId: string, params: any) {
-			const r = await call(
-				`/secrets/${encodeURIComponent(params.key)}`,
-				undefined,
-				"DELETE",
-			);
-			return textResult(r.text, r.isError);
-		},
-	});
-
-	pi.registerTool({
-		name: "collections_list",
-		label: "Collections: list",
-		description:
-			"List all memnest project collections (buckets) with their chunk counts and metadata. " +
-			"Use this to discover which projects already have memory recorded before searching.",
-		parameters: EmptyParams,
-		async execute() {
-			const r = await call("/collections", undefined, "GET");
-			return textResult(r.text, r.isError);
-		},
-	});
-
-	pi.registerTool({
-		name: "memory_health",
-		label: "Memory: health",
-		description:
-			"Check whether the memnest server is reachable and responsive. Returns server liveness. " +
-			"Useful as a first call when memory tools start failing.",
-		parameters: EmptyParams,
-		async execute() {
-			const r = await call("/health", undefined, "GET");
-			return textResult(r.text, r.isError);
-		},
-	});
+	registerTool(pi, "secret_set", "Secret: set", "Store an encrypted credential.", Type.Object({ key: Type.String(), value: Type.String(), kind: Type.Optional(Type.String()), note: Type.Optional(Type.String()) }), async (_id: string, p: any) => { const r = await call("/secrets", p); return result(r.text, r.error); });
+	registerTool(pi, "secret_get", "Secret: get", "Retrieve and decrypt a credential.", Type.Object({ key: Type.String() }), async (_id: string, p: any) => { const r = await call(`/secrets/${encodeURIComponent(p.key)}`, undefined, "GET"); return result(r.text, r.error); });
+	registerTool(pi, "secret_list", "Secret: list", "List credential metadata without values.", Empty, async () => { const r = await call("/secrets", undefined, "GET"); return result(r.text, r.error); });
+	registerTool(pi, "secret_delete", "Secret: delete", "Permanently delete a credential.", Type.Object({ key: Type.String() }), async (_id: string, p: any) => { const r = await call(`/secrets/${encodeURIComponent(p.key)}`, undefined, "DELETE"); return result(r.text, r.error); });
 }

@@ -365,12 +365,15 @@ fn service_reachable(host: &str, port: u16) -> bool {
         })
 }
 
+fn bind_is_safe(host: &str, token: Option<String>) -> bool {
+    matches!(host, "127.0.0.1" | "localhost" | "::1")
+        || memnest::server::normalize_token(token).is_some()
+}
+
 fn enforce_bind_safety(host: &str) -> anyhow::Result<()> {
-    let local = matches!(host, "127.0.0.1" | "localhost" | "::1");
-    if local || std::env::var("MEMNEST_TOKEN").is_ok() {
+    if bind_is_safe(host, std::env::var("MEMNEST_TOKEN").ok()) {
         return Ok(());
     }
-
     bail!(
         "refusing to bind to {host} without authentication; set MEMNEST_TOKEN or bind to 127.0.0.1"
     )
@@ -607,5 +610,13 @@ mod tests {
         assert_eq!(canonical_display_host("0.0.0.0"), "localhost");
         assert_eq!(canonical_display_host("192.168.1.20"), "192.168.1.20");
         assert_eq!(canonical_display_host("2001:db8::1"), "[2001:db8::1]");
+    }
+
+    #[test]
+    fn external_bind_requires_non_empty_token() {
+        assert!(!bind_is_safe("0.0.0.0", None));
+        assert!(!bind_is_safe("0.0.0.0", Some("   ".into())));
+        assert!(bind_is_safe("0.0.0.0", Some(" token ".into())));
+        assert!(bind_is_safe("127.0.0.1", None));
     }
 }

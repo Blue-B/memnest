@@ -20,9 +20,8 @@ static HIGH_CONFIDENCE_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     ]
 });
 
-/// Medium-confidence — `password: hunterhunter` style. Useful for auto-logged
-/// chat content, but can be opted out per-chunk with `metadata.sensitive = true`
-/// when the user intentionally wants to keep the credential retrievable.
+/// Medium-confidence — `password: hunterhunter` style. General memories are
+/// always redacted; retrievable credentials belong in the secret vault.
 static KV_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
         // password/api_key/token: VALUE   or   = VALUE
@@ -30,9 +29,7 @@ static KV_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     ]
 });
 
-/// Redact credentials in auto-logged chat text. Only call this on chunks that
-/// are NOT marked `sensitive` — sensitive chunks bypass this and are stored
-/// AES-GCM encrypted instead so values stay recoverable.
+/// Redact credentials in general memory text.
 ///
 /// Designed to be safe for code/log content: shell ENV assignments are NOT
 /// touched here because users frequently paste configuration snippets they

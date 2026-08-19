@@ -2,6 +2,10 @@
 
 All notable changes to `memnest`, the Rust engine.
 
+## Unreleased
+
+- Canonicalized the model surface to six memory tools and four vault tools, with shared HTTP/MCP memory operations, scoped automatic recall, soft delete, targeted feedback, strict auth token normalization, and fail-closed secrets.
+
 ## [0.2.0] - 2026-08-17
 
 First version to expose MCP over HTTP and to record memory without a per-host

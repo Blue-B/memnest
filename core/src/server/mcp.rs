@@ -1,6 +1,5 @@
 use crate::MemorySystem;
-use crate::models::{ChunkType, Importance, MemoryKind, Metadata, ProcessingJob, RecallEvent};
-use crate::redaction::redact_text;
+use crate::models::{ChunkType, Importance, Metadata};
 use anyhow::Result;
 use axum::{
     body::Bytes,
@@ -156,63 +155,40 @@ fn write_response(stdout: &mut io::Stdout, value: Value) -> Result<()> {
 }
 
 fn tools() -> Vec<Value> {
-    vec![
-        json!({"name": "memory_add", "description": "Save a structured memory chunk through the platform-neutral Memnest contract", "inputSchema": {"type":"object","properties":{"text":{"type":"string"},"project":{"type":"string"},"adapter":{"type":"string","description":"host integration name, e.g. claude-code, codex, opencode"},"adapter_version":{"type":"string"},"memory_kind":{"type":"string","enum":["record","fact","rule","procedure"],"default":"record"},"confidence":{"type":"number","minimum":0,"maximum":1},"source_ids":{"type":"array","items":{"type":"string"}},"supersedes":{"type":"string"}},"required":["text"]}}),
-        json!({"name": "memory_update", "description": "Update an existing memory chunk by id and refresh indexes", "inputSchema": {"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"project":{"type":"string"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"]},"chunk_type":{"type":"string","enum":["auto_log","manual","filtered","consolidated"]},"pinned":{"type":"boolean","description":"When true, exempt this chunk from automatic TTL expiry"}},"required":["id"]}}),
-        json!({"name": "memory_search", "description": "Search memory with hybrid BM25/vector retrieval. Cross-project searches (project=all) skip the reserved autolog buckets root/default/global/_superseded; pass project=\"root\" explicitly to read transcript autologs.", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":3},"recent_first":{"type":"boolean","default":false},"category":{"type":"string","description":"Filter to a specific memory category (e.g. failure, insight)"}},"required":["query"]}}),
-        json!({"name": "memory_feedback", "description": "Mark a recall as helpful, harmful, or ignored", "inputSchema": {"type":"object","properties":{"recall_id":{"type":"string"},"outcome":{"type":"string","enum":["helpful","harmful","ignored"]},"note":{"type":"string"}},"required":["recall_id","outcome"]}}),
-        json!({"name": "memory_context", "description": "Return a compact context pack: core notes + matching facts + retrieved memories", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":3},"max_notes":{"type":"integer","default":4},"max_facts":{"type":"integer","default":4},"max_chars":{"type":"integer","default":2000,"description":"hard character budget for the rendered prompt"},"category":{"type":"string","description":"Filter retrieved memories to a specific category"}},"required":["query"]}}),
-        json!({"name": "memory_get", "description": "Fetch the FULL text of one memory by id (search results are 600-char excerpts; use this when a result shows a truncation marker)", "inputSchema": {"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}),
-        json!({"name": "memory_neighbors", "description": "Cosine nearest neighbours from the vector index (for dedup/consolidation in learning layer)", "inputSchema": {"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"k":{"type":"integer","default":10},"max_distance":{"type":"number","default":0},"project":{"type":"string","default":"all"}},"required":[]}}),
-        json!({"name": "memory_stats", "description": "Return memory system statistics", "inputSchema": {"type":"object","properties":{}}}),
-        json!({"name": "memory_facts", "description": "Search structured facts (subject-predicate-object)", "inputSchema": {"type":"object","properties":{"query":{"type":"string"},"max_results":{"type":"integer","default":20}},"required":["query"]}}),
-        json!({"name": "memory_sessions", "description": "List recent session summaries", "inputSchema": {"type":"object","properties":{"project":{"type":"string"},"n":{"type":"integer","default":5}},"required":[]}}),
-        json!({"name": "note_get", "description": "Get a note by key", "inputSchema": {"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}}),
-        json!({"name": "note_set", "description": "Set a note key-value", "inputSchema": {"type":"object","properties":{"key":{"type":"string"},"value":{"type":"string"}},"required":["key","value"]}}),
-        json!({"name": "note_delete", "description": "Delete a note by key", "inputSchema": {"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}}),
-        json!({"name": "note_list", "description": "List all notes", "inputSchema": {"type":"object","properties":{}}}),
-        json!({"name": "server_info", "description": "Get server connection info", "inputSchema": {"type":"object","properties":{"name":{"type":"string"}},"required":[]}}),
-        json!({"name": "server_add", "description": "Add a server", "inputSchema": {"type":"object","properties":{"name":{"type":"string"},"host":{"type":"string"},"user":{"type":"string"},"password":{"type":"string"},"port":{"type":"integer","default":22},"note":{"type":"string"}},"required":["name","host","user","password"]}}),
-        json!({"name": "server_update", "description": "Update a server field", "inputSchema": {"type":"object","properties":{"name":{"type":"string"},"field":{"type":"string"},"value":{"type":"string"}},"required":["name","field","value"]}}),
-        json!({"name": "memory_graph_query", "description": "Query knowledge graph", "inputSchema": {"type":"object","properties":{"node":{"type":"string"},"depth":{"type":"integer","default":2}},"required":["node"]}}),
-        json!({"name": "memory_lifecycle_run", "description": "Run memory lifecycle (decay/consolidation)", "inputSchema": {"type":"object","properties":{}}}),
-        json!({"name": "memory_session_fork", "description": "Reparent every chunk from one session id onto a new session id + cwd. Mirrors a CLI-level fork (e.g. `pi --fork`) so memory follows the new conversation instead of being orphaned in the source bucket. Set dry_run=true to preview the count without moving.", "inputSchema": {"type":"object","properties":{"from_session_id":{"type":"string"},"to_session_id":{"type":"string"},"to_cwd":{"type":"string","description":"Absolute cwd of the forked session. Project bucket is derived from its basename unless to_project is given."},"to_project":{"type":"string"},"dry_run":{"type":"boolean","default":false}},"required":["from_session_id","to_session_id","to_cwd"]}}),
-        json!({"name": "secret_set", "description": "Save a credential (PAT, API key, password) AES-GCM encrypted. Plain value is returned only via secret_get.", "inputSchema": {"type":"object","properties":{"key":{"type":"string"},"value":{"type":"string"},"kind":{"type":"string","description":"free-form classifier e.g. github_pat, openai_key"},"note":{"type":"string"}},"required":["key","value"]}}),
-        json!({"name": "secret_get", "description": "Retrieve and decrypt a stored credential by key", "inputSchema": {"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}}),
-        json!({"name": "secret_list", "description": "List stored credential keys (values NEVER returned)", "inputSchema": {"type":"object","properties":{}}}),
-        json!({"name": "secret_delete", "description": "Delete a stored credential by key", "inputSchema": {"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}}),
-    ]
+    let mut tools = vec![
+        json!({"name":"memory_remember","description":"Save durable memory. Sensitive values are rejected; use secret_set.","inputSchema":{"type":"object","properties":{"text":{"type":"string"},"project":{"type":"string","default":"default"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"],"default":"knowledge"},"memory_kind":{"type":"string","enum":["record","fact","rule","procedure"],"default":"record"},"confidence":{"type":"number","minimum":0,"maximum":1},"source_ids":{"type":"array","items":{"type":"string"}},"supersedes":{"type":"string"},"sensitive":{"type":"boolean","description":"Must be false; use secret_set for sensitive values."}},"required":["text"]}}),
+        json!({"name":"memory_search","description":"Hybrid memory search. project=all is explicit cross-project search; internal trash and superseded buckets are always excluded.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":3,"minimum":1,"maximum":50},"recent_first":{"type":"boolean","default":false},"category":{"type":"string"}},"required":["query"]}}),
+        json!({"name":"memory_get","description":"Fetch one memory by id.","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}),
+        json!({"name":"memory_update","description":"Update one memory and refresh indexes.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"project":{"type":"string"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"]},"chunk_type":{"type":"string","enum":["auto_log","manual","filtered","consolidated"]},"sensitive":{"type":"boolean","description":"Must be false; use secret_set for sensitive values."}},"required":["id"]}}),
+        json!({"name":"memory_delete","description":"Soft-delete one memory to the internal trash bucket.","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}),
+        json!({"name":"memory_feedback","description":"Record recall telemetry. memory_id is optional; ranking changes only for that returned memory.","inputSchema":{"type":"object","properties":{"recall_id":{"type":"string"},"memory_id":{"type":"string"},"outcome":{"type":"string","enum":["helpful","harmful","ignored"]},"note":{"type":"string"}},"required":["recall_id","outcome"]}}),
+    ];
+    if crate::crypto::is_enabled() {
+        tools.extend([
+            json!({"name":"secret_set","description":"Store an AES-256-GCM encrypted credential.","inputSchema":{"type":"object","properties":{"key":{"type":"string"},"value":{"type":"string"},"kind":{"type":"string"},"note":{"type":"string"}},"required":["key","value"]}}),
+            json!({"name":"secret_get","description":"Retrieve and decrypt a credential.","inputSchema":{"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}}),
+            json!({"name":"secret_list","description":"List credential metadata without values.","inputSchema":{"type":"object","properties":{}}}),
+            json!({"name":"secret_delete","description":"Permanently delete a credential.","inputSchema":{"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}}),
+        ]);
+    }
+    tools
 }
 
 async fn call_tool(system: Arc<RwLock<MemorySystem>>, params: &Value) -> Result<String> {
     let name = params.get("name").and_then(Value::as_str).unwrap_or("");
     let args = params.get("arguments").cloned().unwrap_or_default();
     match name {
-        "memory_add" => memory_add(system, &args).await,
-        "memory_update" => memory_update(system, &args).await,
+        "memory_remember" | "memory_add" => memory_add(system, &args).await,
         "memory_search" => memory_search(system, &args).await,
-        "memory_feedback" => memory_feedback(system, &args).await,
-        "memory_context" => memory_context(system, &args).await,
         "memory_get" => memory_get(system, &args).await,
-        "memory_neighbors" => memory_neighbors(system, &args).await,
-        "memory_stats" => memory_stats(system).await,
-        "memory_facts" => memory_facts(system, &args).await,
-        "memory_sessions" => memory_sessions(system, &args).await,
-        "note_get" => note_get(system, &args).await,
-        "note_set" => note_set(system, &args).await,
-        "note_delete" => note_delete(system, &args).await,
-        "note_list" => note_list(system).await,
-        "server_info" => server_info(system, &args).await,
-        "server_add" => server_add(system, &args).await,
-        "server_update" => server_update(system, &args).await,
-        "memory_graph_query" => memory_graph_query(system, &args).await,
-        "memory_lifecycle_run" => memory_lifecycle_run(system).await,
-        "memory_session_fork" => memory_session_fork(system, &args).await,
+        "memory_update" => memory_update(system, &args).await,
+        "memory_delete" => memory_delete(system, &args).await,
+        "memory_feedback" => memory_feedback(system, &args).await,
         "secret_set" => secret_set(system, &args).await,
         "secret_get" => secret_get(system, &args).await,
         "secret_list" => secret_list(system).await,
         "secret_delete" => secret_delete(system, &args).await,
-        _ => Ok(format!("unknown tool: {}", name)),
+        _ => anyhow::bail!("unknown tool: {name}"),
     }
 }
 
@@ -301,189 +277,91 @@ async fn secret_delete(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Resul
 }
 
 async fn memory_add(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let raw = args.get("text").and_then(Value::as_str).unwrap_or("");
-    anyhow::ensure!(!raw.trim().is_empty(), "text is required");
-    let text = redact_text(raw);
-    let project = args
-        .get("project")
-        .and_then(Value::as_str)
-        .unwrap_or("default")
-        .to_string();
-    let adapter = args
-        .get("adapter")
-        .and_then(Value::as_str)
-        .unwrap_or("mcp")
-        .to_string();
-    let memory_kind = args
-        .get("memory_kind")
-        .cloned()
-        .and_then(|value| serde_json::from_value::<MemoryKind>(value).ok())
-        .unwrap_or_default();
-    let metadata = Metadata {
+    let mut metadata = Metadata {
         chunk_type: ChunkType::Manual,
-        adapter: Some(adapter.clone()),
-        adapter_version: args
-            .get("adapter_version")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        memory_kind,
-        confidence: args
-            .get("confidence")
-            .and_then(Value::as_f64)
-            .map(|value| value.clamp(0.0, 1.0) as f32),
-        source_ids: args
-            .get("source_ids")
-            .and_then(Value::as_array)
-            .map(|values| {
-                values
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default(),
-        supersedes: args
-            .get("supersedes")
-            .and_then(Value::as_str)
-            .map(str::to_string),
+        adapter: Some(
+            args.get("adapter")
+                .and_then(Value::as_str)
+                .unwrap_or("mcp")
+                .to_string(),
+        ),
         ..Default::default()
     };
-
-    // Exact-match dedup runs synchronously on the request path: it's a single
-    // indexed SELECT and lets us return a clear "duplicate" status instead of
-    // silently growing the store. Semantic dedup happens in persist_chunk
-    // because it requires the embedding.
+    if args
+        .get("sensitive")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
     {
-        let sys = system.read().await;
-        let db = sys.db.read().await;
-        if let Some(existing_id) = db.find_exact_duplicate(&project, &text)? {
-            drop(db);
-            let _ = sys.db.write().await.touch_chunk(&existing_id);
-            return Ok(format!(
-                "memory deduplicated (exact match): {} ({})",
-                existing_id, project
-            ));
-        }
+        metadata.sensitive = true;
     }
-
-    let id = format!("manual_{}", uuid::Uuid::new_v4().simple());
-    let job_id = format!("job_{}", uuid::Uuid::new_v4().simple());
-    let now = chrono::Utc::now();
-    let mut job = ProcessingJob {
-        id: job_id.clone(),
-        operation: "embed_and_store".to_string(),
-        target_id: id.clone(),
-        state: "queued".to_string(),
-        canonical_id: None,
-        adapter: adapter.clone(),
-        error: None,
-        created_at: now,
-        updated_at: now,
-    };
-    {
-        let sys = system.read().await;
-        sys.db.write().await.upsert_processing_job(&job)?;
+    if let Some(value) = args.get("importance").and_then(Value::as_str) {
+        metadata.importance = parse_importance(value)?;
     }
-
-    job.state = "running".to_string();
-    job.updated_at = chrono::Utc::now();
-    {
-        let sys = system.read().await;
-        sys.db.write().await.upsert_processing_job(&job)?;
+    if let Some(value) = args.get("memory_kind").cloned() {
+        metadata.memory_kind = serde_json::from_value(value)?;
     }
-    match crate::server::api::persist_chunk_async(
-        system.clone(),
-        id.clone(),
-        project.clone(),
-        text,
-        metadata,
+    metadata.confidence = args
+        .get("confidence")
+        .and_then(Value::as_f64)
+        .map(|v| v.clamp(0.0, 1.0) as f32);
+    metadata.source_ids = args
+        .get("source_ids")
+        .and_then(Value::as_array)
+        .map(|v| {
+            v.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    metadata.supersedes = args
+        .get("supersedes")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let out = super::operations::remember(
+        system,
+        super::operations::RememberInput {
+            text: args
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            project: args
+                .get("project")
+                .and_then(Value::as_str)
+                .unwrap_or("default")
+                .to_string(),
+            metadata: Some(metadata),
+            sensitive: args
+                .get("sensitive")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        },
     )
-    .await
-    {
-        Ok(canonical_id) => {
-            job.state = if canonical_id.is_some() {
-                "deduplicated".to_string()
-            } else {
-                "succeeded".to_string()
-            };
-            job.canonical_id = canonical_id;
-        }
-        Err(error) => {
-            job.state = "failed".to_string();
-            job.error = Some(error.to_string());
-        }
-    }
-    job.updated_at = chrono::Utc::now();
-    {
-        let sys = system.read().await;
-        sys.db.write().await.upsert_processing_job(&job)?;
-    }
-    if let Some(error) = &job.error {
-        anyhow::bail!("memory store failed [job={}]: {}", job_id, error);
-    }
-
-    Ok(format!(
-        "memory {}: {} ({}) [job={}]",
-        job.state, id, project, job_id
-    ))
+    .await?;
+    Ok(serde_json::to_string(&out)?)
 }
 
 async fn memory_update(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let id = args.get("id").and_then(Value::as_str).unwrap_or("").trim();
-    anyhow::ensure!(!id.is_empty(), "id is required");
-
-    let sys = system.read().await;
-    let mut chunk = {
-        let db = sys.db.read().await;
-        match db.get_chunk(id)? {
-            Some(chunk) => chunk,
-            None => return Ok(format!("memory '{}' not found", id)),
-        }
-    };
-
-    let mut text_changed = false;
-    if let Some(raw) = args.get("text").and_then(Value::as_str) {
-        anyhow::ensure!(!raw.trim().is_empty(), "text must not be empty");
-        let text = redact_text(raw);
-        text_changed = text != chunk.document;
-        chunk.document = text;
-    }
-    if let Some(project) = args.get("project").and_then(Value::as_str)
-        && !project.trim().is_empty()
+    let value = args.clone();
+    if value
+        .get("sensitive")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
     {
-        chunk.project = project.trim().to_string();
+        anyhow::bail!("sensitive memory is not supported; use secret_set");
     }
-    if let Some(importance) = args.get("importance").and_then(Value::as_str) {
-        chunk.metadata.importance = parse_importance(importance)?;
-    }
-    if let Some(chunk_type) = args.get("chunk_type").and_then(Value::as_str) {
-        chunk.metadata.chunk_type = parse_chunk_type(chunk_type)?;
-    }
-    if let Some(pinned) = args.get("pinned").and_then(Value::as_bool) {
-        chunk.metadata.pinned = pinned;
-    }
+    let req: crate::server::api::UpdateRequest = serde_json::from_value(value)?;
+    Ok(serde_json::to_string(
+        &super::operations::update(system, req).await?,
+    )?)
+}
 
-    let mut embedding_changed = false;
-    if text_changed || chunk.embedding.is_none() {
-        let embedder = sys.embedder.clone();
-        let embed_text = chunk.document.clone();
-        chunk.embedding = Some(
-            tokio::task::spawn_blocking(move || embedder.encode_document(&embed_text))
-                .await
-                .map_err(|e| anyhow::anyhow!("embed task join: {e}"))??,
-        );
-        embedding_changed = true;
-    }
-    chunk.updated_at = chrono::Utc::now();
-    sys.db.write().await.insert_chunk(&chunk)?;
-    sys.add_text_doc(&chunk.id, &chunk.project, &chunk.document)
-        .await?;
-    if embedding_changed && let Some(embedding) = &chunk.embedding {
-        let mut vector_index = sys.vector_index.write().await;
-        vector_index.add(&chunk.id, embedding)?;
-        vector_index.save()?;
-    }
-    Ok(format!("memory updated: {} ({})", chunk.id, chunk.project))
+async fn memory_delete(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
+    let id = args.get("id").and_then(Value::as_str).unwrap_or("");
+    Ok(serde_json::to_string(
+        &super::operations::delete(system, vec![id.to_string()]).await?,
+    )?)
 }
 
 fn parse_importance(value: &str) -> Result<Importance> {
@@ -496,92 +374,18 @@ fn parse_importance(value: &str) -> Result<Importance> {
     }
 }
 
-fn parse_chunk_type(value: &str) -> Result<ChunkType> {
-    match value {
-        "auto_log" => Ok(ChunkType::AutoLog),
-        "manual" => Ok(ChunkType::Manual),
-        "filtered" => Ok(ChunkType::Filtered),
-        "consolidated" => Ok(ChunkType::Consolidated),
-        other => anyhow::bail!("invalid chunk_type: {other}"),
-    }
-}
-
-async fn memory_context(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let query = args.get("query").and_then(Value::as_str).unwrap_or("");
-    anyhow::ensure!(!query.trim().is_empty(), "query is required");
-    let project = args.get("project").and_then(Value::as_str).unwrap_or("all");
-    let n = args.get("n_results").and_then(Value::as_u64).unwrap_or(3) as usize;
-    let max_notes = args.get("max_notes").and_then(Value::as_u64).unwrap_or(4) as usize;
-    let max_facts = args.get("max_facts").and_then(Value::as_u64).unwrap_or(4) as usize;
-    let max_chars = args
-        .get("max_chars")
-        .and_then(Value::as_u64)
-        .unwrap_or(2000) as usize;
-    let category = args.get("category").and_then(Value::as_str).unwrap_or("");
-    let cat = if category.trim().is_empty() {
-        None
-    } else {
-        Some(category.to_string())
-    };
-
-    // Delegate to the shared context-pack core so the MCP tool and the HTTP
-    // /context endpoint return an identical, budget-bounded prompt.
-    let resp = crate::server::api::build_context(
-        system, query, project, n, max_notes, max_facts, max_chars, cat,
-    )
-    .await;
-    Ok(resp.prompt)
-}
-
 async fn memory_get(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
     let id = args.get("id").and_then(Value::as_str).unwrap_or("");
-    anyhow::ensure!(!id.trim().is_empty(), "id is required");
-    let sys = system.read().await;
-    let db = sys.db.read().await;
-    match db.get_chunk(id)? {
-        Some(c) => {
-            let redacted = crate::redaction::redact_text(&c.document);
-            Ok(format!(
-                "id={} project={} type={:?} importance={:?} created={}\n{}",
-                c.id,
-                c.project,
-                c.metadata.chunk_type,
-                c.metadata.importance,
-                c.created_at.to_rfc3339(),
-                redacted.chars().take(8000).collect::<String>()
-            ))
-        }
-        None => anyhow::bail!("chunk not found: {id}"),
-    }
-}
-
-async fn memory_neighbors(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let req = crate::server::api::NeighborsRequest {
-        id: args
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string(),
-        text: args
-            .get("text")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string(),
-        k: args.get("k").and_then(Value::as_u64).unwrap_or(10) as usize,
-        max_distance: args
-            .get("max_distance")
-            .and_then(Value::as_f64)
-            .unwrap_or(0.0) as f32,
-        project: args
-            .get("project")
-            .and_then(Value::as_str)
-            .unwrap_or("all")
-            .to_string(),
-    };
-    let items = crate::server::api::neighbors(axum::extract::State(system), axum::Json(req))
-        .await
-        .0;
-    Ok(serde_json::to_string(&items)?)
+    let c = super::operations::get(system, id).await?;
+    Ok(format!(
+        "id={} project={} type={} importance={} created={}\n{}",
+        c["id"].as_str().unwrap_or(""),
+        c["project"].as_str().unwrap_or(""),
+        c["chunk_type"].as_str().unwrap_or(""),
+        c["importance"].as_str().unwrap_or(""),
+        c["timestamp"].as_str().unwrap_or(""),
+        c["document"].as_str().unwrap_or("")
+    ))
 }
 
 pub(crate) async fn memory_search(
@@ -589,63 +393,35 @@ pub(crate) async fn memory_search(
     args: &Value,
 ) -> Result<String> {
     let query = args.get("query").and_then(Value::as_str).unwrap_or("");
-    anyhow::ensure!(!query.trim().is_empty(), "query is required");
     let project = args.get("project").and_then(Value::as_str).unwrap_or("all");
     let n = args.get("n_results").and_then(Value::as_u64).unwrap_or(3) as usize;
-    let recent_first = args
-        .get("recent_first")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let category = args.get("category").and_then(Value::as_str).unwrap_or("");
-    let cat = if category.trim().is_empty() {
-        None
-    } else {
-        Some(category.to_string())
-    };
-
-    // Cross-project recall drops the reserved autolog buckets at the candidate
-    // level, so useful manual memories are not crowded out by legacy noise.
-    // Explicit project="root" remains available when transcript history is wanted.
-    let exclude_reserved = project == "all";
-    // Fetch a few extra candidates: the top n are rendered in full, the rest
-    // become one-line stubs so recall loss at small n is visible (the model
-    // can re-query or memory_get instead of never knowing rank n+1 existed).
-    const STUBS: usize = 5;
-    let started = std::time::Instant::now();
-    let items = crate::server::api::run_hybrid_search(
-        system.clone(),
-        query,
-        project,
-        n + STUBS,
-        recent_first,
-        false,
-        exclude_reserved,
-        cat,
+    let out = super::operations::search(
+        system,
+        super::operations::SearchInput {
+            query: query.to_string(),
+            project: project.to_string(),
+            n_results: n + 5,
+            recent_first: args
+                .get("recent_first")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            category: args
+                .get("category")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            exclude_reserved: false,
+            adapter: "mcp".to_string(),
+        },
     )
-    .await;
-    let event = RecallEvent {
-        id: format!("recall_{}", uuid::Uuid::new_v4().simple()),
-        query: redact_text(query),
-        project: project.to_string(),
-        result_ids: items.iter().take(n).map(|item| item.id.clone()).collect(),
-        duration_ms: started.elapsed().as_millis().min(i64::MAX as u128) as i64,
-        adapter: "mcp".to_string(),
-        outcome: "pending".to_string(),
-        created_at: chrono::Utc::now(),
-    };
-    {
-        let sys = system.read().await;
-        let _ = sys.db.write().await.insert_recall_event(&event);
-    }
-
+    .await?;
     let mut lines = vec![
-        format!("=== memory search results ({}) ===", query),
-        format!("recall_id={}", event.id),
+        format!("=== memory search results ({query}) ==="),
+        format!("recall_id={}", out.recall_id),
     ];
-    if items.is_empty() {
+    if out.results.is_empty() {
         lines.push("no results".to_string());
     }
-    for (i, item) in items.iter().take(n).enumerate() {
+    for (i, item) in out.results.iter().take(n).enumerate() {
         lines.push(format!(
             "[{}] project={} score={:.4} id={}",
             i + 1,
@@ -653,21 +429,11 @@ pub(crate) async fn memory_search(
             item.score,
             item.id
         ));
-        let shown = item.document.chars().count();
-        let marker = if item.doc_len > shown {
-            format!(
-                " …[+{} chars — memory_get {}]",
-                item.doc_len - shown,
-                item.id
-            )
-        } else {
-            String::new()
-        };
-        lines.push(format!("    {}{}", item.document, marker));
+        lines.push(format!("    {}", item.document));
     }
-    if items.len() > n {
+    if out.results.len() > n {
         lines.push("more (one-line stubs; re-query or memory_get for detail):".to_string());
-        for (i, item) in items.iter().enumerate().skip(n) {
+        for (i, item) in out.results.iter().enumerate().skip(n) {
             lines.push(format!(
                 "[{}] project={} score={:.4} id={} {}",
                 i + 1,
@@ -682,352 +448,15 @@ pub(crate) async fn memory_search(
 }
 
 async fn memory_feedback(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let recall_id = args
-        .get("recall_id")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim();
-    anyhow::ensure!(!recall_id.is_empty(), "recall_id is required");
-    let outcome = args
-        .get("outcome")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim()
-        .to_lowercase();
-    anyhow::ensure!(
-        matches!(outcome.as_str(), "helpful" | "harmful" | "ignored"),
-        "outcome must be helpful, harmful, or ignored"
-    );
-    let note = args.get("note").and_then(Value::as_str).map(redact_text);
-    let sys = system.read().await;
-    let db = sys.db.write().await;
-    let ids = db
-        .set_recall_feedback(recall_id, &outcome, note.as_deref())?
-        .ok_or_else(|| anyhow::anyhow!("recall event not found"))?;
-    Ok(format!(
-        "recall {} marked {} ({} memories)",
-        recall_id,
-        outcome,
-        ids.len()
-    ))
-}
-
-async fn memory_stats(system: Arc<RwLock<MemorySystem>>) -> Result<String> {
-    let sys = system.read().await;
-    let db = sys.db.read().await;
-    Ok(serde_json::to_string_pretty(&json!({
-        "total_chunks": db.chunk_count()?,
-        "session_summaries": db.summary_count()?,
-        "facts": db.fact_count()?,
-        "notes": db.note_count()?,
-        "servers": db.server_count()?,
-    }))?)
-}
-
-async fn memory_facts(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let query = args.get("query").and_then(Value::as_str).unwrap_or("");
-    let max_results = args
-        .get("max_results")
-        .and_then(Value::as_u64)
-        .unwrap_or(20) as usize;
-    let sys = system.read().await;
-    let db = sys.db.read().await;
-    let facts = db.get_facts(1000)?;
-    let query_lower = query.to_lowercase();
-    let mut matched = Vec::new();
-    for fact in facts {
-        let text = format!("{} {} {}", fact.subject, fact.predicate, fact.object).to_lowercase();
-        if text.contains(&query_lower) {
-            matched.push(fact);
-        }
-    }
-    matched.truncate(max_results);
-    if matched.is_empty() {
-        return Ok(format!("no facts matching '{}'", query));
-    }
-    let mut lines = vec![format!("=== facts ({}) ===", query)];
-    for (i, f) in matched.iter().enumerate() {
-        lines.push(format!(
-            "[{}] {} - {}: {}",
-            i + 1,
-            f.subject,
-            f.predicate,
-            f.object
-        ));
-    }
-    Ok(lines.join("\n"))
-}
-
-async fn memory_sessions(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let project = args.get("project").and_then(Value::as_str).unwrap_or("");
-    let n = args.get("n").and_then(Value::as_u64).unwrap_or(5) as usize;
-    let sys = system.read().await;
-    let db = sys.db.read().await;
-    let summaries = if project.is_empty() {
-        db.get_summaries_by_project("", n)?
-    } else {
-        db.get_summaries_by_project(project, n)?
-    };
-    if summaries.is_empty() {
-        return Ok("no session summaries".to_string());
-    }
-    let mut lines = vec!["=== session summaries ===".to_string()];
-    for s in summaries {
-        lines.push(format!(
-            "[{}] {} ({})",
-            s.created_at.to_rfc3339(),
-            s.project,
-            s.session_id
-        ));
-        lines.push(format!("    {}", s.summary));
-    }
-    Ok(lines.join("\n"))
-}
-
-async fn note_get(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let key = args.get("key").and_then(Value::as_str).unwrap_or("");
-    anyhow::ensure!(!key.is_empty(), "key is required");
-    let sys = system.read().await;
-    let db = sys.db.read().await;
-    match db.get_note(key)? {
-        Some(note) => Ok(format!(
-            "[{}] {} (updated: {})",
-            note.key,
-            note.value,
-            note.updated.to_rfc3339()
-        )),
-        None => Ok(format!("note '{}' not found", key)),
-    }
-}
-
-async fn note_set(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let key = args.get("key").and_then(Value::as_str).unwrap_or("");
-    let value = args.get("value").and_then(Value::as_str).unwrap_or("");
-    anyhow::ensure!(!key.is_empty(), "key is required");
-    let sys = system.read().await;
-    let db = sys.db.write().await;
-    let note = crate::models::Note {
-        key: key.to_string(),
-        value: value.to_string(),
-        updated: chrono::Utc::now(),
-        prev: None,
-    };
-    db.insert_note(&note)?;
-    Ok(format!("note set: {} = {}", key, value))
-}
-
-async fn note_list(system: Arc<RwLock<MemorySystem>>) -> Result<String> {
-    let sys = system.read().await;
-    let db = sys.db.read().await;
-    let notes = db.get_notes()?;
-    if notes.is_empty() {
-        return Ok("no notes".to_string());
-    }
-    let mut lines = vec!["=== notes ===".to_string()];
-    for note in notes {
-        lines.push(format!(
-            "  {}: {} ({})",
-            note.key,
-            note.value,
-            note.updated.to_rfc3339()
-        ));
-    }
-    Ok(lines.join("\n"))
-}
-
-async fn note_delete(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let key = args.get("key").and_then(Value::as_str).unwrap_or("").trim();
-    anyhow::ensure!(!key.is_empty(), "key is required");
-    let sys = system.read().await;
-    if sys.db.write().await.delete_note(key)? {
-        Ok(format!("note deleted: {}", key))
-    } else {
-        Ok(format!("note '{}' not found", key))
-    }
-}
-
-async fn server_info(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let name = args.get("name").and_then(Value::as_str).unwrap_or("");
-    let sys = system.read().await;
-    let db = sys.db.read().await;
-    let servers = db.get_servers()?;
-    if servers.is_empty() {
-        return Ok("no servers registered".to_string());
-    }
-    if name.is_empty() {
-        let mut lines = vec!["=== servers ===".to_string()];
-        for s in servers {
-            lines.push(format!("  {}: {}@{}:{}", s.name, s.user, s.host, s.port));
-        }
-        return Ok(lines.join("\n"));
-    }
-    match servers.into_iter().find(|s| s.name == name) {
-        Some(s) => Ok(format!(
-            "{}: {}@{}:{} (note: {})",
-            s.name, s.user, s.host, s.port, s.note
-        )),
-        None => Ok(format!("server '{}' not found", name)),
-    }
-}
-
-async fn server_add(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let name = args.get("name").and_then(Value::as_str).unwrap_or("");
-    let host = args.get("host").and_then(Value::as_str).unwrap_or("");
-    let user = args.get("user").and_then(Value::as_str).unwrap_or("");
-    let password = args.get("password").and_then(Value::as_str).unwrap_or("");
-    let port = args.get("port").and_then(Value::as_u64).unwrap_or(22) as u16;
-    let note = args.get("note").and_then(Value::as_str).unwrap_or("");
-    anyhow::ensure!(
-        !name.is_empty() && !host.is_empty() && !user.is_empty(),
-        "name, host, user required"
-    );
-    let sys = system.read().await;
-    let db = sys.db.write().await;
-    let server = crate::models::ServerInfo {
-        name: name.to_string(),
-        host: host.to_string(),
-        user: user.to_string(),
-        password: password.to_string(),
-        port,
-        ssh_cmd: format!("ssh -p {} {}@{}", port, user, host),
-        scp_cmd: format!("scp -P {} {{src}} {}@{}:{{dst}}", port, user, host),
-        note: note.to_string(),
-        project_path: None,
-        updated: chrono::Utc::now(),
-    };
-    db.insert_server(&server)?;
-    Ok(format!("server added: {}@{}:{}", user, host, port))
-}
-
-async fn server_update(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let name = args.get("name").and_then(Value::as_str).unwrap_or("");
-    let field = args.get("field").and_then(Value::as_str).unwrap_or("");
-    let value = args.get("value").and_then(Value::as_str).unwrap_or("");
-    anyhow::ensure!(
-        !name.is_empty() && !field.is_empty(),
-        "name and field required"
-    );
-    let sys = system.read().await;
-    let db = sys.db.write().await;
-    let mut server = db
-        .get_server(name)?
-        .ok_or_else(|| anyhow::anyhow!("server not found"))?;
-    match field {
-        "host" => server.host = value.to_string(),
-        "user" => server.user = value.to_string(),
-        "password" => server.password = value.to_string(),
-        "port" => server.port = value.parse()?,
-        "note" => server.note = value.to_string(),
-        _ => return Ok(format!("unknown field: {}", field)),
-    }
-    server.updated = chrono::Utc::now();
-    db.insert_server(&server)?;
-    Ok(format!("server {} updated: {} = {}", name, field, value))
-}
-
-async fn memory_graph_query(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let node = args.get("node").and_then(Value::as_str).unwrap_or("");
-    let depth = args.get("depth").and_then(Value::as_u64).unwrap_or(2) as usize;
-    anyhow::ensure!(!node.is_empty(), "node is required");
-    let sys = system.read().await;
-    let graph = sys.graph.read().await;
-    let results = graph.bfs_traverse(node, depth);
-    if results.is_empty() {
-        return Ok(format!("no graph nodes related to '{}'", node));
-    }
-    let mut lines = vec![format!("=== graph query: '{}' (depth={}) ===", node, depth)];
-    for (name, d) in results {
-        lines.push(format!("  [depth {}] {}", d, name));
-    }
-    Ok(lines.join("\n"))
-}
-
-async fn memory_lifecycle_run(system: Arc<RwLock<MemorySystem>>) -> Result<String> {
-    let result = crate::lifecycle::run_lifecycle(system).await?;
-    Ok(serde_json::to_string_pretty(&result)?)
-}
-
-async fn memory_session_fork(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let from = args
-        .get("from_session_id")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    let to = args
-        .get("to_session_id")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    let to_cwd = args
-        .get("to_cwd")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    let to_project = args
-        .get("to_project")
-        .and_then(Value::as_str)
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-    let dry_run = args
-        .get("dry_run")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-
-    anyhow::ensure!(!from.is_empty(), "from_session_id is required");
-    anyhow::ensure!(!to.is_empty(), "to_session_id is required");
-    anyhow::ensure!(!to_cwd.is_empty(), "to_cwd is required");
-    anyhow::ensure!(from != to, "from_session_id must differ from to_session_id");
-
-    let project = to_project.unwrap_or_else(|| project_from_cwd(&to_cwd));
-
-    let sys = system.read().await;
-    if dry_run {
-        let db = sys.db.read().await;
-        let count = db
-            .get_chunks_by_session(&from)
-            .map(|v| v.len())
-            .unwrap_or(0);
-        return Ok(serde_json::to_string_pretty(&json!({
-            "status": "ok",
-            "dry_run": true,
-            "matched": count,
-            "moved": 0,
-            "to_project": project,
-        }))?);
-    }
-
-    let moved = {
-        let db = sys.db.write().await;
-        db.reparent_session(&from, &to, &project, &to_cwd)?
-    };
-    let _ = sys.reindex_after_fork(&moved).await;
-
-    Ok(serde_json::to_string_pretty(&json!({
-        "status": "ok",
-        "dry_run": false,
-        "matched": moved.len(),
-        "moved": moved.len(),
-        "to_project": project,
-        "ids": moved.iter().map(|c| &c.id).collect::<Vec<_>>(),
-    }))?)
-}
-
-/// Mirror of the HTTP handler's helper. Kept colocated so MCP doesn't depend
-/// on the api module being public.
-fn project_from_cwd(cwd: &str) -> String {
-    let trimmed = cwd.trim().trim_end_matches(['/', '\\']);
-    if trimmed.is_empty() {
-        return "default".into();
-    }
-    let last = trimmed.rsplit(['/', '\\']).next().unwrap_or("").trim();
-    if last.is_empty() {
-        "default".into()
-    } else {
-        last.to_string()
-    }
+    let value = super::operations::feedback(
+        system,
+        args.get("recall_id").and_then(Value::as_str).unwrap_or(""),
+        args.get("memory_id").and_then(Value::as_str),
+        args.get("outcome").and_then(Value::as_str).unwrap_or(""),
+        args.get("note").and_then(Value::as_str),
+    )
+    .await?;
+    Ok(serde_json::to_string(&value)?)
 }
 
 #[cfg(test)]
@@ -1121,24 +550,27 @@ mod tests {
     #[tokio::test]
     async fn dispatch_executes_tool_calls() {
         let (_tmp, system) = build_system().await;
+        assert_eq!(tools().len(), 10);
+        let names: Vec<String> = tools()
+            .iter()
+            .filter_map(|tool| tool["name"].as_str().map(str::to_string))
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "memory_remember",
+                "memory_search",
+                "memory_get",
+                "memory_update",
+                "memory_delete",
+                "memory_feedback",
+                "secret_set",
+                "secret_get",
+                "secret_list",
+                "secret_delete"
+            ]
+        );
 
-        let called = dispatch(
-            system.clone(),
-            &json!({"jsonrpc":"2.0","id":7,"method":"tools/call",
-                    "params":{"name":"memory_stats","arguments":{}}}),
-        )
-        .await
-        .expect("tools/call returns a response");
-        assert_eq!(called["id"], 7);
-        assert!(called["result"]["isError"].is_null());
-        let text = called["result"]["content"][0]["text"]
-            .as_str()
-            .expect("tool result carries text content");
-        let stats: Value = serde_json::from_str(text).expect("memory_stats returns JSON");
-        assert_eq!(stats["total_chunks"], 0);
-
-        // A failing tool is reported as a result with isError, never as a
-        // JSON-RPC error, so the session survives a bad call.
         let failed = dispatch(
             system,
             &json!({"jsonrpc":"2.0","id":8,"method":"tools/call",
@@ -1149,11 +581,189 @@ mod tests {
         assert_eq!(failed["id"], 8);
         assert_eq!(failed["result"]["isError"], true);
         assert!(failed.get("error").is_none());
+    }
+
+    async fn body_json(response: axum::response::Response) -> Value {
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn http_and_mcp_share_the_canonical_memory_contract() {
+        use axum::Json;
+        use axum::extract::State;
+
+        let (_tmp, system) = build_system().await;
+        let http_add = crate::server::api::add(
+            State(system.clone()),
+            Json(crate::server::api::AddRequest {
+                text: "canonical parity probe".into(),
+                project: "contract".into(),
+                metadata: None,
+                sensitive: None,
+            }),
+        )
+        .await;
+        assert_eq!(http_add.status(), axum::http::StatusCode::CREATED);
+        let added = body_json(http_add).await;
+        let id = added["id"].as_str().unwrap();
+
+        let mcp_add = dispatch(system.clone(), &json!({"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"memory_remember","arguments":{"text":"canonical parity probe","project":"contract"}}})).await.unwrap();
+        assert!(mcp_add["result"]["isError"].is_null());
+        let mcp_added: Value =
+            serde_json::from_str(mcp_add["result"]["content"][0]["text"].as_str().unwrap())
+                .unwrap();
+        assert_eq!(mcp_added["id"], id);
+        assert_eq!(mcp_added["project"], added["project"]);
+
+        let http_search = crate::server::api::search(
+            State(system.clone()),
+            Json(crate::server::api::SearchRequest {
+                query: "canonical parity probe".into(),
+                project: "contract".into(),
+                n_results: 3,
+                recent_first: false,
+                category: String::new(),
+                exclude_reserved: false,
+                adapter: "test-http".into(),
+            }),
+        )
+        .await;
+        let searched = body_json(http_search).await;
+        assert_eq!(searched["results"][0]["id"], id);
+        let mcp_search = dispatch(system.clone(), &json!({"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"memory_search","arguments":{"query":"canonical parity probe","project":"contract","n_results":3}}})).await.unwrap();
+        let search_text = mcp_search["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(search_text.contains(&format!("id={id}")));
+
+        let invalid_http = crate::server::api::add(
+            State(system.clone()),
+            Json(crate::server::api::AddRequest {
+                text: "rejected".into(),
+                project: "_trash".into(),
+                metadata: None,
+                sensitive: None,
+            }),
+        )
+        .await;
+        assert_eq!(invalid_http.status(), axum::http::StatusCode::BAD_REQUEST);
+        let invalid_mcp = dispatch(system.clone(), &json!({"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"memory_remember","arguments":{"text":"rejected","project":"_trash"}}})).await.unwrap();
+        assert_eq!(invalid_mcp["result"]["isError"], true);
+
+        let http_get = body_json(
+            crate::server::api::get_chunk_full(
+                State(system.clone()),
+                axum::extract::Path(id.to_string()),
+            )
+            .await,
+        )
+        .await;
+        let mcp_get = dispatch(system.clone(), &json!({"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"memory_get","arguments":{"id":id}}})).await.unwrap();
+        assert_eq!(http_get["document"], "canonical parity probe");
         assert!(
-            failed["result"]["content"][0]["text"]
+            mcp_get["result"]["content"][0]["text"]
                 .as_str()
-                .unwrap_or_default()
-                .contains("chunk not found")
+                .unwrap()
+                .contains("canonical parity probe")
+        );
+
+        let update: crate::server::api::UpdateRequest = serde_json::from_value(
+            json!({"id":id,"project":"contract-updated","text":"canonical parity updated"}),
+        )
+        .unwrap();
+        let http_update =
+            body_json(crate::server::api::update(State(system.clone()), Json(update)).await).await;
+        let mcp_update = dispatch(system.clone(), &json!({"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"memory_update","arguments":{"id":id,"project":"contract-updated","text":"canonical parity updated"}}})).await.unwrap();
+        let mcp_updated: Value =
+            serde_json::from_str(mcp_update["result"]["content"][0]["text"].as_str().unwrap())
+                .unwrap();
+        assert_eq!(http_update["project"], mcp_updated["project"]);
+
+        let recall_id = searched["recall_id"].as_str().unwrap();
+        let feedback: crate::server::api::FeedbackRequest = serde_json::from_value(
+            json!({"recall_id":recall_id,"memory_id":id,"outcome":"helpful"}),
+        )
+        .unwrap();
+        let http_feedback = body_json(
+            crate::server::api::recall_feedback(State(system.clone()), Json(feedback)).await,
+        )
+        .await;
+        let mcp_feedback = dispatch(system.clone(), &json!({"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"memory_feedback","arguments":{"recall_id":recall_id,"memory_id":id,"outcome":"helpful"}}})).await.unwrap();
+        let mcp_feedback_value: Value = serde_json::from_str(
+            mcp_feedback["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            http_feedback["memory_ids"],
+            mcp_feedback_value["memory_ids"]
+        );
+        assert_eq!(
+            system
+                .read()
+                .await
+                .db
+                .read()
+                .await
+                .get_chunk(id)
+                .unwrap()
+                .unwrap()
+                .metadata
+                .helpful_count,
+            1
+        );
+
+        let delete_request: crate::server::api::DeleteRequest =
+            serde_json::from_value(json!({"ids":[id]})).unwrap();
+        let deleted = body_json(
+            crate::server::api::delete(State(system.clone()), Json(delete_request)).await,
+        )
+        .await;
+        assert_eq!(deleted["deleted"][0], id);
+        let stored = system
+            .read()
+            .await
+            .db
+            .read()
+            .await
+            .get_chunk(id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.project, "_trash");
+        assert!(
+            crate::server::operations::get(system.clone(), id)
+                .await
+                .is_ok(),
+            "soft delete keeps the record addressable by id"
+        );
+
+        let second = crate::server::operations::remember(
+            system.clone(),
+            crate::server::operations::RememberInput {
+                text: "mcp delete parity probe".into(),
+                project: "contract".into(),
+                metadata: None,
+                sensitive: false,
+            },
+        )
+        .await
+        .unwrap();
+        let mcp_delete = dispatch(system.clone(), &json!({"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"memory_delete","arguments":{"id":second.id}}})).await.unwrap();
+        assert!(mcp_delete["result"]["isError"].is_null());
+        assert_eq!(
+            system
+                .read()
+                .await
+                .db
+                .read()
+                .await
+                .get_chunk(&second.id)
+                .unwrap()
+                .unwrap()
+                .project,
+            "_trash"
         );
     }
 }
