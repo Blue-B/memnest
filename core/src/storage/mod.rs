@@ -1024,6 +1024,20 @@ impl Database {
 
     // ── Secrets (encrypted) ──────────────────────────────────
 
+    pub(crate) fn encrypted_vault_values(&self) -> Result<Vec<String>> {
+        let conn = self.pool.get()?;
+        let mut values = Vec::new();
+        for sql in [
+            "SELECT value FROM secrets ORDER BY key",
+            "SELECT password FROM servers ORDER BY name",
+        ] {
+            let mut stmt = conn.prepare(sql)?;
+            let rows = stmt.query_map([], |row| row.get(0))?;
+            values.extend(rows.collect::<Result<Vec<String>, _>>()?);
+        }
+        Ok(values)
+    }
+
     pub fn insert_secret(&self, secret: &Secret) -> Result<()> {
         let encrypted = crate::crypto::encrypt(&secret.value)?;
         let conn = self.pool.get()?;
@@ -1867,6 +1881,80 @@ mod tests {
             db.set_recall_feedback("missing", None, "ignored", None)
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn vault_validation_accepts_empty_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        crate::crypto::validate_ciphertexts(
+            "empty-vault-key",
+            &db.encrypted_vault_values().unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn vault_validation_accepts_correct_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        let encrypted = crate::crypto::encrypt_with_master_key("correct-key", "secret").unwrap();
+        let conn = db.pool.get().unwrap();
+        conn.execute(
+            "INSERT INTO secrets (key, kind, value, note, updated) VALUES ('sample', '', ?1, '', ?2)",
+            params![encrypted, Utc::now().to_rfc3339()],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO servers (name, host, user, password, updated) VALUES ('sample', 'localhost', 'user', ?1, ?2)",
+            params![encrypted, Utc::now().to_rfc3339()],
+        )
+        .unwrap();
+        crate::crypto::validate_ciphertexts("correct-key", &db.encrypted_vault_values().unwrap())
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn vault_validation_rejects_wrong_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        let encrypted = crate::crypto::encrypt_with_master_key("correct-key", "secret").unwrap();
+        db.pool
+            .get()
+            .unwrap()
+            .execute(
+                "INSERT INTO secrets (key, kind, value, note, updated) VALUES ('sample', '', ?1, '', ?2)",
+                params![encrypted, Utc::now().to_rfc3339()],
+            )
+            .unwrap();
+        assert!(
+            crate::crypto::validate_ciphertexts(
+                "wrong-key",
+                &db.encrypted_vault_values().unwrap(),
+            )
+            .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn vault_validation_rejects_corrupt_ciphertext() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        db.pool
+            .get()
+            .unwrap()
+            .execute(
+                "INSERT INTO secrets (key, kind, value, note, updated) VALUES ('sample', '', '$enc$corrupt', '', ?1)",
+                params![Utc::now().to_rfc3339()],
+            )
+            .unwrap();
+        assert!(
+            crate::crypto::validate_ciphertexts(
+                "correct-key",
+                &db.encrypted_vault_values().unwrap(),
+            )
+            .is_err()
         );
     }
 
