@@ -550,7 +550,7 @@ impl Database {
     }
 
     /// Returns the id of any existing chunk whose `document` exactly matches
-    /// (after trimming) within the same project. Used by `memory_add` to skip
+    /// (after trimming) within the same project. Used by `memory_remember` to skip
     /// trivial duplicates without re-running the embedding model.
     pub fn find_exact_duplicate(&self, project: &str, document: &str) -> Result<Option<String>> {
         let conn = self.pool.get()?;
@@ -877,7 +877,7 @@ impl Database {
                 name: row.get(0)?,
                 host: row.get(1)?,
                 user: row.get(2)?,
-                password: crate::crypto::decrypt(&encrypted_password).unwrap_or(encrypted_password),
+                password: crate::crypto::decrypt(&encrypted_password)?,
                 port: row.get(4)?,
                 ssh_cmd: row.get(5)?,
                 scp_cmd: row.get(6)?,
@@ -895,25 +895,62 @@ impl Database {
             "SELECT name, host, user, password, port, ssh_cmd, scp_cmd, note, project_path, updated
              FROM servers WHERE name = ?1",
         )?;
-        let result = stmt
+        let result: Option<(
+            String,
+            String,
+            String,
+            String,
+            u16,
+            String,
+            String,
+            String,
+            Option<String>,
+            chrono::DateTime<chrono::Utc>,
+        )> = stmt
             .query_row(params![name], |row| {
-                let encrypted_password: String = row.get(3)?;
-                Ok(ServerInfo {
-                    name: row.get(0)?,
-                    host: row.get(1)?,
-                    user: row.get(2)?,
-                    password: crate::crypto::decrypt(&encrypted_password)
-                        .unwrap_or(encrypted_password),
-                    port: row.get(4)?,
-                    ssh_cmd: row.get(5)?,
-                    scp_cmd: row.get(6)?,
-                    note: row.get(7)?,
-                    project_path: row.get(8)?,
-                    updated: row.get(9)?,
-                })
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                ))
             })
             .optional()?;
-        Ok(result)
+        result
+            .map(
+                |(
+                    name,
+                    host,
+                    user,
+                    password,
+                    port,
+                    ssh_cmd,
+                    scp_cmd,
+                    note,
+                    project_path,
+                    updated,
+                )| {
+                    Ok(ServerInfo {
+                        name,
+                        host,
+                        user,
+                        password: crate::crypto::decrypt(&password)?,
+                        port,
+                        ssh_cmd,
+                        scp_cmd,
+                        note,
+                        project_path,
+                        updated,
+                    })
+                },
+            )
+            .transpose()
     }
 
     pub fn server_count(&self) -> Result<usize> {
@@ -1008,19 +1045,34 @@ impl Database {
         let conn = self.pool.get()?;
         let mut stmt =
             conn.prepare("SELECT key, kind, value, note, updated FROM secrets WHERE key = ?1")?;
-        let result = stmt
+        let result: Option<(
+            String,
+            String,
+            String,
+            String,
+            chrono::DateTime<chrono::Utc>,
+        )> = stmt
             .query_row(params![key], |row| {
-                let encrypted: String = row.get(2)?;
-                Ok(Secret {
-                    key: row.get(0)?,
-                    kind: row.get(1)?,
-                    value: crate::crypto::decrypt(&encrypted).unwrap_or(encrypted),
-                    note: row.get(3)?,
-                    updated: row.get(4)?,
-                })
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
             })
             .optional()?;
-        Ok(result)
+        result
+            .map(|(key, kind, encrypted, note, updated)| {
+                Ok(Secret {
+                    key,
+                    kind,
+                    value: crate::crypto::decrypt(&encrypted)?,
+                    note,
+                    updated,
+                })
+            })
+            .transpose()
     }
 
     /// Returns secret metadata (key/kind/note/updated) WITHOUT decrypting the value.
@@ -1816,6 +1868,28 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn secret_rows_never_fall_back_to_stored_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        let conn = db.pool.get().unwrap();
+        for (key, value) in [("plain", "plaintext-value"), ("corrupt", "$enc$not-base64")] {
+            conn.execute(
+                "INSERT INTO secrets (key, kind, value, note, updated) VALUES (?1, '', ?2, '', ?3)",
+                params![key, value, Utc::now().to_rfc3339()],
+            )
+            .unwrap();
+            assert!(db.get_secret(key).is_err());
+        }
+        conn.execute(
+            "INSERT INTO servers (name, host, user, password, updated) VALUES ('plain-server', 'localhost', 'user', 'plaintext-password', ?1)",
+            params![Utc::now().to_rfc3339()],
+        )
+        .unwrap();
+        assert!(db.get_server("plain-server").is_err());
+        assert!(db.get_servers().is_err());
     }
 
     #[tokio::test]

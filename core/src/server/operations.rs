@@ -38,10 +38,16 @@ impl OperationError {
             message: message.into(),
         }
     }
-    pub fn internal(message: impl Into<String>) -> Self {
+    pub fn conflict(message: impl Into<String>) -> Self {
+        Self {
+            kind: ErrorKind::Conflict,
+            message: message.into(),
+        }
+    }
+    pub fn internal(_message: impl Into<String>) -> Self {
         Self {
             kind: ErrorKind::Internal,
-            message: message.into(),
+            message: "internal operation failed".to_string(),
         }
     }
 }
@@ -156,11 +162,15 @@ pub async fn search(
     if input.query.trim().is_empty() {
         return Err(OperationError::bad("query is required"));
     }
-    let project = if input.project.trim().is_empty() {
-        "all"
-    } else {
-        input.project.trim()
-    };
+    if !(1..=50).contains(&input.n_results) {
+        return Err(OperationError::bad("n_results must be between 1 and 50"));
+    }
+    let project = input.project.trim();
+    if project.is_empty() {
+        return Err(OperationError::bad(
+            "project is required; use project=all explicitly for cross-project search",
+        ));
+    }
     let started = std::time::Instant::now();
     let items = api::run_hybrid_search(
         system.clone(),
@@ -220,6 +230,13 @@ pub async fn update(
 ) -> Result<HashMap<String, Value>, OperationError> {
     if req.id.trim().is_empty() {
         return Err(OperationError::bad("id is required"));
+    }
+    if req
+        .text
+        .as_deref()
+        .is_some_and(|text| text.trim().is_empty())
+    {
+        return Err(OperationError::bad("text must not be empty"));
     }
     if req.sensitive.unwrap_or(false)
         || req
@@ -318,7 +335,14 @@ pub async fn feedback(
             &outcome,
             note.map(redact_text).as_deref(),
         )
-        .map_err(|e| OperationError::internal(e.to_string()))?
+        .map_err(|error| {
+            let message = error.to_string();
+            if message.contains("was not returned by recall") {
+                OperationError::conflict("memory_id was not returned by this recall")
+            } else {
+                OperationError::internal(message)
+            }
+        })?
         .ok_or_else(|| OperationError::not_found("recall event not found"))?;
     Ok(json!({"status":"ok","recall_id":recall_id,"outcome":outcome,"memory_ids":ids}))
 }

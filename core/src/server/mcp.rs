@@ -42,7 +42,10 @@ pub async fn dispatch(system: Arc<RwLock<MemorySystem>>, req: &Value) -> Option<
                 "serverInfo": {"name": "memnest", "version": env!("CARGO_PKG_VERSION")}
             })
         }
-        "tools/list" => json!({"tools": tools()}),
+        "tools/list" => {
+            let enabled = system.read().await.vault_enabled;
+            json!({"tools": tools(enabled)})
+        }
         "tools/call" => {
             let params = req.get("params").cloned().unwrap_or_default();
             match call_tool(system, &params).await {
@@ -154,16 +157,16 @@ fn write_response(stdout: &mut io::Stdout, value: Value) -> Result<()> {
     Ok(())
 }
 
-fn tools() -> Vec<Value> {
+fn tools(crypto_enabled: bool) -> Vec<Value> {
     let mut tools = vec![
         json!({"name":"memory_remember","description":"Save durable memory. Sensitive values are rejected; use secret_set.","inputSchema":{"type":"object","properties":{"text":{"type":"string"},"project":{"type":"string","default":"default"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"],"default":"knowledge"},"memory_kind":{"type":"string","enum":["record","fact","rule","procedure"],"default":"record"},"confidence":{"type":"number","minimum":0,"maximum":1},"source_ids":{"type":"array","items":{"type":"string"}},"supersedes":{"type":"string"},"sensitive":{"type":"boolean","description":"Must be false; use secret_set for sensitive values."}},"required":["text"]}}),
-        json!({"name":"memory_search","description":"Hybrid memory search. project=all is explicit cross-project search; internal trash and superseded buckets are always excluded.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string","default":"all"},"n_results":{"type":"integer","default":3,"minimum":1,"maximum":50},"recent_first":{"type":"boolean","default":false},"category":{"type":"string"}},"required":["query"]}}),
+        json!({"name":"memory_search","description":"Hybrid memory search. project=all is explicit cross-project search; internal trash and superseded buckets are always excluded.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string"},"n_results":{"type":"integer","default":3,"minimum":1,"maximum":50},"recent_first":{"type":"boolean","default":false},"category":{"type":"string"}},"required":["query","project"]}}),
         json!({"name":"memory_get","description":"Fetch one memory by id.","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}),
         json!({"name":"memory_update","description":"Update one memory and refresh indexes.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"project":{"type":"string"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"]},"chunk_type":{"type":"string","enum":["auto_log","manual","filtered","consolidated"]},"sensitive":{"type":"boolean","description":"Must be false; use secret_set for sensitive values."}},"required":["id"]}}),
         json!({"name":"memory_delete","description":"Soft-delete one memory to the internal trash bucket.","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}),
         json!({"name":"memory_feedback","description":"Record recall telemetry. memory_id is optional; ranking changes only for that returned memory.","inputSchema":{"type":"object","properties":{"recall_id":{"type":"string"},"memory_id":{"type":"string"},"outcome":{"type":"string","enum":["helpful","harmful","ignored"]},"note":{"type":"string"}},"required":["recall_id","outcome"]}}),
     ];
-    if crate::crypto::is_enabled() {
+    if crypto_enabled {
         tools.extend([
             json!({"name":"secret_set","description":"Store an AES-256-GCM encrypted credential.","inputSchema":{"type":"object","properties":{"key":{"type":"string"},"value":{"type":"string"},"kind":{"type":"string"},"note":{"type":"string"}},"required":["key","value"]}}),
             json!({"name":"secret_get","description":"Retrieve and decrypt a credential.","inputSchema":{"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}}),
@@ -178,7 +181,7 @@ async fn call_tool(system: Arc<RwLock<MemorySystem>>, params: &Value) -> Result<
     let name = params.get("name").and_then(Value::as_str).unwrap_or("");
     let args = params.get("arguments").cloned().unwrap_or_default();
     match name {
-        "memory_remember" | "memory_add" => memory_add(system, &args).await,
+        "memory_remember" => memory_remember(system, &args).await,
         "memory_search" => memory_search(system, &args).await,
         "memory_get" => memory_get(system, &args).await,
         "memory_update" => memory_update(system, &args).await,
@@ -192,7 +195,16 @@ async fn call_tool(system: Arc<RwLock<MemorySystem>>, params: &Value) -> Result<
     }
 }
 
+async fn require_vault(system: &Arc<RwLock<MemorySystem>>) -> Result<()> {
+    anyhow::ensure!(
+        system.read().await.vault_enabled && crate::crypto::is_enabled(),
+        "secret vault crypto is unavailable"
+    );
+    Ok(())
+}
+
 async fn secret_set(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
+    require_vault(&system).await?;
     let key = args.get("key").and_then(Value::as_str).unwrap_or("").trim();
     let value = args.get("value").and_then(Value::as_str).unwrap_or("");
     anyhow::ensure!(!key.is_empty(), "key is required");
@@ -215,7 +227,11 @@ async fn secret_set(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<S
         updated: chrono::Utc::now(),
     };
     let sys = system.read().await;
-    sys.db.write().await.insert_secret(&secret)?;
+    sys.db
+        .write()
+        .await
+        .insert_secret(&secret)
+        .map_err(|_| anyhow::anyhow!("secret operation failed"))?;
     Ok(format!(
         "secret stored encrypted: {} (encryption={})",
         key,
@@ -228,11 +244,15 @@ async fn secret_set(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<S
 }
 
 async fn secret_get(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
+    require_vault(&system).await?;
     let key = args.get("key").and_then(Value::as_str).unwrap_or("").trim();
     anyhow::ensure!(!key.is_empty(), "key is required");
     let sys = system.read().await;
     let db = sys.db.read().await;
-    match db.get_secret(key)? {
+    match db
+        .get_secret(key)
+        .map_err(|_| anyhow::anyhow!("secret operation failed"))?
+    {
         Some(secret) => Ok(format!(
             "{}\n--\nkind: {}\nnote: {}\nupdated: {}",
             secret.value,
@@ -240,14 +260,17 @@ async fn secret_get(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<S
             secret.note,
             secret.updated.to_rfc3339()
         )),
-        None => Ok(format!("secret '{}' not found", key)),
+        None => anyhow::bail!("secret not found"),
     }
 }
 
 async fn secret_list(system: Arc<RwLock<MemorySystem>>) -> Result<String> {
+    require_vault(&system).await?;
     let sys = system.read().await;
     let db = sys.db.read().await;
-    let secrets = db.list_secret_meta()?;
+    let secrets = db
+        .list_secret_meta()
+        .map_err(|_| anyhow::anyhow!("secret operation failed"))?;
     if secrets.is_empty() {
         return Ok("no secrets stored".to_string());
     }
@@ -265,18 +288,24 @@ async fn secret_list(system: Arc<RwLock<MemorySystem>>) -> Result<String> {
 }
 
 async fn secret_delete(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
+    require_vault(&system).await?;
     let key = args.get("key").and_then(Value::as_str).unwrap_or("").trim();
     anyhow::ensure!(!key.is_empty(), "key is required");
     let sys = system.read().await;
-    let removed = sys.db.write().await.delete_secret(key)?;
+    let removed = sys
+        .db
+        .write()
+        .await
+        .delete_secret(key)
+        .map_err(|_| anyhow::anyhow!("secret operation failed"))?;
     if removed {
         Ok(format!("secret deleted: {}", key))
     } else {
-        Ok(format!("secret '{}' not found", key))
+        anyhow::bail!("secret not found")
     }
 }
 
-async fn memory_add(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
+async fn memory_remember(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
     let mut metadata = Metadata {
         chunk_type: ChunkType::Manual,
         adapter: Some(
@@ -393,14 +422,14 @@ pub(crate) async fn memory_search(
     args: &Value,
 ) -> Result<String> {
     let query = args.get("query").and_then(Value::as_str).unwrap_or("");
-    let project = args.get("project").and_then(Value::as_str).unwrap_or("all");
+    let project = args.get("project").and_then(Value::as_str).unwrap_or("");
     let n = args.get("n_results").and_then(Value::as_u64).unwrap_or(3) as usize;
     let out = super::operations::search(
         system,
         super::operations::SearchInput {
             query: query.to_string(),
             project: project.to_string(),
-            n_results: n + 5,
+            n_results: n,
             recent_first: args
                 .get("recent_first")
                 .and_then(Value::as_bool)
@@ -431,19 +460,6 @@ pub(crate) async fn memory_search(
         ));
         lines.push(format!("    {}", item.document));
     }
-    if out.results.len() > n {
-        lines.push("more (one-line stubs; re-query or memory_get for detail):".to_string());
-        for (i, item) in out.results.iter().enumerate().skip(n) {
-            lines.push(format!(
-                "[{}] project={} score={:.4} id={} {}",
-                i + 1,
-                item.project,
-                item.score,
-                item.id,
-                item.document.chars().take(80).collect::<String>()
-            ));
-        }
-    }
     Ok(lines.join("\n"))
 }
 
@@ -465,6 +481,33 @@ mod tests {
     //! both stdio and `POST /mcp`.
     use super::*;
     use crate::server::api::test_support::build_system;
+
+    #[test]
+    fn tool_list_is_deterministic_for_vault_capability() {
+        let memory_names: Vec<_> = tools(false)
+            .into_iter()
+            .map(|tool| tool["name"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(memory_names.len(), 6);
+        assert!(memory_names.iter().all(|name| name.starts_with("memory_")));
+        let enabled = tools(true);
+        assert_eq!(enabled.len(), 10);
+        let search = enabled
+            .iter()
+            .find(|tool| tool["name"] == "memory_search")
+            .unwrap();
+        assert!(
+            search["inputSchema"]["required"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("project"))
+        );
+        assert!(
+            search["inputSchema"]["properties"]["project"]
+                .get("default")
+                .is_none()
+        );
+    }
 
     #[tokio::test]
     async fn dispatch_handles_protocol_methods() {
@@ -514,7 +557,7 @@ mod tests {
         let listed_tools = listed["result"]["tools"]
             .as_array()
             .expect("tools is an array");
-        assert_eq!(listed_tools.len(), tools().len());
+        assert_eq!(listed_tools.len(), tools(true).len());
         assert!(
             listed_tools
                 .iter()
@@ -548,10 +591,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn secret_capability_and_not_found_match_across_transports() {
+        let (_tmp, system) = build_system().await;
+        system.write().await.vault_enabled = false;
+        let unavailable = crate::server::api::get_secret(
+            State(system.clone()),
+            axum::extract::Path("missing".to_string()),
+        )
+        .await;
+        assert_eq!(
+            unavailable.status(),
+            axum::http::StatusCode::SERVICE_UNAVAILABLE
+        );
+        let unavailable_mcp = dispatch(system.clone(), &json!({"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"secret_get","arguments":{"key":"missing"}}})).await.unwrap();
+        assert_eq!(unavailable_mcp["result"]["isError"], true);
+
+        system.write().await.vault_enabled = true;
+        let missing = crate::server::api::get_secret(
+            State(system.clone()),
+            axum::extract::Path("missing".to_string()),
+        )
+        .await;
+        assert_eq!(missing.status(), axum::http::StatusCode::NOT_FOUND);
+        let missing_mcp = dispatch(system, &json!({"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"secret_get","arguments":{"key":"missing"}}})).await.unwrap();
+        assert_eq!(missing_mcp["result"]["isError"], true);
+    }
+
+    #[tokio::test]
     async fn dispatch_executes_tool_calls() {
         let (_tmp, system) = build_system().await;
-        assert_eq!(tools().len(), 10);
-        let names: Vec<String> = tools()
+        assert_eq!(tools(true).len(), 10);
+        let names: Vec<String> = tools(true)
             .iter()
             .filter_map(|tool| tool["name"].as_str().map(str::to_string))
             .collect();
@@ -618,6 +688,21 @@ mod tests {
         assert_eq!(mcp_added["id"], id);
         assert_eq!(mcp_added["project"], added["project"]);
 
+        let unscoped_http = crate::server::api::search(
+            State(system.clone()),
+            Json(crate::server::api::SearchRequest {
+                query: "must fail closed".into(),
+                project: String::new(),
+                n_results: 3,
+                recent_first: false,
+                category: String::new(),
+                exclude_reserved: false,
+                adapter: "test-http".into(),
+            }),
+        )
+        .await;
+        assert_eq!(unscoped_http.status(), axum::http::StatusCode::BAD_REQUEST);
+
         let http_search = crate::server::api::search(
             State(system.clone()),
             Json(crate::server::api::SearchRequest {
@@ -680,7 +765,23 @@ mod tests {
                 .unwrap();
         assert_eq!(http_update["project"], mcp_updated["project"]);
 
+        let empty_update: crate::server::api::UpdateRequest =
+            serde_json::from_value(json!({"id":id,"text":"   "})).unwrap();
+        let empty_update_response =
+            crate::server::api::update(State(system.clone()), Json(empty_update)).await;
+        assert_eq!(
+            empty_update_response.status(),
+            axum::http::StatusCode::BAD_REQUEST
+        );
+
         let recall_id = searched["recall_id"].as_str().unwrap();
+        let mismatch: crate::server::api::FeedbackRequest = serde_json::from_value(
+            json!({"recall_id":recall_id,"memory_id":"not-returned","outcome":"helpful"}),
+        )
+        .unwrap();
+        let mismatch_response =
+            crate::server::api::recall_feedback(State(system.clone()), Json(mismatch)).await;
+        assert_eq!(mismatch_response.status(), axum::http::StatusCode::CONFLICT);
         let feedback: crate::server::api::FeedbackRequest = serde_json::from_value(
             json!({"recall_id":recall_id,"memory_id":id,"outcome":"helpful"}),
         )

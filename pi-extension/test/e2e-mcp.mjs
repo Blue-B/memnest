@@ -15,9 +15,17 @@ let buffer = "";
 let nextId = 0;
 
 child.stderr.on("data", (chunk) => stderr.push(chunk.toString()));
-child.on("error", (error) => {
-	for (const { reject } of pending.values()) reject(error);
+function rejectPending(error) {
+	for (const { reject, timer } of pending.values()) {
+		clearTimeout(timer);
+		reject(error);
+	}
 	pending.clear();
+}
+child.on("error", rejectPending);
+child.on("exit", (code, signal) => {
+	if (pending.size)
+		rejectPending(new Error(`MCP exited before responding (code=${code}, signal=${signal})\n${stderr.join("").slice(-2000)}`));
 });
 child.stdout.on("data", (chunk) => {
 	buffer += chunk.toString();
@@ -39,10 +47,14 @@ function request(method, params = {}, timeoutMs = 120000) {
 	return new Promise((resolve, reject) => {
 		const timer = setTimeout(() => {
 			pending.delete(id);
-			reject(new Error(`MCP timeout for ${method}\n${stderr.join("").slice(-2000)}`));
+			reject(
+				new Error(`MCP timeout for ${method}\n${stderr.join("").slice(-2000)}`),
+			);
 		}, timeoutMs);
 		pending.set(id, { resolve, reject, timer });
-		child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
+		child.stdin.write(
+			`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`,
+		);
 	});
 }
 
@@ -92,6 +104,17 @@ try {
 	});
 	if (remembered.result?.isError)
 		throw new Error(remembered.result.content?.[0]?.text);
+	const memoryId = JSON.parse(remembered.result.content[0].text).id;
+	const omittedScope = await request("tools/call", {
+		name: "memory_search",
+		arguments: { query: "must fail closed" },
+	});
+	if (!omittedScope.result?.isError) throw new Error("unscoped search was accepted");
+	const alias = await request("tools/call", {
+		name: "memory_add",
+		arguments: { text: "hidden alias" },
+	});
+	if (!alias.result?.isError) throw new Error("memory_add alias remains callable");
 	const searched = await request("tools/call", {
 		name: "memory_search",
 		arguments: {
@@ -100,9 +123,33 @@ try {
 			n_results: 3,
 		},
 	});
-	if (!searched.result?.content?.[0]?.text.includes("canonical contract e2e probe"))
+	const searchText = searched.result?.content?.[0]?.text ?? "";
+	if (!searchText.includes("canonical contract e2e probe"))
 		throw new Error("search did not find remembered memory");
-	console.log("MCP E2E: exact 10 tools and remember/search flow passed");
+	if (searchText.includes("one-line stubs")) throw new Error("search returned hidden extra candidates");
+	const recallId = searchText.match(/recall_id=(recall_[^\n]+)/)?.[1];
+	const mismatch = await request("tools/call", {
+		name: "memory_feedback",
+		arguments: { recall_id: recallId, memory_id: "not-returned", outcome: "helpful" },
+	});
+	if (!mismatch.result?.isError) throw new Error("feedback mismatch was accepted");
+	const feedback = await request("tools/call", {
+		name: "memory_feedback",
+		arguments: { recall_id: recallId, memory_id: memoryId, outcome: "helpful" },
+	});
+	if (feedback.result?.isError) throw new Error(feedback.result.content?.[0]?.text);
+	const missingSecret = await request("tools/call", {
+		name: "secret_get",
+		arguments: { key: "missing-e2e-secret" },
+	});
+	if (!missingSecret.result?.isError) throw new Error("missing secret did not fail");
+	const deleted = await request("tools/call", {
+		name: "memory_delete",
+		arguments: { id: memoryId },
+	});
+	if (deleted.result?.isError || !deleted.result.content[0].text.includes(memoryId))
+		throw new Error("delete failed");
+	console.log("MCP E2E: exact tools, scoped search, feedback, secret error, and delete passed");
 } finally {
 	await stopChild();
 	rmSync(data, { recursive: true, force: true });

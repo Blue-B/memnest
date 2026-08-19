@@ -17,7 +17,7 @@ use crate::redaction::redact_text;
 #[derive(Deserialize)]
 pub struct SearchRequest {
     pub query: String,
-    #[serde(default = "default_project")]
+    #[serde(default)]
     pub project: String,
     #[serde(default = "default_n")]
     pub n_results: usize,
@@ -462,9 +462,14 @@ fn operation_error_response(error: super::operations::OperationError) -> Respons
         super::operations::ErrorKind::Conflict => axum::http::StatusCode::CONFLICT,
         super::operations::ErrorKind::Internal => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
     };
+    let message = if matches!(error.kind, super::operations::ErrorKind::Internal) {
+        "internal operation failed"
+    } else {
+        &error.message
+    };
     (
         status,
-        Json(serde_json::json!({"status":"error","error":error.message})),
+        Json(serde_json::json!({"status":"error","error":message})),
     )
         .into_response()
 }
@@ -2348,7 +2353,7 @@ pub async fn set_secret(
         )
             .into_response();
     }
-    if !crate::crypto::is_enabled() {
+    if !system.read().await.vault_enabled || !crate::crypto::is_enabled() {
         return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"status":"error","message":"secret vault crypto is unavailable"}))).into_response();
     }
     let secret = Secret {
@@ -2365,9 +2370,9 @@ pub async fn set_secret(
             Json(serde_json::json!({"status":"ok","key":secret.key,"encryption":"aes-256-gcm"})),
         )
             .into_response(),
-        Err(error) => (
+        Err(_error) => (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"status":"error","message":error.to_string()})),
+            Json(serde_json::json!({"status":"error","message":"secret operation failed"})),
         )
             .into_response(),
     }
@@ -2378,7 +2383,7 @@ pub async fn get_secret(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Path(key): Path<String>,
 ) -> Response {
-    if !crate::crypto::is_enabled() {
+    if !system.read().await.vault_enabled || !crate::crypto::is_enabled() {
         return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"status":"error","message":"secret vault crypto is unavailable"}))).into_response();
     }
     let sys = system.read().await;
@@ -2389,18 +2394,28 @@ pub async fn get_secret(
     match result {
         Ok(Some(secret)) => Json(serde_json::json!({"status":"ok","key":secret.key,"kind":secret.kind,"note":secret.note,"value":secret.value,"updated":secret.updated.to_rfc3339()})).into_response(),
         Ok(None) => (axum::http::StatusCode::NOT_FOUND, Json(serde_json::json!({"status":"not_found","key":key}))).into_response(),
-        Err(error) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"status":"error","message":error.to_string()}))).into_response(),
+        Err(_error) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"status":"error","message":"secret operation failed"}))).into_response(),
     }
 }
 
 /// GET /secrets — list metadata only. Values are never returned by this endpoint.
-pub async fn list_secrets(
-    State(system): State<Arc<RwLock<MemorySystem>>>,
-) -> Json<Vec<HashMap<String, String>>> {
+pub async fn list_secrets(State(system): State<Arc<RwLock<MemorySystem>>>) -> Response {
+    if !system.read().await.vault_enabled || !crate::crypto::is_enabled() {
+        return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"status":"error","message":"secret vault crypto is unavailable"}))).into_response();
+    }
     let sys = system.read().await;
     let db = sys.db.read().await;
-    let secrets = db.list_secret_meta().unwrap_or_default();
-    let items = secrets
+    let secrets = match db.list_secret_meta() {
+        Ok(secrets) => secrets,
+        Err(_) => {
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"status":"error","message":"secret operation failed"})),
+            )
+                .into_response();
+        }
+    };
+    let items: Vec<HashMap<String, String>> = secrets
         .into_iter()
         .map(|s| {
             let mut m = HashMap::new();
@@ -2411,13 +2426,16 @@ pub async fn list_secrets(
             m
         })
         .collect();
-    Json(items)
+    Json(items).into_response()
 }
 
 pub async fn delete_secret(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Path(key): Path<String>,
 ) -> Response {
+    if !system.read().await.vault_enabled || !crate::crypto::is_enabled() {
+        return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"status":"error","message":"secret vault crypto is unavailable"}))).into_response();
+    }
     let sys = system.read().await;
     let result = sys.db.write().await.delete_secret(&key);
     match result {
@@ -2427,9 +2445,9 @@ pub async fn delete_secret(
             Json(serde_json::json!({"status":"not_found","key":key})),
         )
             .into_response(),
-        Err(error) => (
+        Err(_error) => (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"status":"error","message":error.to_string()})),
+            Json(serde_json::json!({"status":"error","message":"secret operation failed"})),
         )
             .into_response(),
     }

@@ -53,9 +53,10 @@ pub fn resolve_master_key(data_dir: &Path) -> Result<String> {
         let key = std::fs::read_to_string(&key_path)
             .with_context(|| format!("read master key at {}", key_path.display()))?;
         let trimmed = key.trim().to_string();
-        if !trimmed.is_empty() {
-            return Ok(trimmed);
+        if trimmed.is_empty() {
+            return Err(anyhow!("master key file is empty: {}", key_path.display()));
         }
+        return Ok(trimmed);
     }
     // Generate a fresh random key
     std::fs::create_dir_all(data_dir).ok();
@@ -77,13 +78,14 @@ pub fn resolve_master_key(data_dir: &Path) -> Result<String> {
 }
 
 pub fn init_crypto(master_key: Option<&str>) -> Result<()> {
-    let (cipher, legacy) = match master_key {
-        Some(key) if !key.trim().is_empty() => (
-            Some(derive_cipher(key.trim(), SALT)?),
-            Some(derive_cipher(key.trim(), LEGACY_SALT)?),
-        ),
-        _ => (None, None),
-    };
+    let key = master_key
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+        .ok_or_else(|| anyhow!("master key is required"))?;
+    let (cipher, legacy) = (
+        Some(derive_cipher(key, SALT)?),
+        Some(derive_cipher(key, LEGACY_SALT)?),
+    );
     *CIPHER
         .write()
         .map_err(|_| anyhow!("crypto lock poisoned"))? = cipher;
@@ -188,12 +190,26 @@ mod tests {
     }
 
     #[test]
-    fn test_disabled() {
+    fn plaintext_and_corrupt_ciphertext_fail_closed() {
+        assert!(decrypt("plain-text").is_err());
+        assert!(decrypt("$enc$not-base64").is_err());
+    }
+
+    #[test]
+    fn missing_key_and_bad_key_file_are_errors() {
+        assert!(init_crypto(None).is_err());
+        assert!(init_crypto(Some("   ")).is_err());
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("master.key"), "   ").unwrap();
+        assert!(resolve_master_key(temp.path()).is_err());
+    }
+
+    #[test]
+    fn wrong_key_cannot_decrypt_ciphertext() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        init_crypto(None).unwrap();
-        let original = "plain-text";
-        let error = encrypt(original).unwrap_err();
-        assert!(error.to_string().contains("crypto is unavailable"));
-        assert!(decrypt(original).is_err());
+        init_crypto(Some("correct-key")).unwrap();
+        let encrypted = encrypt("secret").unwrap();
+        init_crypto(Some("wrong-key")).unwrap();
+        assert!(decrypt(&encrypted).is_err());
     }
 }

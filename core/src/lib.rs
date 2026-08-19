@@ -28,6 +28,7 @@ pub struct MemorySystem {
     pub text_index: Arc<RwLock<Option<index::TextIndex>>>,
     pub graph: Arc<RwLock<graph::KnowledgeGraph>>,
     pub lifecycle_status: Arc<RwLock<lifecycle::LifecycleStatus>>,
+    pub vault_enabled: bool,
 }
 
 impl MemorySystem {
@@ -35,8 +36,8 @@ impl MemorySystem {
         // Always derive an encryption key: env var takes precedence, otherwise
         // a per-install random key is created under data_dir/master.key (0600).
         // This means PAT/API key storage works out of the box.
-        let master_key = crypto::resolve_master_key(&config.data_dir).ok();
-        crypto::init_crypto(master_key.as_deref())?;
+        let master_key = crypto::resolve_master_key(&config.data_dir)?;
+        crypto::init_crypto(Some(&master_key))?;
         let db = Arc::new(RwLock::new(storage::Database::new(&config.data_dir).await?));
         let model_cache = config.data_dir.join("models");
         std::fs::create_dir_all(&model_cache)?;
@@ -90,6 +91,7 @@ impl MemorySystem {
             text_index,
             graph,
             lifecycle_status: Arc::new(RwLock::new(lifecycle::LifecycleStatus::default())),
+            vault_enabled: true,
         })
     }
 
