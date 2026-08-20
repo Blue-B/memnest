@@ -106,26 +106,30 @@ async fn check_database(data_dir: &Path) -> Check {
         }
     };
 
+    // Only the memory store is reported: facts/servers/notes are legacy tables
+    // kept for data preservation and no longer part of any product surface.
     let chunk_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))
+        .query_row(
+            &format!(
+                "SELECT COUNT(*) FROM chunks WHERE {}",
+                crate::models::VISIBLE_CHUNKS_SQL
+            ),
+            [],
+            |row| row.get(0),
+        )
         .unwrap_or(-1);
-    let fact_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM facts", [], |row| row.get(0))
-        .unwrap_or(-1);
-    let server_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM servers", [], |row| row.get(0))
-        .unwrap_or(-1);
-    let note_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM notes", [], |row| row.get(0))
+    let trashed_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM chunks WHERE project = '_trash'",
+            [],
+            |row| row.get(0),
+        )
         .unwrap_or(-1);
 
     Check {
         name: "database",
         status: Status::Ok,
-        message: format!(
-            "WAL={}, chunks={}, facts={}, servers={}, notes={}",
-            journal, chunk_count, fact_count, server_count, note_count
-        ),
+        message: format!("WAL={journal}, chunks={chunk_count}, trashed={trashed_count}"),
     }
 }
 

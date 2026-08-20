@@ -11,7 +11,7 @@ use axum::{
     },
     middleware::{self, Next},
     response::Response,
-    routing::{get, post, put},
+    routing::{get, post},
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -86,17 +86,8 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
         .route("/delete", post(api::delete))
         .route("/restore", post(api::restore))
         .route("/prune", post(api::prune))
-        .route("/reproject", post(api::reproject))
-        .route("/summary", post(api::add_summary))
-        .route("/compact", post(api::compact))
         .route("/collections", get(api::list_collections))
         .route("/collection/{name}", get(api::collection_detail))
-        .route("/collection/{name}/meta", put(api::set_collection_meta))
-        .route("/sessions", get(api::list_sessions))
-        .route("/facts", get(api::list_facts).post(api::add_fact))
-        .route("/notes", get(api::list_notes).post(api::set_note))
-        .route("/notes/{key}", get(api::get_note).delete(api::delete_note))
-        .route("/servers", get(api::list_servers))
         .route("/secrets", get(api::list_secrets).post(api::set_secret))
         .route(
             "/secrets/{key}",
@@ -108,9 +99,11 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
         // MCP over Streamable HTTP: same auth and security layers as every other
         // route, so one service covers the API, the dashboard, and MCP clients.
         .route("/mcp", post(mcp::http_endpoint))
+        // The dashboard itself no longer loads an asset, but the mount stays:
+        // the install scripts and preflight checks ship `static/` and assume
+        // it is reachable.
         .nest_service("/assets", ServeDir::new("static"))
         .route("/", get(api::viewer_dashboard))
-        .route("/viewer/collections", get(api::viewer_collections))
         .route("/viewer/search", get(api::viewer_search))
         .layer(middleware::from_fn(security_headers_middleware))
         .layer(middleware::from_fn(auth_middleware))

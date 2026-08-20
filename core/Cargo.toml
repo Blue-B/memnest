@@ -13,24 +13,15 @@ lto = "thin"
 codegen-units = 1
 strip = true
 
-[features]
-default = ["viewer", "mcp"]
-viewer = ["askama", "axum"]
-mcp = ["rmcp"]
-
 [dependencies]
 # Async runtime
 tokio = { version = "1.43", features = ["full"] }
-tokio-util = "0.7"
 
-# HTTP / Server
-axum = { version = "0.8", features = ["macros"], optional = true }
-tower = { version = "0.5", features = ["util"] }
+# HTTP / Server. The dashboard, the JSON API, and MCP all ride the same axum
+# router; MCP is a hand-rolled JSON-RPC dispatcher (server::mcp), so no MCP SDK
+# crate is involved.
+axum = { version = "0.8", features = ["macros"] }
 tower-http = { version = "0.6", features = ["fs", "cors"] }
-
-
-# MCP
-rmcp = { version = "1.6", features = ["server", "transport-io"], optional = true }
 
 # HTTP client for `memnest hook`, which talks to a running service instead of
 # opening the data directory. Already in the tree via fastembed's hf-hub.
@@ -54,7 +45,6 @@ tantivy = "0.26"
 
 # ML / ONNX Runtime
 # ort = { version = "2.0.0-rc.12", optional = true }  # disabled until openssl issue resolved
-ndarray = "0.16"
 fastembed = { version = "5", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"] }
 half = "2.4"
 
@@ -64,9 +54,6 @@ argon2 = "0.5"
 rand = "0.9"
 sha2 = "0.10"
 base64 = "0.22"
-
-# HTML templating
-askama = { version = "0.13", optional = true }
 
 # Logging / Tracing
 tracing = "0.1"
@@ -80,12 +67,8 @@ thiserror = "2.0"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.16", features = ["v4", "serde"] }
 regex = "1.11"
-rayon = "1.10"
 once_cell = "1.21"
-dashmap = "6.1"
-parking_lot = "0.12"
 walkdir = "2.5"
-
 
 # CLI
 clap = { version = "4.5", features = ["derive"] }
