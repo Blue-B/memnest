@@ -263,9 +263,8 @@ export async function importChangedFiles({ repoDir, baseURL = "http://127.0.0.1:
   // Apply user edits back into memnest. Strategy:
   //   chunks/*: POST /add as a new memory with a provenance marker; the
   //             original chunk is left intact (see below).
-  //   notes/*:  counted as pending only. The server does expose
-  //             POST /notes, but writing note edits back is not
-  //             implemented in this release.
+  //   notes/*:  counted as pending only. The server exposes no notes write
+  //             API, so edited note files are reported and left alone.
   //   secrets/*: refuse — secrets must be set via API, not file edits.
   const stats = { chunks_applied: 0, chunks_skipped: 0, notes_pending: 0, errors: [] };
   for (const f of files) {

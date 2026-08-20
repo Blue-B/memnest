@@ -180,9 +180,9 @@ Do not expose port 3111 directly to the internet. The rest is in [`SECURITY.md`]
 Development checks:
 
 ```bash
-cd core && cargo test
-cd ../pi-extension && npm install && npm run build && npm run smoke
-cd ../adapters/generic-http && node test.mjs
+(cd core && cargo test --locked -- --test-threads=1)
+(cd pi-extension && npm install && npm run build && npm run smoke)
+(cd adapters/generic-http && node test.mjs)
 ```
 
 Engine attributions are in [`core/THIRD_PARTY_NOTICES.md`](core/THIRD_PARTY_NOTICES.md). Contributions follow [`CONTRIBUTING.md`](CONTRIBUTING.md).

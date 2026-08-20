@@ -180,9 +180,9 @@ watch-state.json
 개발 검사 명령입니다.
 
 ```bash
-cd core && cargo test
-cd ../pi-extension && npm install && npm run build && npm run smoke
-cd ../adapters/generic-http && node test.mjs
+(cd core && cargo test --locked -- --test-threads=1)
+(cd pi-extension && npm install && npm run build && npm run smoke)
+(cd adapters/generic-http && node test.mjs)
 ```
 
 엔진 의존성 고지는 [`core/THIRD_PARTY_NOTICES.md`](core/THIRD_PARTY_NOTICES.md)에 있습니다. 기여 방법은 [`CONTRIBUTING.md`](CONTRIBUTING.md)를 따릅니다.

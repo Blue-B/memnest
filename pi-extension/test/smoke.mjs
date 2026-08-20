@@ -3,10 +3,10 @@
 //
 // Verifies:
 //   1. ESM bundle loads without throwing.
-//   2. register() registers exactly the expected tool set.
+//   2. register() registers exactly the canonical ten tools.
 //   3. Each registered tool has a callable .execute function.
-//   4. memory_health round-trip succeeds against a running memnest server.
-//   5. memory_stats returns a JSON body with total_chunks.
+//   4. No AutoLog capture hooks are installed.
+//   5. memory_search defaults are correct and it fails closed without a cwd.
 //
 // Run: node test/smoke.mjs    (or)    bun test/smoke.mjs
 

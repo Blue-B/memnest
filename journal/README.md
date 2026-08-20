@@ -25,6 +25,8 @@ A journal has this layout:
 
 Each record is rendered as Markdown with frontmatter. Memory chunks are grouped by project, facts use stable hashed filenames, notes use their key, and sessions are grouped by project.
 
+The core no longer writes facts, notes, or session summaries, so those three directories stay empty on a fresh install. They are still exported so that older stores keep their existing rows visible.
+
 The exporter reads the SQLite database directly in read-only mode. It does not export vector index files, the text index, the database, or `master.key`.
 
 ## Current status
