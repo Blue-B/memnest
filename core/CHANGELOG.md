@@ -4,11 +4,32 @@ All notable changes to `memnest`, the Rust engine.
 
 ## Unreleased
 
+### Fixed
+
+- Escaped collection names on every dashboard render path. A crafted collection
+  name could previously be injected into the page body, the `<title>`, and
+  generated links.
+- Excluded the internal `_trash` and `_superseded` buckets from dashboard
+  totals, collection listings, recent saves, search scope, and collection
+  detail. A soft-deleted memory could previously still be read there.
+
+### Removed (breaking for HTTP consumers)
+
+- Dropped the `/facts`, `/notes`, `/notes/{key}`, `/servers`, `/summary`,
+  `/sessions`, `/collection/{name}/meta` mutation, `/reproject`, and `/compact`
+  endpoints, along with the `--import-facts-json` flag. Their SQLite tables are
+  left in place and untouched, so existing rows remain readable and are
+  preserved for a future migration.
 - Removed the unsupported `learn/` package, in-memory graph runtime,
   session-fork mutation endpoint, and learning-only neighbors endpoint. Existing
   memory rows, lineage metadata, and the legacy `graph_edges` table remain
   untouched for compatibility.
+
+### Changed
+
 - Canonicalized the model surface to six memory tools and four vault tools, with shared HTTP/MCP memory operations, scoped automatic recall, soft delete, targeted feedback, strict auth token normalization, and fail-closed secrets.
+- `/context` now requires an explicit project, matching `/search`. It no longer
+  falls back to a cross-project scan.
 
 ## [0.2.0] - 2026-08-17
 

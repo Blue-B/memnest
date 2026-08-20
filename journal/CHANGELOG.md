@@ -30,8 +30,8 @@ All notable changes to `memnest-journal`.
   journal files.
 - `pjournal init` no longer generates a README promising "encrypted blobs
   only" for a directory that is empty by default.
-- Corrected source comments that claimed the server has no notes API and that
-  pending note edits are staged in `journal.pending.json`; neither was true.
+- Corrected a source comment that claimed pending note edits are staged in
+  `journal.pending.json`; they are only reported.
 
 ### Removed
 
