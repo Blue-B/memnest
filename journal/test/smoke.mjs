@@ -117,7 +117,7 @@ while (Date.now() < deadline && !committed) {
   const sr = await fetch(`${URL}/search`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ query: probe, n_results: 5 }),
+    body: JSON.stringify({ query: probe, project, n_results: 5 }),
   }).then(r => r.json());
   lastResults = sr.results || [];
   committed = lastResults.some(x => x.id === addJson.id);
@@ -148,7 +148,7 @@ if (existsSync(newPath)) {
     sj = await fetch(`${URL}/search`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query: marker, n_results: 3 }),
+      body: JSON.stringify({ query: marker, project, n_results: 3 }),
     }).then(r => r.json());
     hit = (sj.results || []).some(x => x.document.includes(marker));
   }
@@ -218,39 +218,37 @@ assert("filtered export without --prune still allowed", r.code === 0, r.err);
 
 // 7. --include-sensitive: sensitive chunk is SKIPPED by default,
 //    INCLUDED when the flag is set.
+//
+// The row is written straight into a fixture DB rather than posted to /add:
+// the core rejects sensitive=true on the public write path (those values
+// belong in the vault), so HTTP can no longer produce this fixture. The
+// exporter reads sqlite directly, which is exactly what is under test here.
 const sensitiveProj = `sensitivesmoke${randomBytes(4).toString("hex")}`;
-const sensitiveProbe = `sensitiveprobeword${randomBytes(8).toString("hex")}`;
-const sadd = await fetch(`${URL}/add`, {
-  method: "POST",
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify({
-    project: sensitiveProj,
-    text: `this is sensitive content ${sensitiveProbe}`,
-    metadata: { chunk_type: "manual", importance: "log", sensitive: true },
-  }),
-}).then(r => r.json());
-assert("sensitive /add returns id", typeof sadd.id === "string", JSON.stringify(sadd));
-
-// Wait until indexed.
-let sready = false;
-const sdeadline = Date.now() + 30000;
-while (Date.now() < sdeadline && !sready) {
-  await new Promise(r => setTimeout(r, 500));
-  const sr = await fetch(`${URL}/search`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ query: sensitiveProbe, n_results: 3 }),
-  }).then(r => r.json());
-  sready = (sr.results || []).some(x => x.id === sadd.id);
+const sensitiveId = `manual_${randomBytes(8).toString("hex")}`;
+const sensitiveDB = await fixtureDB("sensitive", "$enc$unused");
+{
+  const db = await openWritable(sensitiveDB);
+  db.exec(
+    `INSERT INTO chunks VALUES ('${sensitiveId}', '${sensitiveProj}', 'this is sensitive content', ` +
+      `'{"chunk_type":"manual","importance":"log","sensitive":true}', ` +
+      `'2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');`,
+  );
+  db.close();
 }
-assert("sensitive chunk persisted", sready);
+const sensitiveDir = join(tmpdir(), `pj-smoke-sensitive-${Date.now()}`);
+r = cliIn(sensitiveDir, sensitiveDB, "init");
+assert("sensitive fixture repo init", r.code === 0, r.err);
 
-cli("sync", "--message", "smoke: sensitive");
-const sensitivePath = join(DIR, "chunks", sensitiveProj, `${sadd.id}.md`);
+const sensitivePath = join(sensitiveDir, "chunks", sensitiveProj, `${sensitiveId}.md`);
+r = cliIn(sensitiveDir, sensitiveDB, "export");
+assert("sensitive export exits 0", r.code === 0, r.err);
 assert("sensitive chunk SKIPPED by default export", !existsSync(sensitivePath), sensitivePath);
 
-cli("sync", "--include-sensitive", "--message", "smoke: include sensitive");
+r = cliIn(sensitiveDir, sensitiveDB, "export", "--include-sensitive");
+assert("sensitive export --include-sensitive exits 0", r.code === 0, r.err);
 assert("sensitive chunk INCLUDED with --include-sensitive", existsSync(sensitivePath), sensitivePath);
+rmSync(sensitiveDir, { recursive: true, force: true });
+rmSync(sensitiveDB, { force: true });
 
 // 8. cleanup
 rmSync(DIR, { recursive: true, force: true });
