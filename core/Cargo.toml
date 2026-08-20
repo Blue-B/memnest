@@ -49,7 +49,7 @@ fastembed = { version = "5", default-features = false, features = ["hf-hub-rustl
 half = "2.4"
 
 # Cryptography
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 argon2 = "0.5"
 rand = "0.9"
 sha2 = "0.10"
