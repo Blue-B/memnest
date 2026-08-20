@@ -51,7 +51,7 @@ half = "2.4"
 # Cryptography
 aes-gcm = "0.10"
 argon2 = "0.5"
-rand = "0.9"
+rand = "0.10"
 sha2 = "0.10"
 base64 = "0.22"
 
