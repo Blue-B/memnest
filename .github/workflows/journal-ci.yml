@@ -87,7 +87,7 @@ jobs:
           for _ in {1..30}; do
             result=$(curl -fsS http://127.0.0.1:3111/search \
               -H 'content-type: application/json' \
-              -d '{"query":"journal smoke initial seed","n_results":3}')
+              -d '{"query":"journal smoke initial seed","project":"ci","n_results":3}')
             grep -q 'journal smoke initial seed' <<< "$result" && exit 0
             sleep 1
           done
