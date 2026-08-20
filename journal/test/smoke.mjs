@@ -8,7 +8,7 @@
 // Exits 0 if all assertions pass, non-zero otherwise.
 
 import { spawnSync } from "node:child_process";
-import { rmSync, existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { rmSync, existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -36,9 +36,45 @@ function assert(name, cond, detail = "") {
   if (cond) { console.log(`  PASS  ${name}`); ok++; }
   else { console.log(`  FAIL  ${name}${detail ? "  -- " + detail : ""}`); fail++; }
 }
-function cli(...args) {
-  const r = spawnSync(process.execPath, [CLI, ...args, "--dir", DIR, "--db", DB, "--url", URL], { encoding: "utf8" });
+function cliIn(dir, db, ...args) {
+  const r = spawnSync(process.execPath, [CLI, ...args, "--dir", dir, "--db", db, "--url", URL], { encoding: "utf8" });
   return { code: r.status, out: r.stdout, err: r.stderr };
+}
+function cli(...args) {
+  return cliIn(DIR, DB, ...args);
+}
+
+// Writable scratch sqlite for the secret-export fixtures. Deliberately not
+// reusing src/db.mjs: that module is read-only by design.
+async function openWritable(path) {
+  if (typeof Bun !== "undefined") {
+    const { Database } = await import("bun:sqlite");
+    return new Database(path, { create: true });
+  }
+  try {
+    const { DatabaseSync } = await import("node:sqlite");
+    return new DatabaseSync(path);
+  } catch {
+    const mod = await import("better-sqlite3");
+    return new (mod.default || mod)(path);
+  }
+}
+
+// A fixture DB with every table exportAll reads, so a failure can only come
+// from the secret row itself and not from a missing table.
+async function fixtureDB(name, secretValue) {
+  const path = join(tmpdir(), `pj-smoke-${name}-${Date.now()}.db`);
+  const db = await openWritable(path);
+  db.exec(`
+    CREATE TABLE chunks (id TEXT, project TEXT, document TEXT, metadata TEXT, created_at TEXT, updated_at TEXT);
+    CREATE TABLE facts (id TEXT, subject TEXT, predicate TEXT, object TEXT, timestamp TEXT, source_session TEXT);
+    CREATE TABLE notes (key TEXT, value TEXT, updated TEXT);
+    CREATE TABLE secrets (key TEXT, kind TEXT, value TEXT, note TEXT, updated TEXT);
+    CREATE TABLE session_summaries (id TEXT, project TEXT, session_id TEXT, summary TEXT, created_at TEXT);
+    INSERT INTO secrets VALUES ('fixturekey', 'token', '${secretValue.replace(/'/g, "''")}', '', '2026-01-01T00:00:00Z');
+  `);
+  db.close();
+  return path;
 }
 
 console.log(`smoke: dir=${DIR} url=${URL}`);
@@ -119,20 +155,66 @@ if (existsSync(newPath)) {
   assert("edited body shows up in memnest search", hit, JSON.stringify(sj?.results?.[0] || sj).slice(0, 200));
 }
 
-// 6. secrets are exported as ciphertext only (never plaintext)
-const secretsDir = join(DIR, "secrets");
-let secretSafe = true;
-if (existsSync(secretsDir)) {
-  for (const f of readdirSync(secretsDir)) {
-    const t = readFileSync(join(secretsDir, f), "utf8");
-    // ciphertext lines start with $enc$ in memnest's encoding
-    if (!t.includes("$enc$") && !t.includes("encryption: aes-256-gcm")) {
-      secretSafe = false;
-      break;
-    }
-  }
-}
-assert("secrets exported as ciphertext only", secretSafe);
+// 6. secrets: not exported at all without --include-secrets, and never
+//    exported as plaintext even with it.
+const secretFiles = (dir) => {
+  const d = join(dir, "secrets");
+  return existsSync(d) ? readdirSync(d) : [];
+};
+assert("secrets NOT exported by default", secretFiles(DIR).length === 0, secretFiles(DIR).join(","));
+
+// The `encryption:` frontmatter is generated unconditionally, so it proves
+// nothing: the body itself must be $enc$ ciphertext.
+const bodyIsCiphertext = (dir, f) => {
+  const t = readFileSync(join(dir, "secrets", f), "utf8");
+  const body = t.split("\n---\n").slice(1).join("\n---\n");
+  return body.trim().startsWith("$enc$");
+};
+
+// 6a. plaintext row -> whole export must abort, writing nothing.
+const plainDB = await fixtureDB("plain", "hunter2-plaintext-password");
+const plainDir = join(tmpdir(), `pj-smoke-plain-${Date.now()}`);
+mkdirSync(plainDir, { recursive: true });
+r = cliIn(plainDir, plainDB, "export", "--include-secrets");
+assert("plaintext secret aborts export", r.code !== 0, `code=${r.code} out=${r.out}`);
+assert("plaintext secret never written to disk", secretFiles(plainDir).length === 0, secretFiles(plainDir).join(","));
+assert("abort message does not leak the value", !`${r.out}${r.err}`.includes("hunter2"), r.err);
+
+// 6b. same DB without the opt-in flag: clean export, still no secrets.
+r = cliIn(plainDir, plainDB, "export");
+assert("export without --include-secrets ignores secrets table", r.code === 0 && secretFiles(plainDir).length === 0, r.err || secretFiles(plainDir).join(","));
+
+// 6c. real ciphertext shape -> exported, and the body is ciphertext.
+const encValue = `$enc$${randomBytes(48).toString("base64")}`;
+const encDB = await fixtureDB("enc", encValue);
+const encDir = join(tmpdir(), `pj-smoke-enc-${Date.now()}`);
+mkdirSync(encDir, { recursive: true });
+r = cliIn(encDir, encDB, "export", "--include-secrets");
+assert("ciphertext secret exports with --include-secrets", r.code === 0 && secretFiles(encDir).length === 1, r.err || secretFiles(encDir).join(","));
+assert("exported secret body is $enc$ ciphertext", secretFiles(encDir).every((f) => bodyIsCiphertext(encDir, f)));
+
+// 6d. truncated ciphertext (shorter than nonce+tag) is rejected too.
+const shortDB = await fixtureDB("short", `$enc$${randomBytes(8).toString("base64")}`);
+const shortDir = join(tmpdir(), `pj-smoke-short-${Date.now()}`);
+mkdirSync(shortDir, { recursive: true });
+r = cliIn(shortDir, shortDB, "export", "--include-secrets");
+assert("truncated $enc$ payload aborts export", r.code !== 0 && secretFiles(shortDir).length === 0, `code=${r.code}`);
+
+for (const p of [plainDB, encDB, shortDB, plainDir, encDir, shortDir]) rmSync(p, { recursive: true, force: true });
+
+// 6e. filtered sync/export must refuse to prune instead of deleting files
+//     the filter excluded.
+const chunkCount = () => readdirSync(join(DIR, "chunks"), { recursive: true }).length;
+const before = chunkCount();
+r = cli("sync", "--project", "definitelynotaproject");
+assert("filtered sync refused", r.code !== 0 && /--prune cannot be combined/.test(r.err), r.err);
+r = cli("sync", "--since", "2099-01-01T00:00:00Z");
+assert("since-filtered sync refused", r.code !== 0, r.err);
+r = cli("export", "--prune", "--project", "definitelynotaproject");
+assert("filtered export --prune refused", r.code !== 0 && /--prune cannot be combined/.test(r.err), r.err);
+assert("refused runs deleted nothing", chunkCount() === before, `${before} -> ${chunkCount()}`);
+r = cli("export", "--project", "definitelynotaproject");
+assert("filtered export without --prune still allowed", r.code === 0, r.err);
 
 // 7. --include-sensitive: sensitive chunk is SKIPPED by default,
 //    INCLUDED when the flag is set.

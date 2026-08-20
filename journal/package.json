@@ -1,7 +1,7 @@
 {
   "name": "memnest-journal",
   "version": "0.1.0",
-  "description": "Your AI memory as a git-backed markdown repo you own and edit. Export, version, diff, revert, push, and review memnest memory chunks through familiar git workflows.",
+  "description": "Your AI memory as a git-backed markdown repo you own and edit. Export, version, diff, push, and review memnest memory chunks through familiar git workflows. Reverting a journal commit restores journal snapshots, not the memnest database.",
   "type": "module",
   "bin": {
     "memnest-journal": "./bin/cli.mjs",
@@ -12,9 +12,7 @@
     "src",
     "README.md",
     "LICENSE",
-    "CHANGELOG.md",
-    ".github",
-    "docs"
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=20"

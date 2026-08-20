@@ -19,7 +19,7 @@ A journal has this layout:
 ├── chunks/<project>/<id>.md
 ├── facts/<hash>.md
 ├── notes/<key>.md
-├── secrets/<key>.enc.md
+├── secrets/<key>.enc.md    (only with --include-secrets)
 └── sessions/<project>/<id>.md
 ```
 
@@ -33,7 +33,7 @@ The public npm registry does not currently provide `memnest-journal`. Install it
 
 Version 0.1.0 is an audit-oriented exporter with a limited import path:
 
-- export supports chunks, facts, notes, stored secret records, and session summaries
+- export supports chunks, facts, notes, and session summaries; stored secret records require `--include-secrets`
 - sync exports, stages, and commits the journal, with an optional push
 - import applies modified chunk files by adding a new memory with a provenance marker
 - import does not replace or delete the original memory
@@ -129,6 +129,12 @@ Start the memnest HTTP service, edit an existing file under `chunks/`, and run:
 pjournal import
 ```
 
+If the service was started with `MEMNEST_TOKEN`, set the same value in the environment that runs `pjournal import`. The CLI sends it as `Authorization: Bearer <token>`; without it an authenticated service rejects every import request with HTTP 401.
+
+```bash
+MEMNEST_TOKEN=<token> pjournal import
+```
+
 Version 0.1.0 posts the edited body to `/add` as a new memory and appends a marker such as:
 
 ```html
@@ -143,7 +149,9 @@ The original memory remains in memnest and can still appear in search. If you ne
 
 `pjournal sync` performs a full export, removes journal files not present in that export, stages all changes, and commits them. This is appropriate for an unfiltered full snapshot.
 
-Do not combine `pjournal sync` with `--project` or `--since` in version 0.1.0. The current pruning behavior can remove journal files that were excluded by the partial export.
+`--project` and `--since` are refused by `pjournal sync`, and by `pjournal export --prune`. A filtered export only writes part of the journal, so pruning would delete files for memories that still exist and commit those deletions. Both commands exit with an error instead.
+
+Pruning also skips any subtree the export did not cover, so `secrets/` files are left in place when secrets are not exported. Remove them yourself if you no longer want them in the working tree.
 
 For a filtered read-only export, use `pjournal export` without `--prune`:
 
@@ -174,7 +182,9 @@ Common options:
 --project <a,b,c>     filter exported chunks by project
 --since <iso>         filter chunks by timestamp
 --include-sensitive   include chunks marked sensitive=true
+--include-secrets     export the secrets table as validated ciphertext
 --prune               remove unmatched files during pjournal export
+                      (rejected together with --project or --since)
 --push                push after pjournal sync
 --remote <name>       git remote, default origin
 --branch <name>       ref passed to git push, default main
@@ -187,7 +197,9 @@ Common options:
 
 - Sensitive chunks are skipped unless `--include-sensitive` is supplied.
 - Ordinary chunks, notes, facts, and session summaries are plaintext Markdown. Use a private repository.
-- Secret export copies the value stored in the database without decrypting it. A normal memnest installation stores secret values as `$enc$...` ciphertext, but the journal does not independently verify that format before writing the file. Inspect the generated `secrets/` tree before any push.
+- The `secrets` table is not exported unless `--include-secrets` is supplied.
+- With `--include-secrets`, every row is checked before anything is written: the value must start with `$enc$` and carry a base64 payload at least as long as an AES-256-GCM nonce and authentication tag. If any row fails, the whole export aborts and no file is written. The error names the failing keys only, never the values. Inspect the generated `secrets/` tree before any push.
+- `MEMNEST_TOKEN` is read from the environment for `pjournal import` and sent as a bearer token. It is not written to journal files, logs, or error output.
 - `master.key`, SQLite files, and index directories are added to the generated `.gitignore`.
 - The CLI uses your existing git configuration. It does not enable signed commits or enforce branch protection.
 - Git history is useful audit evidence, but this package does not claim compliance with a particular standard.
@@ -209,7 +221,7 @@ The journal can help identify what changed, but it does not contain the complete
 npm run smoke
 ```
 
-The smoke test covers initialization, export, git sync, chunk import, stored secret export, and sensitive-chunk filtering against a temporary memnest instance.
+The smoke test covers initialization, export, git sync, chunk import, secret-export validation, the filtered-prune guard, and sensitive-chunk filtering against a temporary memnest instance. It has no default endpoint: set `MEMNEST_URL` and `MEMNEST_DB` to a scratch instance or it exits non-zero.
 
 ## Related documentation
 

@@ -2,11 +2,49 @@
 
 All notable changes to `memnest-journal`.
 
+## [Unreleased]
+
+### Changed (breaking)
+
+- **Secrets are no longer exported by default.** `export` and `sync` skip the
+  `secrets` table unless `--include-secrets` is passed. Existing workflows that
+  relied on secrets appearing in the journal must add the flag; previously
+  exported `secrets/*.enc.md` files are left in place (prune no longer touches
+  a subtree the export did not cover).
+- `--prune` combined with `--project` or `--since` is now an error. `sync`
+  always prunes, so it rejects both filters as well. A filtered export only
+  writes part of the journal, so pruning deleted — and committed the deletion
+  of — files for memories that still existed.
+
+### Fixed
+
+- Secret export no longer trusts the stored value. With `--include-secrets`,
+  every row must be `$enc$` + base64 with at least an AES-256-GCM nonce and
+  tag; a single failing row aborts the whole export before any file is
+  written, so a legacy, hand-edited or corrupt plaintext row can no longer be
+  committed under frontmatter claiming `encryption: aes-256-gcm`. Error output
+  names the failing keys only.
+- `import` now sends `Authorization: Bearer $MEMNEST_TOKEN` when that variable
+  is set, so it works against a core started with authentication instead of
+  failing every request with HTTP 401. The token is never logged or written to
+  journal files.
+- `pjournal init` no longer generates a README promising "encrypted blobs
+  only" for a directory that is empty by default.
+- Corrected source comments that claimed the server has no notes API and that
+  pending note edits are staged in `journal.pending.json`; neither was true.
+
+### Removed
+
+- Unused `readFile` / `stat` imports and the unused sqlite `get` wrapper.
+- `.github` (does not exist in this package) and `docs` from `files` in
+  `package.json`.
+
 ## [0.1.0] — 2026-05-17
 
 Initial public release.
 
 ### Added
+
 - `pjournal init <dir>` — create a new journal repo with `.gitignore`.
 - `pjournal export` — render memnest sqlite (`chunks`, `facts`, `notes`,
   `secrets`, `session_summaries`) into a markdown tree.
@@ -22,16 +60,19 @@ Initial public release.
 - `--since <iso>` filter.
 - `--prune` to delete repo files for chunks that have disappeared from the DB.
 - AES-GCM secrets are exported as ciphertext only; `master.key` is
-  `.gitignore`-d by default.
+  `.gitignore`-d by default. (Superseded: see Unreleased — the value was not
+  actually validated, and secrets are now opt-in.)
 - Smoke test (`test/smoke.mjs`) — 10 end-to-end assertions.
 
 ### Compatibility
+
 - Node 20+ (uses `node:sqlite` when available).
 - Bun 1.3+ (uses `bun:sqlite`).
 - Fallback to `better-sqlite3` if neither built-in driver is present
   (optional install).
 
 ### Known limitations
+
 - Memnest 0.1.x has no `PUT /chunks/:id` or `DELETE /chunks/:id`. An
   `import` therefore appends a new chunk with the same body plus a
   provenance comment; the original chunk is left intact and remains
