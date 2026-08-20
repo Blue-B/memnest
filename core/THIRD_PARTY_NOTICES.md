@@ -281,7 +281,7 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [prettyplease](https://github.com/dtolnay/prettyplease) | 0.2.37 | MIT OR Apache-2.0 |  |
 | [proc-macro2](https://github.com/dtolnay/proc-macro2) | 1.0.106 | MIT OR Apache-2.0 |  |
 | [quinn](https://github.com/quinn-rs/quinn) | 0.11.9 | MIT OR Apache-2.0 | Copyright (c) 2018 The quinn Developers |
-| [quinn-proto](https://github.com/quinn-rs/quinn) | 0.11.14 | MIT OR Apache-2.0 | Copyright (c) 2018 The quinn Developers |
+| [quinn-proto](https://github.com/quinn-rs/quinn) | 0.11.15 | MIT OR Apache-2.0 | Copyright (c) 2018 The quinn Developers |
 | [quinn-udp](https://github.com/quinn-rs/quinn) | 0.5.14 | MIT OR Apache-2.0 | Copyright (c) 2018 The quinn Developers |
 | [quote](https://github.com/dtolnay/quote) | 1.0.45 | MIT OR Apache-2.0 |  |
 | [r2d2](https://github.com/sfackler/r2d2) | 0.8.10 | MIT/Apache-2.0 | Copyright (c) 2014-2016 Steven Fackler |
@@ -5127,7 +5127,7 @@ DEALINGS IN THE SOFTWARE.
 - ort 2.0.0-rc.12
 - ort-sys 2.0.0-rc.12
 - quinn 0.11.9
-- quinn-proto 0.11.14
+- quinn-proto 0.11.15
 - quinn-udp 0.5.14
 - safetensors 0.7.0
 - spm_precompiled 0.1.4
@@ -10752,7 +10752,7 @@ DEALINGS IN THE SOFTWARE.
 <details><summary>Used by</summary>
 
 - quinn 0.11.9
-- quinn-proto 0.11.14
+- quinn-proto 0.11.15
 - quinn-udp 0.5.14
 
 </details>

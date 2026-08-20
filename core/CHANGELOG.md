@@ -12,6 +12,8 @@ All notable changes to `memnest`, the Rust engine.
 - Excluded the internal `_trash` and `_superseded` buckets from dashboard
   totals, collection listings, recent saves, search scope, and collection
   detail. A soft-deleted memory could previously still be read there.
+- Updated `quinn-proto` to `0.11.15`, which fixes the remote memory-exhaustion
+  issue tracked as GHSA-4w2j-m93h-cj5j.
 
 ### Removed (breaking for HTTP consumers)
 
