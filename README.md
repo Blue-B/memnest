@@ -22,6 +22,12 @@ Local memory for AI coding agents. Memnest stores durable memories and searchabl
 
 The Rust core does not call an LLM. Embeddings run locally with `intfloat/multilingual-e5-base`.
 
+## Architecture
+
+![memnest local-first architecture](docs/architecture.png)
+
+Tool traffic, prompt-time recall, and transcript capture share one Rust service while keeping separate, explicit data paths.
+
 ## Install
 
 ```bash
