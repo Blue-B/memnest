@@ -33,6 +33,12 @@ All notable changes to `pi-memnest`.
   source file imports it, and declaring it polluted `package-lock.json` with
   absolute paths from whoever ran `npm install` last.
 
+### Fixed
+
+- Updated the build-only `esbuild` dependency to `0.25.12`, which fixes
+  GHSA-67mh-4wv8-2f99 in its development server. The published bundle does not
+  include the development server.
+
 ## [0.6.0] - 2026-08-01
 
 ### Added

@@ -47,7 +47,7 @@
     "e2e": "node test/e2e-mcp.mjs"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0",
+    "esbuild": "^0.25.12",
     "typebox": "^1.1.39"
   },
   "author": "Blue-B",
