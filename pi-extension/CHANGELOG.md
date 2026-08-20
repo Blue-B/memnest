@@ -2,13 +2,36 @@
 
 All notable changes to `pi-memnest`.
 
-## Unreleased
+## [0.7.0] - 2026-08-20
 
-- Canonicalized the model surface to six memory tools and four vault tools, with shared HTTP/MCP memory operations, scoped automatic recall, soft delete, targeted feedback, strict auth token normalization, and fail-closed secrets.
+### Breaking
 
-## Unreleased
+- **Total exposed tools: 20 to 10.** The model surface is now exactly six memory
+  tools (`memory_remember`, `memory_search`, `memory_get`, `memory_update`,
+  `memory_delete`, `memory_feedback`) and four vault tools (`secret_set`,
+  `secret_get`, `secret_list`, `secret_delete`). Everything else was removed,
+  including `memory_context`, `note_set`, `note_get`, `note_delete`, and the
+  remaining status and admin tools. A prompt or script that called a removed
+  tool by name now fails. `/memnest` covers status, and the Autocontext hook
+  covers automatic recall, without either occupying a tool slot.
+- Vault tools fail closed. They surface an error rather than a plaintext value
+  when the core cannot use its key.
 
-- Raise the default Autocontext score thresholds from `0.12` to `0.25` so weak, unrelated retrievals are not injected into prompts. Both values remain configurable with environment variables.
+### Changed
+
+- Memory operations share one HTTP/MCP path, with scoped automatic recall, soft
+  delete, targeted feedback, and strict auth token normalization.
+- Raise the default Autocontext score thresholds from `0.12` to `0.25` so weak,
+  unrelated retrievals are not injected into prompts. Both values remain
+  configurable with environment variables.
+- Conversation capture is `memnest watch` only. The extension installs no
+  AutoLog event hooks, so pi turns are stored once.
+- The published package now ships only `dist/`, the README, the changelog, the
+  license, and third-party notices. `src/`, `test/`, `contrib/`, and `docs/`
+  stay in the repository.
+- Dropped the optional `@earendil-works/pi-coding-agent` peer dependency. No
+  source file imports it, and declaring it polluted `package-lock.json` with
+  absolute paths from whoever ran `npm install` last.
 
 ## [0.6.0] - 2026-08-01
 

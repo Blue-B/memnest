@@ -28,12 +28,36 @@ jobs:
           persist-credentials: false
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      # Serial by policy: the environment-variable and vault lifecycle tests
+      # set process-global state (MEMNEST_* vars, the global CIPHER), so a
+      # parallel runner makes them race each other.
       - name: Test
-        run: cargo test --quiet
+        run: cargo test --locked --quiet -- --test-threads=1
       - name: Release build
-        run: cargo build --release
+        run: cargo build --release --locked
       - name: Transcript identity and retry E2E
         run: bash scripts/transcript-e2e.sh target/release/memnest
+      # `bash -n` does not catch an unbound variable under `set -u`, which is
+      # how preflight shipped broken once. Run it for real instead.
+      - name: Installer scripts run without unbound variables
+        run: |
+          set -o pipefail
+          output="$(MEMNEST_DATA_DIR="$RUNNER_TEMP/memnest-preflight" \
+            bash scripts/preflight-linux.sh --user --bin target/release/memnest 2>&1 || true)"
+          printf '%s\n' "$output"
+          if printf '%s' "$output" | grep -qi 'unbound variable'; then
+            echo "preflight-linux.sh referenced an unset variable" >&2
+            exit 1
+          fi
+          bash scripts/install.sh --help > /dev/null
+          bash scripts/install-linux.sh --help > /dev/null
+          bash scripts/uninstall-linux.sh --help > /dev/null
+          bash scripts/support-bundle.sh --out "$RUNNER_TEMP/support.txt" > /dev/null
+          echo body > "$RUNNER_TEMP/artifact"
+          sha256sum "$RUNNER_TEMP/artifact" > "$RUNNER_TEMP/artifact.sha256"
+          bash scripts/verify-artifact.sh "$RUNNER_TEMP/artifact" "$RUNNER_TEMP/artifact.sha256"
+      - name: Third-party notices are current
+        run: python3 scripts/generate-third-party-notices.py --check
 
   windows:
     runs-on: windows-latest
@@ -47,9 +71,9 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
       - name: Test
-        run: cargo test --quiet
+        run: cargo test --locked --quiet -- --test-threads=1
       - name: Release build
-        run: cargo build --release
+        run: cargo build --release --locked
       - name: Validate PowerShell installers
         shell: pwsh
         run: .\scripts\verify-release.ps1

@@ -52,6 +52,8 @@ Build `memnest.exe` from `core`, then run an administrator PowerShell prompt fro
 
 The native service stores data in `%ProgramData%\Memnest\data` and binds to localhost.
 
+The service wrapper is WinSW. The installer pins one version and its SHA-256 and verifies the file before installing it, whether the wrapper was downloaded or found next to the script, and it deletes the file and stops on a mismatch. Overriding `-WinSWVersion` therefore requires passing the matching `-WinSWSha256` (or dropping a `WinSW-x64.exe.sha256` beside the wrapper); the install refuses to run elevated against bytes it cannot check.
+
 Uninstallers for each layout are in `core/scripts/`.
 
 ## Retention and recovery
@@ -137,13 +139,15 @@ Common options: `--host`, `--port`, `--data-dir`, `--backup-dir`, `--restore-dir
 
 ## Development checks
 
-These match the current package scripts and were verified against this checkout:
+Each block below is a subshell, so every line starts from the repository root instead of from wherever the previous line left you:
 
 ```bash
-cd core          && cargo check && cargo test -- --test-threads=1
-cd pi-extension  && npm run build && npm run smoke
-cd journal       && npm run smoke
-cd adapters/generic-http && node test.mjs
+(cd core                  && cargo check && cargo test --locked -- --test-threads=1)
+(cd pi-extension          && npm install && npm run build && npm run smoke)
+(cd journal               && npm install && npm run smoke)
+(cd adapters/generic-http && node test.mjs)
 ```
 
-Core tests run serially because environment-variable lifecycle tests interfere with one another under the default parallel Rust test runner.
+Core tests run serially because environment-variable and vault lifecycle tests share process-global state and interfere with one another under the default parallel Rust test runner. CI uses the same flag.
+
+`journal`'s smoke test has no default target and exits 2 until `MEMNEST_URL` and `MEMNEST_DB` point at a scratch instance. Never point it at the store you actually use; see [CONTRIBUTING.md](../CONTRIBUTING.md).

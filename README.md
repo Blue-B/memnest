@@ -39,7 +39,7 @@ http://127.0.0.1:3111
 http://127.0.0.1:3111/mcp
 ```
 
-The first start downloads the local embedding model. Linux, WSL, Windows service setup, backup, restore, and retention options are in [`docs/operations.md`](docs/operations.md).
+Starting the service does not download anything. The embedding model is fetched on the first operation that needs it, which is the first write or the first search, so that call takes longer than the rest. Run `memnest --warmup-embedding` to pay that cost ahead of time. Linux, WSL, Windows service setup, backup, restore, and retention options are in [`docs/operations.md`](docs/operations.md).
 
 ## Connect an agent
 
@@ -106,6 +106,10 @@ secret_delete
 
 Search is project-scoped. A client must provide a project or explicitly request `project=all`. Every search returns a `recall_id`; feedback with both `recall_id` and `memory_id` changes only that returned memory. Delete moves a memory to trash instead of erasing it immediately.
 
+### Projects are keyed by directory name
+
+The inferred project is the basename of the working directory, not the full path. `/work/client-a/api` and `/personal/api` are therefore the same project, `api`, and share memories in both directions without warning. Until that changes, give the directories distinct names or pass an explicit `project` on every call. Replacing this key with one that distinguishes full paths is planned.
+
 ## Automatic context and conversation capture
 
 `memnest hook` reads a host prompt event from stdin and prints a small project-scoped context block. If the working directory is unknown or the service is unavailable, it prints nothing and does not block the prompt.
@@ -148,6 +152,7 @@ text_index/     Tantivy BM25 index
 vectors/        HNSW vector index
 models/         local embedding model
 master.key      vault key
+archive/        plaintext JSONL of hard-deleted memories
 watch-state.json
 ```
 
@@ -157,9 +162,11 @@ The dashboard at `http://127.0.0.1:3111` shows stored memories, searches, latenc
 
 The server binds to `127.0.0.1` by default. A non-local bind is refused unless `MEMNEST_TOKEN` is non-empty, and clients must then send `Authorization: Bearer <token>`.
 
-Regular memory text is local but not encrypted at rest. Credential-shaped strings are redacted before storage, but secrets belong in the vault, not in searchable memory. New stores create `<data-dir>/master.key` and use it to encrypt vault values with AES-256-GCM. If an existing vault cannot be decrypted with the available key, startup fails closed; encrypted values are never returned as plaintext fallback.
+Regular memory text is local but not encrypted at rest. Credential-shaped strings are redacted before storage, but secrets belong in the vault, not in searchable memory. New stores create `<data-dir>/master.key` and use it to encrypt vault values with AES-256-GCM. If an existing vault cannot be decrypted with the available key, startup fails closed; there is no plaintext fallback anywhere, so back the key up separately from the data directory.
 
-Do not expose port 3111 directly to the internet.
+Deletion is not erasure. A deleted memory sits in trash for 30 days, and when trash is finally hard-deleted the full record is appended in plaintext to `<data-dir>/archive/YYYY-MM.jsonl`. Set `MEMNEST_ARCHIVE=0` to stop writing those files, and remove the existing `archive/` directory yourself if the text must be gone.
+
+Do not expose port 3111 directly to the internet. The rest is in [`SECURITY.md`](SECURITY.md).
 
 ## Repository
 

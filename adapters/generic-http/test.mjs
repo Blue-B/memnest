@@ -8,10 +8,13 @@ const add = eventToRequest({
 	project: "demo",
 	adapter: "test-host",
 	memory_kind: "fact",
+	verified_at: "2026-08-20T00:00:00Z",
 });
 assert.equal(add.path, "/add");
 assert.equal(add.body.metadata.adapter, "test-host");
 assert.equal(add.body.metadata.memory_kind, "fact");
+assert.equal(add.body.metadata.chunk_type, "manual");
+assert.equal(add.body.metadata.verified_at, "2026-08-20T00:00:00Z");
 
 const search = eventToRequest({
 	type: "search",
@@ -50,4 +53,14 @@ assert.throws(
 	() => eventToRequest({ type: "unknown" }),
 	/unsupported event type/,
 );
-console.log("generic-http adapter: 14 assertions passed");
+
+// Conversation capture is `memnest watch` only. These two used to be adapter
+// operations, so they stay explicitly rejected rather than silently unknown.
+for (const type of ["message", "summary"]) {
+	assert.throws(
+		() => eventToRequest({ type, text: "hello", project: "demo" }),
+		/use 'memnest watch'/,
+	);
+}
+
+console.log("generic-http adapter: 20 assertions passed");

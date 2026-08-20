@@ -5,6 +5,8 @@ process is short.
 
 ## Before you start
 
+By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 For anything larger than a bug fix, open an issue first and describe the problem
 you hit. That avoids the case where a change is finished before we find out it
 does not fit the design. Small fixes can go straight to a pull request.
@@ -26,32 +28,42 @@ Only `core/` is required to run memnest. The rest are optional pieces around it.
 
 ## Development checks
 
-Run the checks for the component you touched. These were each executed against
-this checkout, and the counts are what they printed.
+Run the checks for the component you touched. Each block is a subshell, so it
+starts from the repository root rather than from wherever the previous line
+left you:
 
 ```bash
-cd core                   && cargo test --quiet
-cd pi-extension           && npm run build && npm run smoke
-cd journal                && npm run smoke             # see the warning below
-cd adapters/generic-http  && node test.mjs
+(cd core                   && cargo test --locked -- --test-threads=1)
+(cd pi-extension           && npm install && npm run build && npm run smoke)
+(cd journal                && npm install && npm run smoke)   # see the warning below
+(cd adapters/generic-http  && node test.mjs)
 ```
 
-`core` also needs `cargo build --release` to pass, because the CI job builds a
-release binary after the tests. `docs/operations.md` suggests
-`cargo test -- --test-threads=1` on the grounds that environment variable tests
-interfere with each other. The parallel run above passed, and CI runs
-`cargo test --quiet`, so use the serial form only if you hit a flaky test.
+Core tests run serially on purpose. Several of them set process-global state,
+the `MEMNEST_*` environment variables and the shared vault cipher, so the
+default parallel runner makes them race each other. CI uses the same
+`--test-threads=1`.
 
-`pi-extension` has `npm run e2e` (`node test/e2e-mcp.mjs`) on top of the smoke run.
+`core` also needs `cargo build --release --locked` to pass, because the CI job
+builds a release binary after the tests, and `python3 scripts/check-licenses.py`
+plus `python3 scripts/generate-third-party-notices.py --check` after any
+dependency change.
+
+`pi-extension` has `npm run e2e` (`node test/e2e-mcp.mjs`) on top of the smoke
+run. It spawns a real memnest binary over stdio, so point `MEMNEST_BIN` at one:
+`MEMNEST_BIN=../core/target/release/memnest npm run e2e`. `dist/index.mjs` is
+committed and CI rejects a bundle that does not match a fresh `npm run build`,
+so commit the rebuilt bundle with any `src/` change.
 
 ### The smoke tests talk to a running memnest
 
 This one costs people real data, so it is worth stating plainly.
 
-`journal`'s smoke test defaults to `MEMNEST_URL=http://127.0.0.1:3111` and
-`MEMNEST_DB=~/.memnest/memory.db`. It creates new collections and writes chunks
-into whichever store answers on that port. If that is your day to day memnest,
-the test pollutes it. Point it at a throwaway instance instead:
+`journal`'s smoke test creates collections and writes chunks into whichever
+store answers the URL it is given, so it must never be pointed at your day to
+day memnest. It has no defaults for that reason: with `MEMNEST_URL` or
+`MEMNEST_DB` unset it prints the throwaway-instance recipe and exits 2 without
+touching anything. Give it a scratch instance:
 
 ```bash
 memnest --data-dir /tmp/memnest-dev --port 3150 &
@@ -67,12 +79,18 @@ one recall feedback marker. It does not create memories.
 Workflows live in `.github/workflows/` and are filtered by path, so a change
 under `core/` does not run the pi-extension job:
 
-- `core-ci.yml` runs `cargo test --quiet` and `cargo build --release` on Linux
-  and Windows, validates the installer scripts, and checks license metadata
-- `pi-extension-ci.yml` installs with `npm ci`, builds the bundle, and loads it
+- `core-ci.yml` runs the serial test suite and a release build on Linux and
+  Windows, executes the installer scripts, checks license metadata, and fails
+  when `THIRD_PARTY_NOTICES.md` is out of date
+- `pi-extension-ci.yml` installs with `npm ci`, builds the bundle, checks the
+  committed `dist/index.mjs` against that build, loads it, and runs the MCP
+  end-to-end test against a freshly built core binary
+- `adapters-ci.yml` runs the generic HTTP contract test
 - `journal-ci.yml` builds the core binary, starts and seeds a server, then runs
   the smoke test against that server rather than your own
-- `core-release.yml` builds the release artifacts when a tag is pushed
+- `core-release.yml` refuses a tag that does not match the version in
+  `core/Cargo.toml`, tests, builds, then unpacks the archive and runs the
+  packaged binary before anything is published
 
 ## Commit messages
 

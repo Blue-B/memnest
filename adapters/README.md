@@ -19,10 +19,10 @@ An adapter should provide these operations:
 
 - `health`: check the local service
 - `remember`: write a durable record, fact, rule, or procedure
-- `message`: optionally capture a user or assistant message
-- `summary`: store a session summary
-- `search`: retrieve memory and receive a `recall_id`
+- `search`: retrieve memory and receive a `recall_id`; the project is required, so pass `project=all` when a cross-project search is what you want
 - `feedback`: submit helpful, harmful, or ignored for a `recall_id`; include `memory_id` to affect one returned result
+
+Conversation capture is deliberately not on that list. `memnest watch` is the single transcript path for every host, so an adapter that also posted messages or session summaries would store the same turn twice. The reference adapter rejects `message` and `summary` events with a pointer to `watch`.
 
 Every write may include `adapter`, `adapter_version`, `session_id`, `cwd`, `source`, and `role`. Structured memories may additionally include `memory_kind`, `confidence`, `source_ids`, `supersedes`, and `verified_at`.
 
@@ -87,7 +87,7 @@ Either shape suits Claude Code, Codex, OpenCode, Cursor, and similar clients. Wh
 A new platform adapter should:
 
 1. identify itself through `adapter` and `adapter_version`
-2. default high-volume message or tool capture to off
+2. leave conversation capture to `memnest watch` instead of posting turns itself
 3. redact credentials before logging errors
 4. use bounded request timeouts
 5. drain pending writes on clean shutdown

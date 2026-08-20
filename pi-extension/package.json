@@ -1,6 +1,6 @@
 {
   "name": "pi-memnest",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Memnest memory bridge for pi — exposes the canonical memory_* and secret_* tools backed by a local memnest server",
   "type": "module",
   "main": "./dist/index.mjs",
@@ -21,26 +21,15 @@
   "files": [
     "README.md",
     "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
     "CHANGELOG.md",
-    "dist",
-    "src",
-    "test",
-    "contrib",
-    "docs"
+    "dist"
   ],
   "license": "MIT",
   "pi": {
     "extensions": [
       "./dist/index.mjs"
     ]
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
-  },
-  "peerDependenciesMeta": {
-    "@earendil-works/pi-coding-agent": {
-      "optional": true
-    }
   },
   "engines": {
     "node": ">=20"

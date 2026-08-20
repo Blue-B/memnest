@@ -4,13 +4,19 @@ param(
   [string]$ServiceName = "memnest",
   [string]$HostAddress = "127.0.0.1",
   [int]$Port = 3111,
-  [string]$WinSWVersion = "v3.0.0",
+  [string]$WinSWVersion = "v2.12.0",
   [string]$BinPath = "",
   [string]$WinSWPath = "",
   [string]$WinSWSha256 = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+# The service wrapper runs elevated, so its bytes are pinned. This is the
+# SHA-256 of WinSW-x64.exe from the winsw/winsw release tagged $PinnedWinSWVersion.
+# Bump both values together, never one alone.
+$PinnedWinSWVersion = "v2.12.0"
+$PinnedWinSWSha256 = "05b82d46ad331cc16bdc00de5c6332c1ef818df8ceefcd49c726553209b3a0da"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
 $LocalHosts = @("127.0.0.1", "localhost", "::1")
@@ -62,6 +68,15 @@ elseif (-not $WinSWSha256 -and (Test-Path "$Root\WinSW-x64.exe.sha256")) {
   $WinSWSha256 = (Get-Content "$Root\WinSW-x64.exe.sha256" -Raw).Trim().Split(" ")[0]
 }
 
+if (-not $WinSWSha256) {
+  if ($WinSWVersion -eq $PinnedWinSWVersion) {
+    $WinSWSha256 = $PinnedWinSWSha256
+  }
+  else {
+    throw "no SHA-256 to verify WinSW against. This script only pins $PinnedWinSWVersion; pass -WinSWSha256 <hash> together with -WinSWVersion $WinSWVersion, or drop a WinSW-x64.exe.sha256 next to the wrapper."
+  }
+}
+
 $LogDir = "$env:ProgramData\Memnest\logs"
 New-Item -ItemType Directory -Force -Path $InstallDir, $DataDir, $LogDir | Out-Null
 Copy-Item $BinPath "$InstallDir\memnest.exe" -Force
@@ -103,11 +118,10 @@ if (-not (Test-Path $winsw)) {
   }
 }
 
-if ($WinSWSha256) {
-  $actualHash = (Get-FileHash $winsw -Algorithm SHA256).Hash.ToLowerInvariant()
-  if ($actualHash -ne $WinSWSha256.ToLowerInvariant()) {
-    throw "WinSW SHA-256 mismatch. Expected $WinSWSha256 but got $actualHash"
-  }
+$actualHash = (Get-FileHash $winsw -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actualHash -ne $WinSWSha256.ToLowerInvariant()) {
+  Remove-Item $winsw -Force -ErrorAction SilentlyContinue
+  throw "WinSW SHA-256 mismatch. Expected $WinSWSha256 but got $actualHash. The wrapper was removed; nothing was installed."
 }
 
 Push-Location $InstallDir

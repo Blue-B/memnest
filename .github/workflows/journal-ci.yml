@@ -68,7 +68,7 @@ jobs:
         working-directory: journal
         run: npm install --omit=dev --no-package-lock
       - name: Build memnest server
-        run: cargo build --release --manifest-path core/Cargo.toml
+        run: cargo build --release --locked --manifest-path core/Cargo.toml
       - name: Start and seed memnest server
         env:
           MEMNEST_DATA_DIR: ${{ runner.temp }}/memnest
