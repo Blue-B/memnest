@@ -37,6 +37,23 @@ jobs:
         with:
           persist-credentials: false
 
+      # A tag is the only trigger, so this is the one place that can stop
+      # v0.3.0 from shipping a binary that still reports 0.2.0.
+      - name: Tag matches core/Cargo.toml version
+        shell: bash
+        run: |
+          manifest_version="$(sed -n '/^\[package\]/,/^\[/ s/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -1)"
+          if [ -z "$manifest_version" ]; then
+            echo "could not read version from core/Cargo.toml" >&2
+            exit 1
+          fi
+          if [ "$GITHUB_REF_NAME" != "v$manifest_version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match core/Cargo.toml version $manifest_version" >&2
+            echo "expected tag: v$manifest_version" >&2
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME matches crate version $manifest_version"
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
@@ -50,9 +67,16 @@ jobs:
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
           echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
 
+      # Environment-variable and vault lifecycle tests mutate process-global
+      # state, so they cannot share a process. Only the native target can run
+      # its own tests on this runner.
+      - name: Test
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cargo test --locked -- --test-threads=1
+
       - name: Build release
         shell: bash
-        run: cargo build --release --target "$TARGET"
+        run: cargo build --release --locked --target "$TARGET"
 
       - name: Get version
         id: get_version
@@ -72,6 +96,31 @@ jobs:
           cp ../README.md dist/
           tar -czf "memnest-$VERSION-$TARGET.tar.gz" -C dist .
           sha256sum "memnest-$VERSION-$TARGET.tar.gz" > "memnest-$VERSION-$TARGET.tar.gz.sha256"
+
+      # Unpack exactly what would be published and run it, so a broken archive
+      # fails here instead of on a user's machine. A cross-built aarch64 binary
+      # cannot execute on this runner, so it only gets the layout checks.
+      - name: Verify packaged archive
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        shell: bash
+        run: |
+          archive="memnest-$VERSION-$TARGET.tar.gz"
+          scripts/verify-artifact.sh "$archive" "$archive.sha256"
+          unpacked="$(mktemp -d)"
+          tar -xzf "$archive" -C "$unpacked"
+          test -f "$unpacked/THIRD_PARTY_NOTICES.md"
+          test -f "$unpacked/static/memory-atlas.png"
+          test -x "$unpacked/memnest"
+          if [ "$TARGET" = "x86_64-unknown-linux-gnu" ]; then
+            packaged_version="$("$unpacked/memnest" --version)"
+            echo "packaged binary reports: $packaged_version"
+            case "$packaged_version" in
+              *"${VERSION#v}"*) ;;
+              *) echo "packaged binary does not report ${VERSION#v}" >&2; exit 1 ;;
+            esac
+            "$unpacked/memnest" --help > /dev/null
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -38,18 +38,7 @@ export function eventToRequest(event) {
 			},
 		};
 	}
-	if (event.type === "summary") {
-		return {
-			method: "POST",
-			path: "/summary",
-			body: {
-				project: event.project ?? "default",
-				session_id: event.session_id,
-				summary: event.text,
-			},
-		};
-	}
-	if (event.type === "remember" || event.type === "message") {
+	if (event.type === "remember") {
 		return {
 			method: "POST",
 			path: "/add",
@@ -57,14 +46,13 @@ export function eventToRequest(event) {
 				project: event.project ?? "default",
 				text: event.text,
 				metadata: {
-					chunk_type: event.type === "message" ? "auto_log" : "manual",
-					importance:
-						event.importance ??
-						(event.type === "message" ? "log" : "knowledge"),
+					chunk_type: "manual",
+					importance: event.importance ?? "knowledge",
 					memory_kind: event.memory_kind ?? "record",
 					confidence: event.confidence,
 					source_ids: event.source_ids ?? [],
 					supersedes: event.supersedes,
+					verified_at: event.verified_at,
 					session_id: event.session_id ?? "",
 					role: event.role,
 					source: event.source,
@@ -74,6 +62,14 @@ export function eventToRequest(event) {
 				},
 			},
 		};
+	}
+	// Conversation capture belongs to `memnest watch`, the single transcript
+	// path. An adapter that also posted messages or session summaries would
+	// store every turn twice.
+	if (event.type === "message" || event.type === "summary") {
+		throw new Error(
+			`${event.type} capture is not an adapter operation; use 'memnest watch'`,
+		);
 	}
 	throw new Error(`unsupported event type: ${event.type ?? "missing"}`);
 }

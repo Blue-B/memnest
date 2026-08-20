@@ -54,9 +54,45 @@ jobs:
       - name: Build dist/index.mjs
         run: npm run build
 
+      # pi loads dist/index.mjs, not src/. A committed bundle that no longer
+      # matches src is the failure mode this catches. One leg is enough: the
+      # lockfile pins esbuild, so every leg produces the same bytes.
+      - name: Committed bundle matches a fresh build
+        if: matrix.os == 'ubuntu-latest' && matrix.runtime == 'node22'
+        run: git diff --exit-code -- dist/index.mjs
+
       - name: Verify bundle, tools, auth, and no-AutoLog assertions
         run: npm run smoke
 
       - name: Verify bundle under Bun
         if: matrix.runtime == 'bun'
         run: bun test/smoke.mjs
+
+      - name: Package contents
+        if: matrix.os == 'ubuntu-latest' && matrix.runtime == 'node22'
+        run: npm pack --dry-run
+
+  e2e:
+    # The end-to-end check drives the real stdio MCP server, so it needs the
+    # Rust core built from this checkout.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Setup Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - name: Build memnest
+        run: cargo build --release --locked --manifest-path core/Cargo.toml
+      - name: Install dependencies
+        working-directory: pi-extension
+        run: npm ci
+      - name: MCP end-to-end
+        working-directory: pi-extension
+        env:
+          MEMNEST_BIN: ${{ github.workspace }}/core/target/release/memnest
+        run: npm run e2e

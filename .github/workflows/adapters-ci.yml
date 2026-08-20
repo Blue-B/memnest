@@ -1,0 +1,37 @@
+name: Adapters CI
+
+on:
+  pull_request:
+    paths:
+      - "adapters/**"
+      - ".github/workflows/adapters-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "adapters/**"
+      - ".github/workflows/adapters-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["20", "22"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      # No dependencies and no running service: the contract test asserts on the
+      # request shapes the adapter builds, including the two capture event types
+      # it must refuse.
+      - name: Generic HTTP contract test
+        run: node adapters/generic-http/test.mjs

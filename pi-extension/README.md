@@ -70,7 +70,7 @@ memory_update id="manual_..." text="Project X now deploys on port 8420"
 memory_delete id="manual_..."
 ```
 
-The core records each save in `/operations`, completes embedding and indexing, and then acknowledges the write. A semantically deduplicated id remains resolvable to the canonical memory. The first operation can take longer while the core downloads its embedding model.
+The core records each save in `/operations`, completes embedding and indexing, and then acknowledges the write. A semantically deduplicated id remains resolvable to the canonical memory. The first operation that needs an embedding takes longer, because that is when the core downloads its embedding model.
 
 ## Structured memory
 
@@ -119,7 +119,7 @@ MCP does not describe host session events. The core provides host-neutral automa
 - `memnest hook` reads a host's hook payload on stdin and answers with a context pack, in the shape that host expects.
 - `memnest watch` follows Claude Code, pi, and Codex transcripts and stores visible conversation text, with no host extension hooks.
 
-See [automatic memory](../README.md#automatic-memory) in the root README. Inside pi the extension exposes the same ten-tool contract and adds the `/memnest` command.
+See [automatic context and conversation capture](../README.md#automatic-context-and-conversation-capture) in the root README. Inside pi the extension exposes the same ten-tool contract and adds the `/memnest` command.
 
 ## Development
 
@@ -141,6 +141,7 @@ npm run e2e
 
 - [memnest root README](../README.md) for engine setup, lifecycle, service installation, backup, and security
 - [CHANGELOG.md](./CHANGELOG.md) for extension changes
+- [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for what the bundle carries
 - [memnest-journal](../journal/README.md) for the optional Markdown audit mirror
 
 ## License
