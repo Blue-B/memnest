@@ -22,7 +22,7 @@
     "smoke:bun": "bun test/smoke.mjs"
   },
   "optionalDependencies": {
-    "better-sqlite3": "^11.0.0"
+    "better-sqlite3": "^13.0.3"
   },
   "license": "MIT",
   "keywords": [
