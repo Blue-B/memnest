@@ -4,7 +4,7 @@
 
 [English README](README.md)
 
-**AI 코딩 에이전트를 위한 로컬 메모리.** 에이전트가 알게 된 것을 저장하고, 필요할 때 꺼내주고, 그 회상이 실제로 도움이 됐는지까지 보여준다. Rust로 짜인 실행 파일 하나가 전부다.
+AI 코딩 에이전트를 위한 로컬 메모리입니다. 프로젝트 기억과 검색 가능한 대화 원문을 내 컴퓨터에 저장하고, pi, Claude Code, Codex, MCP 클라이언트에 같은 툴 계약을 제공합니다.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 ![Rust](https://img.shields.io/badge/core-Rust-orange.svg)
@@ -12,95 +12,40 @@
 
 ![memnest 운영 대시보드](docs/dashboard.ko.png)
 
-## 왜 필요한가
+## 하는 일
 
-세션이 끝나면 프로젝트 결정도, 내 선호도, 내가 고쳐준 것도 같이 사라진다. 다음 세션에서 같은 제약을 처음부터 다시 설명하게 된다.
+- 직접 저장한 기억, 프로젝트 결정, 선호, 교정 내용을 보관합니다.
+- 로컬 BM25와 HNSW 벡터 색인으로 검색합니다.
+- 사용자와 어시스턴트의 대화 원문을 LLM 요약 없이 검색 가능하게 저장합니다.
+- 어떤 검색 결과가 도움이 됐는지 기록해 다음 검색 순위에 반영합니다.
+- 자격증명은 AES-256-GCM으로 암호화하는 별도 금고에 보관합니다.
 
-호스팅 메모리 서비스는 내 프로젝트 기록을 남의 서버에 올려둔다. 벡터 데이터베이스는 임베딩은 저장해도 어떤 기억이 실제로 쓰였는지, 검색이 왜 빗나갔는지는 알려주지 않는다. memnest는 저장소를 내 컴퓨터의 디렉터리에 두고, HTTP와 MCP로 서비스하고, 모든 회상을 기록해서 검색 품질을 짐작이 아니라 확인의 대상으로 만든다.
+Rust 코어는 LLM을 호출하지 않습니다. 임베딩은 `intfloat/multilingual-e5-base` 모델로 로컬에서 처리합니다.
 
-## 실행
+## 설치
 
 ```bash
 git clone https://github.com/Blue-B/memnest.git
-cd memnest/core && cargo build --release
-./target/release/memnest --data-dir ~/.memnest
-```
-
-서비스와 대시보드 주소는 **`http://127.0.0.1:3111`** 이다.
-
-이 문서는 이후로 바이너리를 이름으로 부른다. `PATH`에 올려두면 된다.
-
-```bash
+cd memnest/core
+cargo build --release
 install -m755 target/release/memnest ~/.local/bin/memnest
+memnest --data-dir ~/.memnest
 ```
 
-그러면 `memnest status`로 상태와 대시보드 링크, 데이터 디렉터리를 볼 수 있다.
+서비스, 대시보드, HTTP API, Streamable HTTP MCP가 같은 주소를 사용합니다.
 
-아직 npm이나 crates.io에 배포하지 않아서 설치는 전부 체크아웃 기준이다. 새로 설치하면 `~/.memnest`를 쓰고, 기존에 `~/.factory/memories`가 있으면 옮기기 전까지 그대로 쓴다. 빌드 결과물은 실행 파일 하나(리눅스 x86_64 기준 35MB, ONNX 런타임까지 정적 링크)라 사이드카 데몬이나 별도 런타임이 필요 없다. 대신 첫 실행 때 임베딩 모델 intfloat/multilingual-e5-base를 `~/.memnest/models`로 내려받고, 그게 1.1GB다.
-
-## 저장하고, 검색하고, 평가하기
-
-```bash
-curl -s http://127.0.0.1:3111/add \
-  -H 'content-type: application/json' \
-  -d '{"text":"배포는 8320 포트를 쓴다","project":"acme","metadata":{"importance":"knowledge"}}'
-
-curl -s http://127.0.0.1:3111/search \
-  -H 'content-type: application/json' \
-  -d '{"query":"배포 포트","project":"acme","n_results":3}'
-
-curl -s http://127.0.0.1:3111/feedback \
-  -H 'content-type: application/json' \
-  -d '{"recall_id":"recall_...","memory_id":"manual_...","outcome":"helpful"}'
+```text
+http://127.0.0.1:3111
+http://127.0.0.1:3111/mcp
 ```
 
-검색은 항상 `recall_id`를 돌려준다. `memory_id`를 지정한 피드백은 그 결과 하나의 랭킹만 바꾸고, 생략하면 랭킹을 바꾸지 않고 검색 전체 텔레메트리만 기록한다.
-
-```mermaid
-sequenceDiagram
-    participant 에이전트
-    participant memnest
-    에이전트->>memnest: "배포 포트" 검색
-    memnest-->>에이전트: 결과 3건 + recall_id
-    Note over 에이전트: 그 회상을 답변에 사용함
-    에이전트->>memnest: recall_id + memory_id, helpful 피드백
-    Note over memnest: 지정한 결과만 도움됨 카운트가 오름
-```
-
-판정을 남기는 주체는 셋이다. 대시보드의 도움됨과 문제 버튼(사람), `memory_feedback` 툴에서 `memory_id`를 지정한 에이전트, `POST /feedback`(스크립트). 반영 강도는 랭킹 점수 기준 최대 ±0.10이라, 관련도를 뒤집는 게 아니라 비슷한 후보들 사이의 순위를 가른다.
-
-첫 저장은 fastembed가 임베딩 모델을 내려받느라 느리다. `/add`는 레코드가 실제로 저장되고 색인된 뒤에야 `succeeded` 또는 `deduplicated`를 반환한다.
+첫 실행 때 로컬 임베딩 모델을 내려받습니다. Linux, WSL, Windows 서비스 설정과 백업, 복구, 보존 정책은 [`docs/operations.md`](docs/operations.md)에 있습니다.
 
 ## 에이전트 연결
 
-들어오는 길은 세 가지다. 쓰는 호스트가 지원하는 방식을 고르면 된다.
+### MCP
 
-```mermaid
-flowchart LR
-    A["pi<br/>네이티브 확장, 10개 툴"] --> H["HTTP :3111<br/>API, 대시보드, MCP"]
-    B["MCP 호스트<br/>Claude Code, Cursor, Cline, Kilo Code,<br/>DeepSeek Harness, Grok Build, omp"] --> H
-    B --> M["stdio MCP"]
-    C["그 외 전부<br/>curl, JSONL 어댑터"] --> H
-    H --> CORE["memnest core"]
-    M --> CORE
-    CORE --> D["~/.memnest<br/>SQLite, BM25, 벡터"]
-```
-
-메모리 툴 6개와 금고 사용 시 제공되는 시크릿 툴 4개는 어느 호스트에서든 같은 공개 계약으로 동작한다. MCP는 모델이 스스로 부르는 툴 호출만 규정하고 호스트 세션 이벤트 훅은 주지 않기 때문에, 자동 주입과 자동 기록은 확장 대신 서브커맨드 두 개가 맡는다. `memnest hook`과 `memnest watch`이고 아래 [자동 메모리](#자동-메모리)에서 설명한다. pi 확장은 같은 동작에 `/memnest` 커맨드를 더한 것이다.
-
-### pi, 네이티브 확장
-
-```bash
-cd memnest/pi-extension && npm install && pi install .
-```
-
-자동 컨텍스트는 기본값이 `balanced` 모드라 모든 프롬프트가 아니라 위험 신호가 보일 때만 짧은 메모리 카드를 넣는다. 지난 작업 회상, 자격증명, 뭐가 없거나 고장 난 상황, 비용, 설정 관련 표현이 거기에 해당한다. 트리거 패턴은 한국어와 영어를 모두 커버한다. 주제가 바뀔 때마다 넣으려면 `MEMNEST_AUTOCONTEXT_MODE=aggressive`를 켜면 된다. 주소는 `MEMNEST_URL`, 베어러 인증은 `MEMNEST_TOKEN`으로 설정한다. 자세한 내용은 [`pi-extension/README.md`](./pi-extension/README.md)에 있다.
-
-### MCP 호스트
-
-전송 방식은 둘이고, HTTP 쪽을 권장한다.
-
-**Streamable HTTP(권장).** 띄워둔 서비스 하나가 API와 대시보드와 MCP를 같은 포트에서 받아준다. 여러 호스트가 프로세스 하나와 저장소 하나를 공유하고 대시보드도 그대로 쓴다.
+실행 중인 서비스 주소를 MCP 클라이언트에 등록합니다.
 
 ```json
 {
@@ -110,9 +55,7 @@ cd memnest/pi-extension && npm install && pi install .
 }
 ```
 
-`POST /mcp`은 `initialize`, `tools/list`, `tools/call`에 JSON 응답 하나로 답하고, 알림에는 202를, `GET`에는 405를 돌려준다.
-
-**stdio.** 클라이언트가 memnest 프로세스를 자기 자식으로 띄우고 그 프로세스가 데이터 디렉터리를 직접 연다. 한 호스트만 그 저장소를 쓸 때만 권한다. 자식 프로세스와 대시보드용 서비스가 같이 떠 있으면 같은 파일에 쓰기 프로세스가 둘이 된다.
+여러 클라이언트가 서버와 데이터 디렉터리 하나를 공유할 수 있는 Streamable HTTP 방식을 권장합니다. stdio는 클라이언트 하나가 저장소를 단독으로 쓸 때만 사용합니다.
 
 ```json
 {
@@ -125,82 +68,117 @@ cd memnest/pi-extension && npm install && pi install .
 }
 ```
 
-각 벤더 문서에서 확인한 호스트는 Claude Code, Cursor, Cline, Kilo Code(`kilo.jsonc`의 `mcp` 키), DeepSeek Harness(`@deepseek-ai/dsh-mcp-client`), Grok Build(`grok mcp add`), 그리고 omp([oh-my-pi](https://github.com/can1357/oh-my-pi))다. omp는 확장 매니페스트가 `mcpServers` 필드를 받아서 등록되지만, 번들된 `@oh-my-pi/pi-mnemopi` 엔진이 이미 같은 역할을 한다. 설정 파일 위치는 호스트마다 다르다.
-
-## 자동 메모리
-
-검색은 에이전트가 검색하기로 마음먹어야 도움이 된다. 서브커맨드 두 개가 호스트별 확장 없이 그 간극을 메운다.
-
-**`memnest hook`은 프롬프트 직전에 컨텍스트를 주입한다.** 호스트가 주는 훅 페이로드를 stdin으로 읽고, 돌고 있는 서비스에서 컨텍스트 팩을 받아, 그 호스트가 기대하는 모양으로 답한다. Claude Code라면 설정 세 줄이다.
-
-```json
-{ "hooks": { "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "memnest hook" }] }] } }
-```
-
-출력 형식은 페이로드 모양을 보고 정하므로, command 훅이 stdout을 프롬프트에 붙이는 호스트라면 같은 명령이 그대로 통한다. 명시하고 싶으면 `--format`으로 고정한다. 프롬프트를 막는 일은 없다. 서비스가 죽었거나 느리면 아무것도 출력하지 않고 exit 0으로 끝나며 이유는 stderr로만 남긴다.
-
-**`memnest watch`는 호스트 설정 없이 대화를 기록한다.** 호스트가 이미 남기고 있는 세션 트랜스크립트를 따라가며 대화를 저장한다. 현재 Claude Code와 pi 형식을 지원한다.
+### pi
 
 ```bash
-memnest watch                  # 알려진 트랜스크립트 디렉터리 감시
-memnest watch --once           # 한 번만 훑기, cron에 걸기 좋다
-memnest watch --backfill       # 새 대화만이 아니라 기존 기록도 가져오기
+cd memnest/pi-extension
+npm install
+pi install .
 ```
 
-도구 호출과 결과, 추론 블록은 건너뛴다. 저장소에 기계 동작이 아니라 대화가 남게 하려는 것이다. 진행 위치는 `<data-dir>/watch-state.json`에 파일별 바이트 오프셋으로 기록되고, 그래서 재시작해도 같은 대화를 두 번 저장하지 않는다. 오프셋은 저장에 성공한 뒤에만 전진한다. 동작을 보려면 `RUST_LOG=info`를 붙인다.
+pi 확장은 같은 툴을 등록하고, 프로젝트 범위 Autocontext와 상태 확인용 `/memnest`를 추가합니다. 자세한 내용은 [`pi-extension/README.md`](pi-extension/README.md)에 있습니다.
 
-### 그 외 전부
+### HTTP와 직접 연동
 
-MCP는 선택이다. 위의 HTTP API가 계약의 전부라서 POST를 보낼 수 있으면 뭐든 저장하고 검색할 수 있다. MCP를 지원하지 않는 에디터, 셸 스크립트, CI 잡, 직접 만든 접착 코드까지 포함된다. [`adapters/`](./adapters)에 있는 JSONL 어댑터는 호스트 이벤트를 이 API로 옮기는 예제다. 어댑터는 호출마다 `adapter`와 `adapter_version`을 보내서 트래픽과 실패가 대시보드에 그대로 보인다.
+MCP 없이 HTTP API만 사용할 수도 있습니다. [`adapters/generic-http`](adapters/generic-http)에 의존성 없는 JSONL 참조 어댑터가 있습니다.
 
-## 대시보드
+## 툴 계약
 
-API와 같은 포트에서 열린다. 보통의 메모리 저장소가 답해주지 않는 것, 무엇이 저장됐고 무엇이 검색됐고 그 회상이 도움이 됐는지를 보여준다.
+모든 호스트에서 메모리 툴 6개를 사용합니다.
 
-![최근 검색과 회상 판정](docs/dashboard-recall.ko.png)
+```text
+memory_remember
+memory_search
+memory_get
+memory_update
+memory_delete
+memory_feedback
+```
 
-한 줄이 실제 검색 한 번이다. 검색어, 결과 수, 지연, 어떤 어댑터가 물었는지, 그리고 기록된 판정이 남는다.
+금고가 초기화되면 시크릿 툴 4개가 추가됩니다.
 
-![저장과 처리 상태](docs/dashboard-stats.ko.png)
+```text
+secret_set
+secret_get
+secret_list
+secret_delete
+```
 
-전체 개수, 24시간 검색 수, 지연, 처리 중과 실패한 작업, 디스크 사용량. 실패한 저장이 로그 파일 속으로 사라지지 않고 여기에 뜬다.
+검색은 프로젝트 범위로 동작합니다. 클라이언트는 프로젝트를 지정하거나 `project=all`을 명시해야 합니다. 모든 검색은 `recall_id`를 반환합니다. `recall_id`와 `memory_id`를 함께 보낸 피드백은 그 검색 결과 하나에만 반영됩니다. 삭제한 기억은 바로 지우지 않고 휴지통으로 이동합니다.
 
-## 구현된 기능
+## 자동 컨텍스트와 대화 저장
 
-| 영역 | 내용 |
-| --- | --- |
-| 검색 | BM25와 HNSW 벡터 하이브리드, 프로젝트 필터, 모든 검색에 `recall_id` |
-| 피드백 루프 | 도움됨과 문제 판정이 기억별로 남고 랭킹 점수에 반영된다. ±0.10으로 제한 |
-| 구조화 메모리 | record, fact, rule, procedure 종류와 확신도, 출처, 검증 메타데이터 |
-| 컨텍스트 조립 | 글자 수로 예산을 잡는 컨텍스트 팩. 유니코드 문자 기준이라 한글이 일찍 잘리지 않는다 |
-| 관측 | 회상 이벤트와 처리 작업을 90일간 보관하고 지연, 어댑터, 결과를 남긴다 |
-| 복구 | 삭제는 휴지통으로 가고 복원하면 다시 색인된다. 완전 삭제 전에 월별 JSONL로 보관한다 |
-| 시크릿 보관 | 별도 금고가 자격증명 값을 로컬 마스터 키로 AES-256-GCM 암호화한다 |
+`memnest hook`은 호스트의 프롬프트 이벤트를 stdin으로 읽고, 현재 프로젝트와 관련된 짧은 컨텍스트를 출력합니다. 작업 디렉터리를 알 수 없거나 서비스가 꺼져 있으면 아무것도 출력하지 않고 프롬프트를 막지 않습니다.
 
-memnest는 메모리 엔진이지 에이전트 런타임이 아니다. 에이전트를 실행하거나 프롬프트를 관리하거나 컨텍스트 압축을 대신하지 않는다.
+Claude Code 설정 예시입니다.
 
-리눅스, WSL, 윈도우 서비스 설치와 백업, 보존 정책, CLI 레퍼런스는 [운영 가이드](docs/operations.md)에 있다. 영어로 작성돼 있다.
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "memnest hook" }
+        ]
+      }
+    ]
+  }
+}
+```
 
-## 저장소 구성
+`memnest watch`는 pi, Claude Code, Codex 대화를 저장하는 단일 경로입니다.
 
-| 디렉터리 | 패키지 | 역할 |
-| --- | --- | --- |
-| [`core/`](./core) | `memnest` 0.2.0 | **필수.** HTTP API, MCP 서버, 색인, 수명주기, 금고, 대시보드 |
-| [`pi-extension/`](./pi-extension) | `pi-memnest` 0.6.0 | pi 연동. 툴 10개, `/memnest`, 프로젝트 범위 자동 컨텍스트, 피드백 |
-| [`adapters/`](./adapters) | 계약 | 연동 계약과 참조용 JSONL 어댑터 |
-| [`journal/`](./journal) | `memnest-journal` 0.1.0 | 선택. 마크다운과 git 감사 미러, 데이터베이스 백업은 아니다 |
+```bash
+memnest watch
+memnest watch --once
+memnest watch --backfill
+```
+
+자격증명을 가린 뒤 사용자와 어시스턴트에게 보이는 텍스트만 저장합니다. system 및 developer 프롬프트, reasoning, reminder, 툴 호출과 결과, 이미지, 서브에이전트 내부 대화는 제외합니다. 긴 대화는 순서가 있는 검색 청크로 나눕니다. 같은 말을 여러 번 했으면 각각 저장하고, 같은 transcript 이벤트의 재시도만 중복으로 처리합니다.
+
+watcher는 알려진 transcript 디렉터리를 감시하고 `<data-dir>/watch-state.json`에 파일별 위치를 기록합니다. 모든 청크가 저장되거나 복구된 뒤에만 위치가 전진합니다. 기본값은 새 대화부터 읽으며, 기존 기록을 가져오려면 `--backfill`을 사용합니다.
+
+## 저장 구조와 대시보드
+
+기본 데이터 디렉터리는 `~/.memnest`입니다.
+
+```text
+memory.db       SQLite 레코드와 메타데이터
+text_index/     Tantivy BM25 색인
+vectors/        HNSW 벡터 색인
+models/         로컬 임베딩 모델
+master.key      금고 키
+watch-state.json
+```
+
+`http://127.0.0.1:3111` 대시보드에서 저장된 기억, 검색 기록, 지연, 처리 실패, 회상 피드백을 확인할 수 있습니다.
 
 ## 보안
 
-HTTP 서버는 `127.0.0.1`에 바인딩한다. 외부 바인딩은 `MEMNEST_TOKEN`이 설정돼 있을 때만 허용되고, 그때는 요청에 `Authorization: Bearer <token>`이 필요하다. 3111 포트를 인터넷에 그대로 열지 말 것.
+서버는 기본적으로 `127.0.0.1`에 바인딩합니다. `MEMNEST_TOKEN`이 비어 있으면 외부 주소 바인딩을 거부합니다. 토큰을 설정한 경우 클라이언트는 `Authorization: Bearer <token>`을 보내야 합니다.
 
-메모리 텍스트는 로컬에 저장되지만 **저장 시 암호화되지 않는다.** 들어오는 텍스트에서 자격증명처럼 생긴 문자열을 찾아 가리긴 하지만 그건 안전망이지 비밀을 넣어도 되는 자리가 아니다. 비밀은 금고를 쓴다. memnest는 시작할 때 `<data-dir>/master.key`를 만들고 그 키로 AES-256-GCM 암호화를 한다. 키가 없으면 암호화 헬퍼가 평문 저장으로 넘어가므로, 금고를 믿기 전에 그 파일이 있는지 확인할 것.
+일반 메모리 텍스트는 로컬에 저장되지만 저장 시 암호화되지는 않습니다. 자격증명처럼 보이는 문자열을 저장 전에 가리지만, 비밀값은 검색 메모리가 아니라 금고에 넣어야 합니다. 새 저장소는 `<data-dir>/master.key`를 만들고 금고 값을 AES-256-GCM으로 암호화합니다. 기존 금고를 현재 키로 복호화할 수 없으면 시작 단계에서 실패하며 평문으로 대신 반환하지 않습니다.
 
-엔진 의존성 고지는 [`core/THIRD_PARTY_NOTICES.md`](./core/THIRD_PARTY_NOTICES.md)에 있다.
+3111 포트를 인터넷에 직접 공개하지 마세요.
 
-## 기여
+## 저장소 구성
 
-건드린 컴포넌트에 해당하는 검사를 [운영 가이드](docs/operations.md#development-checks) 대로 돌린다. 이슈와 풀 리퀘스트는 [memnest 저장소](https://github.com/Blue-B/memnest/issues)로 보내면 된다.
+| 디렉터리 | 역할 |
+| --- | --- |
+| [`core/`](core) | Rust 서버, CLI, 색인, MCP, 금고, watcher, 대시보드 |
+| [`pi-extension/`](pi-extension) | 얇은 pi 어댑터와 프로젝트 범위 Autocontext |
+| [`adapters/`](adapters) | 연동 계약과 일반 HTTP 어댑터 |
+| [`journal/`](journal) | 선택 기능인 Markdown 및 git 감사 미러, 데이터베이스 백업은 아님 |
+
+개발 검사 명령입니다.
+
+```bash
+cd core && cargo test
+cd ../pi-extension && npm install && npm run build && npm run smoke
+cd ../adapters/generic-http && node test.mjs
+```
+
+엔진 의존성 고지는 [`core/THIRD_PARTY_NOTICES.md`](core/THIRD_PARTY_NOTICES.md)에 있습니다. 기여 방법은 [`CONTRIBUTING.md`](CONTRIBUTING.md)를 따릅니다.
 
 ## 라이선스
 
