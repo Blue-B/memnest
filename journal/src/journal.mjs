@@ -2,14 +2,14 @@
 // markdown tree. Everything here is pure-ish (no shell, no network) so
 // the same logic is testable headlessly.
 
-import { mkdir, readFile, writeFile, rm, readdir, stat } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { openDB } from "./db.mjs";
 import { stringifyFrontmatter, parseFrontmatter } from "./yaml.mjs";
 
-const SAFE_NAME = /[^a-zA-Z0-9._\-]/g;
+const SAFE_NAME = /[^a-zA-Z0-9._-]/g;
 function safeName(s) {
   return String(s ?? "unknown").replace(SAFE_NAME, "_").slice(0, 80) || "unknown";
 }
@@ -74,10 +74,39 @@ function noteToMd(note) {
   return stringifyFrontmatter(fm) + (note.value ?? "") + "\n";
 }
 
+// memnest encrypts secret values as `$enc$` + base64(nonce||ciphertext||tag)
+// with AES-256-GCM (see core/src/crypto.rs). A row that does not match that
+// shape is a legacy, hand-edited or corrupt value and may be plaintext, so
+// the exporter refuses to write it.
+const ENC_PREFIX = "$enc$";
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+const MIN_ENC_BYTES = 12 + 16; // GCM nonce + auth tag, before any payload
+
+export function isEncryptedSecret(value) {
+  if (typeof value !== "string" || !value.startsWith(ENC_PREFIX)) return false;
+  const payload = value.slice(ENC_PREFIX.length);
+  if (!BASE64_RE.test(payload)) return false;
+  return Buffer.from(payload, "base64").length >= MIN_ENC_BYTES;
+}
+
+function assertSecretsEncrypted(rows) {
+  // Keys only — a value that failed validation may be plaintext and must
+  // never reach a log line, an error message or a file.
+  const bad = rows.filter((s) => !isEncryptedSecret(s.value)).map((s) => String(s.key));
+  if (!bad.length) return;
+  const shown = bad.slice(0, 5).join(", ") + (bad.length > 5 ? `, +${bad.length - 5} more` : "");
+  throw new Error(
+    `refusing to export: ${bad.length} secret row(s) are not AES-256-GCM ciphertext (keys: ${shown}). ` +
+    "Exporting them could commit plaintext. Re-set them through the memnest API so they are encrypted, " +
+    "or drop --include-secrets.",
+  );
+}
+
 function secretToMd(secret) {
-  // We store the encrypted blob and metadata only. Plaintext NEVER leaves
-  // the sqlite store; this file is safe to commit *iff* the master.key
-  // is not in the repo (we enforce that via .gitignore).
+  // Callers must run assertSecretsEncrypted first: only validated `$enc$`
+  // ciphertext reaches this function, so the frontmatter claim below is
+  // true by construction. The file is safe to commit *iff* master.key is
+  // not in the repo (we enforce that via .gitignore).
   const fm = {
     key: secret.key,
     kind: secret.kind,
@@ -108,12 +137,23 @@ async function writeIfChanged(path, content) {
   return true;
 }
 
-export async function exportAll({ dbPath, repoDir, since = null, projects = null, includeSensitive = false }) {
+export async function exportAll({ dbPath, repoDir, since = null, projects = null, includeSensitive = false, includeSecrets = false }) {
   const db = await openDB(dbPath, { readonly: true });
   const written = { chunks: 0, facts: 0, notes: 0, secrets: 0, sessions: 0 };
-  const seen = { chunks: new Set(), facts: new Set(), notes: new Set(), secrets: new Set(), sessions: new Set() };
+  // A null `seen` bucket means "this export did not cover that subtree", so
+  // prune must leave it alone.
+  const seen = { chunks: new Set(), facts: new Set(), notes: new Set(), secrets: null, sessions: new Set() };
 
   try {
+    // secrets are opt-in, and every value is validated before anything at
+    // all is written so a bad row aborts the whole export.
+    let secrets = [];
+    if (includeSecrets) {
+      secrets = db.all("SELECT key, kind, value, note, updated FROM secrets");
+      assertSecretsEncrypted(secrets);
+      seen.secrets = new Set();
+    }
+
     // chunks
     let sql = "SELECT id, project, document, metadata, created_at, updated_at FROM chunks";
     const where = [];
@@ -147,8 +187,8 @@ export async function exportAll({ dbPath, repoDir, since = null, projects = null
       if (await writeIfChanged(join(repoDir, rel), noteToMd(n))) written.notes++;
     }
 
-    // secrets (encrypted blob only — safe by construction)
-    for (const s of db.all("SELECT key, kind, value, note, updated FROM secrets")) {
+    // secrets (validated ciphertext only, and only when opted in)
+    for (const s of secrets) {
       const rel = secretRelPath(s);
       seen.secrets.add(rel);
       if (await writeIfChanged(join(repoDir, rel), secretToMd(s))) written.secrets++;
@@ -177,9 +217,9 @@ export async function pruneRemovedFiles({ repoDir, seen }) {
     if (!existsSync(root)) continue;
     for await (const abs of walk(root)) {
       const rel = relative(repoDir, abs).split(sep).join("/");
-      const bucket = sub;
-      const set = seen[bucket];
-      if (!set || !set.has(rel)) {
+      const set = seen[sub];
+      if (!set) continue; // subtree not covered by this export — never prune it
+      if (!set.has(rel)) {
         await rm(abs);
         removed++;
       }
@@ -200,10 +240,18 @@ async function* walk(dir) {
 // We never write the sqlite directly. The HTTP server is the canonical
 // owner; this keeps invariants (FTS index, vector store) intact.
 
+// A core started with MEMNEST_TOKEN rejects every unauthenticated request,
+// so mirror that env var here. The value is only ever put in the request
+// header: never logged, echoed, or written to a journal file.
+function authHeader() {
+  const token = (process.env.MEMNEST_TOKEN ?? "").trim();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
 async function httpJSON(url, method, body) {
   const r = await fetch(url, {
     method,
-    headers: body ? { "content-type": "application/json" } : {},
+    headers: { ...(body ? { "content-type": "application/json" } : {}), ...authHeader() },
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await r.text();
@@ -213,12 +261,11 @@ async function httpJSON(url, method, body) {
 
 export async function importChangedFiles({ repoDir, baseURL = "http://127.0.0.1:3111", files }) {
   // Apply user edits back into memnest. Strategy:
-  //   chunks/*: re-POST /add (server upserts on id collision? if not, we
-  //             dedupe by hashing on the server side eventually; for now
-  //             we add new rows and rely on user's intent — emit warning)
-  //   notes/*:  POST /notes (key, value)  — not yet wired in 0.1; we
-  //             stage them in journal.pending.json so a future server
-  //             release with PUT /notes/:key can consume.
+  //   chunks/*: POST /add as a new memory with a provenance marker; the
+  //             original chunk is left intact (see below).
+  //   notes/*:  counted as pending only. The server does expose
+  //             POST /notes, but writing note edits back is not
+  //             implemented in this release.
   //   secrets/*: refuse — secrets must be set via API, not file edits.
   const stats = { chunks_applied: 0, chunks_skipped: 0, notes_pending: 0, errors: [] };
   for (const f of files) {
@@ -227,11 +274,12 @@ export async function importChangedFiles({ repoDir, baseURL = "http://127.0.0.1:
     const { data, body } = parseFrontmatter(text);
     try {
       if (f.startsWith("chunks/")) {
-        // memnest 0.1.x has no /update/:id and dedupes identical
-        // (project, text) pairs. To make user edits actually reach the
-        // searchable store, we append a hidden provenance marker — this
-        // makes the post unique even when the body is identical to a
-        // previous chunk, and gives reviewers an audit trail.
+        // This deliberately adds rather than replaces, so the pre-edit
+        // chunk stays available as audit evidence (POST /update exists if
+        // you want an in-place correction). memnest dedupes identical
+        // (project, text) pairs, so we append a hidden provenance marker:
+        // it makes the post unique even when the body is unchanged, and
+        // gives reviewers an audit trail.
         const project = data.project && !/^(root|default|global)$/.test(data.project)
           ? data.project : "playbook";
         const marker = `\n\n<!-- memnest-journal: edited-from=${data.id ?? "unknown"} at=${new Date().toISOString()} -->`;
@@ -247,7 +295,7 @@ export async function importChangedFiles({ repoDir, baseURL = "http://127.0.0.1:
         });
         stats.chunks_applied++;
       } else if (f.startsWith("notes/")) {
-        // Server lacks PUT /notes — stage for next memnest release.
+        // Reported only; note write-back is not implemented in this release.
         stats.notes_pending++;
       } else if (f.startsWith("secrets/")) {
         stats.chunks_skipped++; // explicit no-op

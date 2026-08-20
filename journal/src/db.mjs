@@ -43,21 +43,18 @@ export async function openDB(dbPath, { readonly = true } = {}) {
 function wrapBun(db) {
   return {
     all(sql, ...args) { return db.query(sql).all(...args); },
-    get(sql, ...args) { return db.query(sql).get(...args); },
     close() { db.close(); },
   };
 }
 function wrapNodeSqlite(db) {
   return {
     all(sql, ...args) { return db.prepare(sql).all(...args); },
-    get(sql, ...args) { return db.prepare(sql).get(...args); },
     close() { db.close(); },
   };
 }
 function wrapBetter(db) {
   return {
     all(sql, ...args) { return db.prepare(sql).all(...args); },
-    get(sql, ...args) { return db.prepare(sql).get(...args); },
     close() { db.close(); },
   };
 }
