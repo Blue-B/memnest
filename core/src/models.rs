@@ -1,6 +1,20 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+/// Buckets that hold soft-deleted (`_trash`) or replaced (`_superseded`) rows.
+/// They stay addressable by id for restore, but must never appear in a count,
+/// listing, collection view, or search scope shown to a user.
+pub const INTERNAL_PROJECTS: &[&str] = &["_trash", "_superseded"];
+
+/// SQL predicate selecting only user-visible chunks. Kept next to
+/// [`INTERNAL_PROJECTS`] so the storage layer and the API filter agree; the
+/// `internal_bucket_filters_agree` test proves they stay in sync.
+pub const VISIBLE_CHUNKS_SQL: &str = "project NOT IN ('_trash','_superseded')";
+
+pub fn is_internal_project(project: &str) -> bool {
+    INTERNAL_PROJECTS.contains(&project.trim())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryChunk {
     pub id: String,
@@ -250,7 +264,7 @@ pub struct ProcessingJob {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OperationsSummary {
     pub recalls_24h: usize,
     pub helpful_24h: usize,
@@ -290,6 +304,19 @@ fn default_kind() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn internal_bucket_filters_agree() {
+        for project in INTERNAL_PROJECTS {
+            assert!(is_internal_project(project));
+            assert!(
+                VISIBLE_CHUNKS_SQL.contains(&format!("'{project}'")),
+                "{project} missing from VISIBLE_CHUNKS_SQL"
+            );
+        }
+        assert!(!is_internal_project("root"));
+        assert!(!is_internal_project("playbook"));
+    }
 
     #[test]
     fn metadata_missing_pinned_deserializes_as_false() {

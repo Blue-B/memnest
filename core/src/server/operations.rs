@@ -1,5 +1,5 @@
 use crate::MemorySystem;
-use crate::models::{Metadata, RecallEvent};
+use crate::models::{Metadata, RecallEvent, is_internal_project};
 use crate::redaction::redact_text;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -8,8 +8,6 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use super::api;
-
-const INTERNAL_PROJECTS: &[&str] = &["_trash", "_superseded"];
 
 #[derive(Debug)]
 pub struct OperationError {
@@ -59,7 +57,7 @@ impl std::fmt::Display for OperationError {
 impl std::error::Error for OperationError {}
 
 pub fn validate_write_project(project: &str) -> Result<(), OperationError> {
-    if INTERNAL_PROJECTS.contains(&project.trim()) {
+    if is_internal_project(project) {
         return Err(OperationError::bad(format!(
             "project '{}' is reserved; write rejected",
             project.trim()
@@ -69,7 +67,7 @@ pub fn validate_write_project(project: &str) -> Result<(), OperationError> {
 }
 
 pub fn exclude_project(project: &str, cross_project: bool) -> bool {
-    INTERNAL_PROJECTS.contains(&project)
+    is_internal_project(project)
         || (cross_project && matches!(project, "root" | "default" | "global"))
 }
 
@@ -178,7 +176,6 @@ pub async fn search(
         project,
         input.n_results,
         input.recent_first,
-        false,
         input.exclude_reserved,
         input.category,
     )
@@ -350,11 +347,14 @@ pub async fn feedback(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::INTERNAL_PROJECTS;
 
     #[test]
     fn canonical_scope_only_always_hides_internal_buckets() {
-        assert!(exclude_project("_trash", false));
-        assert!(exclude_project("_superseded", false));
+        for project in INTERNAL_PROJECTS {
+            assert!(exclude_project(project, false));
+            assert!(exclude_project(project, true));
+        }
         assert!(!exclude_project("root", false));
         assert!(exclude_project("root", true));
         assert!(!exclude_project("project-a", true));

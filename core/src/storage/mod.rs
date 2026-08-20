@@ -12,7 +12,7 @@ use std::path::Path;
 /// (name, kind, description)
 /// Two kinds only:
 ///   - playbook : cross-project manual notes (lessons, prefs, decisions)
-///   - project  : per-cwd bucket; tool calls auto-dump here, manual notes welcome
+///   - project  : per-cwd bucket for conversation turns captured by `memnest watch`
 const DEFAULT_COLLECTION_META: &[(&str, &str, &str)] = &[
     (
         "playbook",
@@ -22,7 +22,7 @@ const DEFAULT_COLLECTION_META: &[(&str, &str, &str)] = &[
     (
         "root",
         "project",
-        "Root bucket used when the project cwd cannot be determined. Tool-call logs land here.",
+        "Root bucket used when the project cwd cannot be determined. Conversation turns captured by `memnest watch` land here.",
     ),
     (
         "default",
@@ -298,12 +298,15 @@ impl Database {
         Ok(chunks)
     }
 
+    /// Per-collection aggregates. Internal buckets (`_trash`, `_superseded`)
+    /// are excluded, so every dashboard/stats surface built on this is
+    /// automatically free of soft-deleted rows.
     pub fn collection_stats(&self, limit: usize) -> Result<Vec<CollectionStat>> {
         let conn = self.pool.get()?;
         // Aggregate per-project counts + chunk_type breakdown in a single pass.
         // LEFT JOIN to collection_meta so collections without an explicit meta row
         // still show up (kind defaults to inferred value below).
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(&format!(
             "SELECT
                 c.project                                                        AS name,
                 COUNT(*)                                                         AS chunk_count,
@@ -314,10 +317,11 @@ impl Database {
                 COALESCE(SUM(LENGTH(c.document)), 0)                             AS text_bytes
              FROM chunks c
              LEFT JOIN collection_meta m ON m.name = c.project
+             WHERE c.{VISIBLE_CHUNKS_SQL}
              GROUP BY c.project
              ORDER BY chunk_count DESC, c.project ASC
-             LIMIT ?1",
-        )?;
+             LIMIT ?1"
+        ))?;
         let rows = stmt.query_map(params![limit as i64], |row| {
             let name: String = row.get(0)?;
             let chunk_count = row.get::<_, i64>(1)? as usize;
@@ -416,14 +420,16 @@ impl Database {
             .ok())
     }
 
+    /// Most recently stored user-visible chunks. Soft-deleted rows are excluded.
     pub fn recent_chunks(&self, limit: usize) -> Result<Vec<RecentChunk>> {
         let conn = self.pool.get()?;
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(&format!(
             "SELECT id, project, document, metadata, created_at
              FROM chunks
+             WHERE {VISIBLE_CHUNKS_SQL}
              ORDER BY created_at DESC
-             LIMIT ?1",
-        )?;
+             LIMIT ?1"
+        ))?;
         let rows = stmt.query_map(params![limit as i64], |row| {
             let meta: String = row.get(3)?;
             let metadata: Metadata = serde_json::from_str(&meta).unwrap_or_default();
@@ -572,9 +578,15 @@ impl Database {
         Ok(())
     }
 
+    /// Count of user-visible chunks. Soft-deleted (`_trash`) and superseded
+    /// rows are never part of the total a user is shown.
     pub fn chunk_count(&self) -> Result<usize> {
         let conn = self.pool.get()?;
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))?;
+        let count: i64 = conn.query_row(
+            &format!("SELECT COUNT(*) FROM chunks WHERE {VISIBLE_CHUNKS_SQL}"),
+            [],
+            |row| row.get(0),
+        )?;
         Ok(count as usize)
     }
 

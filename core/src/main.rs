@@ -1,11 +1,9 @@
 use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
 use memnest::hook::HookFormat;
-use memnest::models::{ChunkType, Fact, FactHistory, Importance, MemoryChunk, Metadata};
-use memnest::redaction::redact_text;
+use memnest::models::{ChunkType, Importance, MemoryChunk, Metadata};
 use memnest::{MemorySystem, config::Config};
 use serde::Deserialize;
-use serde_json::Value;
 use std::io::{BufRead, BufReader};
 use std::net::ToSocketAddrs;
 use std::path::{Path, PathBuf};
@@ -38,9 +36,6 @@ struct Cli {
 
     #[arg(long)]
     import_jsonl: Option<String>,
-
-    #[arg(long)]
-    import_facts_json: Option<String>,
 
     #[arg(long)]
     doctor: bool,
@@ -109,25 +104,6 @@ struct ImportRecord {
     embedding: Option<Vec<f32>>,
     metadata: Option<Metadata>,
     created_at: Option<String>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct ImportFactRecord {
-    id: Option<String>,
-    subject: Option<String>,
-    predicate: Option<String>,
-    object: Option<Value>,
-    timestamp: Option<String>,
-    source_session: Option<String>,
-    #[serde(default)]
-    history: Vec<ImportFactHistory>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct ImportFactHistory {
-    object: Option<Value>,
-    timestamp: Option<String>,
-    source_session: Option<String>,
 }
 
 #[tokio::main]
@@ -242,7 +218,7 @@ async fn main() -> anyhow::Result<()> {
         std::process::exit(exit_code);
     }
 
-    if !cli.mcp && cli.import_jsonl.is_none() && cli.import_facts_json.is_none() {
+    if !cli.mcp && cli.import_jsonl.is_none() {
         enforce_bind_safety(&config.api_host)?;
     }
 
@@ -253,18 +229,9 @@ async fn main() -> anyhow::Result<()> {
         MemorySystem::new(config.clone()).await?,
     ));
 
-    let mut imported = false;
     if let Some(path) = cli.import_jsonl.as_deref() {
         let imported_memories = import_jsonl(system.clone(), path).await?;
         println!("imported {} memories", imported_memories);
-        imported = true;
-    }
-    if let Some(path) = cli.import_facts_json.as_deref() {
-        let imported_facts = import_facts_json(system.clone(), path).await?;
-        println!("imported {} facts", imported_facts);
-        imported = true;
-    }
-    if imported {
         return Ok(());
     }
 
@@ -497,87 +464,6 @@ async fn import_jsonl(
     }
     sys.add_text_docs(&text_docs).await?;
     Ok(count)
-}
-
-async fn import_facts_json(
-    system: Arc<tokio::sync::RwLock<MemorySystem>>,
-    path: &str,
-) -> anyhow::Result<usize> {
-    let file = std::fs::File::open(path)?;
-    let value: Value = serde_json::from_reader(file)?;
-    let records = import_fact_records(value)?;
-    let sys = system.read().await;
-    let db = sys.db.write().await;
-    let mut count = 0usize;
-
-    for (key, record) in records {
-        let subject = record.subject.or_else(|| {
-            key.as_deref()
-                .and_then(|key| key.split_once("::").map(|(subject, _)| subject.to_string()))
-        });
-        let predicate = record.predicate.or_else(|| {
-            key.as_deref().and_then(|key| {
-                key.split_once("::")
-                    .map(|(_, predicate)| predicate.to_string())
-            })
-        });
-        let object = record.object.and_then(json_scalar_to_string);
-        let (Some(subject), Some(predicate), Some(object)) = (subject, predicate, object) else {
-            continue;
-        };
-
-        let id = record
-            .id
-            .or(key)
-            .unwrap_or_else(|| memnest::facts::fact_id(&subject, &predicate));
-        let history = record
-            .history
-            .into_iter()
-            .filter_map(|item| {
-                Some(FactHistory {
-                    object: redact_text(&json_scalar_to_string(item.object?)?),
-                    timestamp: parse_import_timestamp(item.timestamp.as_deref()),
-                    source_session: item.source_session,
-                })
-            })
-            .collect::<Vec<_>>();
-        let fact = Fact {
-            id: redact_text(&id),
-            subject: redact_text(&subject),
-            predicate: redact_text(&predicate),
-            object: redact_text(&object),
-            timestamp: parse_import_timestamp(record.timestamp.as_deref()),
-            source_session: record.source_session,
-            history,
-        };
-        db.insert_fact(&fact)?;
-        count += 1;
-    }
-    Ok(count)
-}
-
-fn import_fact_records(value: Value) -> anyhow::Result<Vec<(Option<String>, ImportFactRecord)>> {
-    match value {
-        Value::Object(map) => map
-            .into_iter()
-            .map(|(key, value)| Ok((Some(key), serde_json::from_value(value)?)))
-            .collect(),
-        Value::Array(items) => items
-            .into_iter()
-            .map(|value| Ok((None, serde_json::from_value(value)?)))
-            .collect(),
-        _ => anyhow::bail!("facts JSON must be an object or array"),
-    }
-}
-
-fn json_scalar_to_string(value: Value) -> Option<String> {
-    match value {
-        Value::Null => None,
-        Value::String(value) => Some(value),
-        Value::Bool(value) => Some(value.to_string()),
-        Value::Number(value) => Some(value.to_string()),
-        other => Some(other.to_string()),
-    }
 }
 
 fn parse_import_timestamp(value: Option<&str>) -> chrono::DateTime<chrono::Utc> {
