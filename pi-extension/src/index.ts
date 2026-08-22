@@ -48,9 +48,6 @@ function result(text: string, error = false): Result {
 		details: undefined,
 	};
 }
-function project(cwd?: string): string | undefined {
-	return cwd?.split(/[\\/]/).filter(Boolean).pop() || undefined;
-}
 function registerTool(
 	pi: ExtensionAPI,
 	name: string,
@@ -78,7 +75,9 @@ export default function register(pi: ExtensionAPI): void {
 				return;
 			}
 			const healthData = JSON.parse(health.text);
-			const count = stats.error ? "unavailable" : JSON.parse(stats.text).total_chunks;
+			const count = stats.error
+				? "unavailable"
+				: JSON.parse(stats.text).total_chunks;
 			const message = `Memnest ok\nMemories: ${count}\nData: ${healthData.data_dir}\nDashboard: ${URL}/`;
 			ctx.ui.setStatus("memnest", `Memnest: ok, ${count} memories`);
 			ctx.ui.notify(message, "info");
@@ -123,15 +122,16 @@ export default function register(pi: ExtensionAPI): void {
 			),
 		}),
 		async (_id: string, p: any, _s: unknown, _u: unknown, ctx: Context) => {
-			const scope = p.project ?? project(ctx.cwd);
-			if (!scope)
+			const cwd = ctx.cwd?.trim();
+			if (!p.project && !cwd)
 				return result(
-					"current project is unavailable; pass project explicitly",
+					"current workspace is unavailable; pass project explicitly",
 					true,
 				);
 			const r = await call("/add", {
 				text: p.text,
-				project: scope,
+				project: p.project ?? "",
+				cwd: p.project ? undefined : cwd,
 				metadata: {
 					chunk_type: "manual",
 					importance: p.importance ?? "knowledge",
@@ -139,6 +139,7 @@ export default function register(pi: ExtensionAPI): void {
 					confidence: p.confidence,
 					source_ids: p.source_ids ?? [],
 					supersedes: p.supersedes,
+					cwd,
 					sensitive: p.sensitive ?? false,
 					adapter: "pi",
 				},
@@ -162,13 +163,18 @@ export default function register(pi: ExtensionAPI): void {
 			category: Type.Optional(Type.String()),
 		}),
 		async (_id: string, p: any, _s: unknown, _u: unknown, ctx: Context) => {
-			const scope = p.project ?? project(ctx.cwd);
-			if (!scope)
+			const cwd = ctx.cwd?.trim();
+			if (!p.project && !cwd)
 				return result(
-					"current project is unavailable; pass project explicitly (use project=all for cross-project search)",
+					"current workspace is unavailable; pass project explicitly (use project=all for cross-project search)",
 					true,
 				);
-			const body = { ...p, project: scope, adapter: "pi" };
+			const body = {
+				...p,
+				project: p.project ?? "",
+				cwd: p.project ? undefined : cwd,
+				adapter: "pi",
+			};
 			const r = await call("/search", body);
 			if (r.error) return result(r.text, true);
 			try {
@@ -275,61 +281,63 @@ export default function register(pi: ExtensionAPI): void {
 		},
 	);
 
-	registerTool(
-		pi,
-		"secret_set",
-		"Secret: set",
-		"Store an encrypted credential.",
-		Type.Object({
-			key: Type.String(),
-			value: Type.String(),
-			kind: Type.Optional(Type.String()),
-			note: Type.Optional(Type.String()),
-		}),
-		async (_id: string, p: any) => {
-			const r = await call("/secrets", p);
-			return result(r.text, r.error);
-		},
-	);
-	registerTool(
-		pi,
-		"secret_get",
-		"Secret: get",
-		"Retrieve and decrypt a credential.",
-		Type.Object({ key: Type.String() }),
-		async (_id: string, p: any) => {
-			const r = await call(
-				`/secrets/${encodeURIComponent(p.key)}`,
-				undefined,
-				"GET",
-			);
-			return result(r.text, r.error);
-		},
-	);
-	registerTool(
-		pi,
-		"secret_list",
-		"Secret: list",
-		"List credential metadata without values.",
-		Empty,
-		async () => {
-			const r = await call("/secrets", undefined, "GET");
-			return result(r.text, r.error);
-		},
-	);
-	registerTool(
-		pi,
-		"secret_delete",
-		"Secret: delete",
-		"Permanently delete a credential.",
-		Type.Object({ key: Type.String() }),
-		async (_id: string, p: any) => {
-			const r = await call(
-				`/secrets/${encodeURIComponent(p.key)}`,
-				undefined,
-				"DELETE",
-			);
-			return result(r.text, r.error);
-		},
-	);
+	if (env.MEMNEST_EXPOSE_SECRET_TOOLS === "1") {
+		registerTool(
+			pi,
+			"secret_set",
+			"Secret: set",
+			"Store an encrypted credential.",
+			Type.Object({
+				key: Type.String(),
+				value: Type.String(),
+				kind: Type.Optional(Type.String()),
+				note: Type.Optional(Type.String()),
+			}),
+			async (_id: string, p: any) => {
+				const r = await call("/secrets", p);
+				return result(r.text, r.error);
+			},
+		);
+		registerTool(
+			pi,
+			"secret_get",
+			"Secret: get",
+			"Retrieve and decrypt a credential.",
+			Type.Object({ key: Type.String() }),
+			async (_id: string, p: any) => {
+				const r = await call(
+					`/secrets/${encodeURIComponent(p.key)}`,
+					undefined,
+					"GET",
+				);
+				return result(r.text, r.error);
+			},
+		);
+		registerTool(
+			pi,
+			"secret_list",
+			"Secret: list",
+			"List credential metadata without values.",
+			Empty,
+			async () => {
+				const r = await call("/secrets", undefined, "GET");
+				return result(r.text, r.error);
+			},
+		);
+		registerTool(
+			pi,
+			"secret_delete",
+			"Secret: delete",
+			"Permanently delete a credential.",
+			Type.Object({ key: Type.String() }),
+			async (_id: string, p: any) => {
+				const r = await call(
+					`/secrets/${encodeURIComponent(p.key)}`,
+					undefined,
+					"DELETE",
+				);
+				return result(r.text, r.error);
+			},
+		);
+	}
 }

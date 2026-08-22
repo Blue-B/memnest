@@ -164,11 +164,11 @@ const secretFiles = (dir) => {
 assert("secrets NOT exported by default", secretFiles(DIR).length === 0, secretFiles(DIR).join(","));
 
 // The `encryption:` frontmatter is generated unconditionally, so it proves
-// nothing: the body itself must be $enc$ ciphertext.
+// nothing: the body itself must be supported ciphertext.
 const bodyIsCiphertext = (dir, f) => {
   const t = readFileSync(join(dir, "secrets", f), "utf8");
   const body = t.split("\n---\n").slice(1).join("\n---\n");
-  return body.trim().startsWith("$enc$");
+  return /^\$enc2?\$/.test(body.trim());
 };
 
 // 6a. plaintext row -> whole export must abort, writing nothing.
@@ -185,13 +185,19 @@ r = cliIn(plainDir, plainDB, "export");
 assert("export without --include-secrets ignores secrets table", r.code === 0 && secretFiles(plainDir).length === 0, r.err || secretFiles(plainDir).join(","));
 
 // 6c. real ciphertext shape -> exported, and the body is ciphertext.
-const encValue = `$enc$${randomBytes(48).toString("base64")}`;
+const encValue = `$enc2$${randomBytes(48).toString("base64")}`;
 const encDB = await fixtureDB("enc", encValue);
 const encDir = join(tmpdir(), `pj-smoke-enc-${Date.now()}`);
 mkdirSync(encDir, { recursive: true });
 r = cliIn(encDir, encDB, "export", "--include-secrets");
 assert("ciphertext secret exports with --include-secrets", r.code === 0 && secretFiles(encDir).length === 1, r.err || secretFiles(encDir).join(","));
-assert("exported secret body is $enc$ ciphertext", secretFiles(encDir).every((f) => bodyIsCiphertext(encDir, f)));
+assert("exported secret body is $enc2$ ciphertext", secretFiles(encDir).every((f) => bodyIsCiphertext(encDir, f)));
+
+const legacyDB = await fixtureDB("legacy-enc", `$enc$${randomBytes(48).toString("base64")}`);
+const legacyDir = join(tmpdir(), `pj-smoke-legacy-enc-${Date.now()}`);
+mkdirSync(legacyDir, { recursive: true });
+r = cliIn(legacyDir, legacyDB, "export", "--include-secrets");
+assert("legacy $enc$ ciphertext remains exportable", r.code === 0 && secretFiles(legacyDir).every((f) => bodyIsCiphertext(legacyDir, f)), r.err);
 
 // 6d. truncated ciphertext (shorter than nonce+tag) is rejected too.
 const shortDB = await fixtureDB("short", `$enc$${randomBytes(8).toString("base64")}`);
@@ -200,7 +206,7 @@ mkdirSync(shortDir, { recursive: true });
 r = cliIn(shortDir, shortDB, "export", "--include-secrets");
 assert("truncated $enc$ payload aborts export", r.code !== 0 && secretFiles(shortDir).length === 0, `code=${r.code}`);
 
-for (const p of [plainDB, encDB, shortDB, plainDir, encDir, shortDir]) rmSync(p, { recursive: true, force: true });
+for (const p of [plainDB, encDB, legacyDB, shortDB, plainDir, encDir, legacyDir, shortDir]) rmSync(p, { recursive: true, force: true });
 
 // 6e. filtered sync/export must refuse to prune instead of deleting files
 //     the filter excluded.

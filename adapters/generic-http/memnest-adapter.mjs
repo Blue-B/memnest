@@ -14,13 +14,17 @@ export function eventToRequest(event) {
 	const adapter = event.adapter ?? defaultAdapter;
 	if (event.type === "health") return { method: "GET", path: "/health" };
 	if (event.type === "search") {
-		if (!event.project) throw new Error("search project is required; use project=all explicitly");
+		if (!event.project && !event.cwd)
+			throw new Error(
+				"search project or cwd is required; use project=all explicitly",
+			);
 		return {
 			method: "POST",
 			path: "/search",
 			body: {
 				query: event.query,
-				project: event.project,
+				project: event.project ?? "",
+				cwd: event.project ? undefined : event.cwd,
 				n_results: event.limit ?? 3,
 				adapter,
 			},
@@ -43,7 +47,8 @@ export function eventToRequest(event) {
 			method: "POST",
 			path: "/add",
 			body: {
-				project: event.project ?? "default",
+				project: event.project ?? "",
+				cwd: event.project ? undefined : event.cwd,
 				text: event.text,
 				metadata: {
 					chunk_type: "manual",

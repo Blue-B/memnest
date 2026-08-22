@@ -1,4 +1,4 @@
-use aes_gcm::aead::{Aead, KeyInit};
+use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
 use anyhow::{Context, Result, anyhow};
 use argon2::{Argon2, Params};
@@ -58,18 +58,32 @@ pub fn resolve_master_key(data_dir: &Path) -> Result<String> {
         }
         return Ok(trimmed);
     }
-    // Generate a fresh random key
-    std::fs::create_dir_all(data_dir).ok();
+    // Generate a fresh random key. On Unix the restrictive mode is applied by
+    // open(2), before any key bytes exist on disk.
+    std::fs::create_dir_all(data_dir)?;
     let mut bytes = [0u8; 32];
     rand::rng().fill_bytes(&mut bytes);
     let encoded = BASE64.encode(bytes);
-    std::fs::write(&key_path, &encoded)
-        .with_context(|| format!("write master key to {}", key_path.display()))?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600));
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
     }
+    let mut file = match options.open(&key_path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            return resolve_master_key(data_dir);
+        }
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("write master key to {}", key_path.display()));
+        }
+    };
+    use std::io::Write;
+    file.write_all(encoded.as_bytes())?;
+    file.sync_all()?;
     tracing::info!(
         "generated new memnest master key at {} (mode 0600)",
         key_path.display()
@@ -110,29 +124,47 @@ pub fn is_enabled() -> bool {
 }
 
 pub fn encrypt(plaintext: &str) -> Result<String> {
+    encrypt_bound("", plaintext)
+}
+
+pub fn encrypt_bound(context: &str, plaintext: &str) -> Result<String> {
     let guard = CIPHER.read().map_err(|_| anyhow!("crypto lock poisoned"))?;
     let Some(cipher) = guard.as_ref() else {
         return Err(anyhow!("secret vault crypto is unavailable"));
     };
     let nonce_bytes: [u8; 12] = rand::random();
     let nonce = Nonce::from_slice(&nonce_bytes);
+    let aad = format!("memnest-vault-v1\0{context}");
     let ciphertext = cipher
-        .encrypt(nonce, plaintext.as_bytes())
+        .encrypt(
+            nonce,
+            Payload {
+                msg: plaintext.as_bytes(),
+                aad: aad.as_bytes(),
+            },
+        )
         .map_err(|e| anyhow!("encryption failed: {}", e))?;
     let mut combined = Vec::with_capacity(nonce_bytes.len() + ciphertext.len());
     combined.extend_from_slice(&nonce_bytes);
     combined.extend_from_slice(&ciphertext);
-    Ok(format!("$enc${}", BASE64.encode(&combined)))
+    Ok(format!("$enc2${}", BASE64.encode(&combined)))
 }
 
 fn decrypt_with_ciphers(
     ciphertext: &str,
+    context: &str,
     cipher: &Aes256Gcm,
     legacy: Option<&Aes256Gcm>,
 ) -> Result<String> {
-    let payload = ciphertext
-        .strip_prefix("$enc$")
-        .ok_or_else(|| anyhow!("refusing to return plaintext from the secret vault"))?;
+    let (payload, bound) = if let Some(payload) = ciphertext.strip_prefix("$enc2$") {
+        (payload, true)
+    } else if let Some(payload) = ciphertext.strip_prefix("$enc$") {
+        (payload, false)
+    } else {
+        return Err(anyhow!(
+            "refusing to return plaintext from the secret vault"
+        ));
+    };
     let decoded = BASE64
         .decode(payload)
         .context("invalid base64 ciphertext")?;
@@ -141,6 +173,19 @@ fn decrypt_with_ciphers(
     }
     let (nonce_bytes, encrypted) = decoded.split_at(12);
     let nonce = Nonce::from_slice(nonce_bytes);
+    if bound {
+        let aad = format!("memnest-vault-v1\0{context}");
+        let plaintext = cipher
+            .decrypt(
+                nonce,
+                Payload {
+                    msg: encrypted,
+                    aad: aad.as_bytes(),
+                },
+            )
+            .map_err(|_| anyhow!("decryption failed for bound vault row"))?;
+        return String::from_utf8(plaintext).context("invalid utf8 after decryption");
+    }
     if let Ok(plaintext) = cipher.decrypt(nonce, encrypted) {
         return String::from_utf8(plaintext).context("invalid utf8 after decryption");
     }
@@ -155,6 +200,10 @@ fn decrypt_with_ciphers(
 }
 
 pub fn decrypt(ciphertext: &str) -> Result<String> {
+    decrypt_bound("", ciphertext)
+}
+
+pub fn decrypt_bound(context: &str, ciphertext: &str) -> Result<String> {
     let guard = CIPHER.read().map_err(|_| anyhow!("crypto lock poisoned"))?;
     let cipher = guard
         .as_ref()
@@ -162,17 +211,17 @@ pub fn decrypt(ciphertext: &str) -> Result<String> {
     let legacy_guard = LEGACY_CIPHER
         .read()
         .map_err(|_| anyhow!("crypto lock poisoned"))?;
-    decrypt_with_ciphers(ciphertext, cipher, legacy_guard.as_ref())
+    decrypt_with_ciphers(ciphertext, context, cipher, legacy_guard.as_ref())
 }
 
-pub(crate) fn validate_ciphertexts(master_key: &str, values: &[String]) -> Result<()> {
+pub fn validate_ciphertexts(master_key: &str, values: &[(String, String)]) -> Result<()> {
     if values.is_empty() {
         return Ok(());
     }
     let cipher = derive_cipher(master_key.trim(), SALT)?;
     let legacy = derive_cipher(master_key.trim(), LEGACY_SALT)?;
-    for value in values {
-        decrypt_with_ciphers(value, &cipher, Some(&legacy))?;
+    for (context, value) in values {
+        decrypt_with_ciphers(value, context, &cipher, Some(&legacy))?;
     }
     Ok(())
 }
@@ -203,7 +252,7 @@ mod tests {
         init_crypto(Some("test-master-key-123")).unwrap();
         let original = "secret-password-123!";
         let encrypted = encrypt(original).unwrap();
-        assert!(encrypted.starts_with("$enc$"));
+        assert!(encrypted.starts_with("$enc2$"));
         assert_ne!(encrypted, original);
         let decrypted = decrypt(&encrypted).unwrap();
         assert_eq!(decrypted, original);
@@ -229,7 +278,26 @@ mod tests {
         );
         let mut encoded = vec![9u8; 12];
         encoded.extend_from_slice(&ct);
-        validate_ciphertexts(key, &[format!("$enc${}", BASE64.encode(encoded))]).unwrap();
+        validate_ciphertexts(
+            key,
+            &[(
+                "secret:legacy".to_string(),
+                format!("$enc${}", BASE64.encode(encoded)),
+            )],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn bound_ciphertext_cannot_be_swapped_between_rows() {
+        let _g = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        init_crypto(Some("bound-key")).unwrap();
+        let encrypted = encrypt_bound("secret:alpha", "alpha-value").unwrap();
+        assert_eq!(
+            decrypt_bound("secret:alpha", &encrypted).unwrap(),
+            "alpha-value"
+        );
+        assert!(decrypt_bound("secret:beta", &encrypted).is_err());
     }
 
     #[test]
@@ -245,6 +313,23 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(temp.path().join("master.key"), "   ").unwrap();
         assert!(resolve_master_key(temp.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn generated_master_key_is_private_at_creation() {
+        use std::os::unix::fs::PermissionsExt;
+        if std::env::var("MEMNEST_MASTER_KEY").is_ok() {
+            return;
+        }
+        let temp = tempfile::tempdir().unwrap();
+        resolve_master_key(temp.path()).unwrap();
+        let mode = std::fs::metadata(temp.path().join("master.key"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o600);
     }
 
     #[test]

@@ -2,6 +2,14 @@
 
 All notable changes to `pi-memnest`.
 
+## Unreleased
+
+### Changed
+
+- Default model surface is now six memory tools. The four vault tools require `MEMNEST_EXPOSE_SECRET_TOOLS=1`.
+- Omitted projects send pi's absolute `cwd`, letting the core isolate same-basename workspaces and include `playbook` safely.
+- Autocontext labels all results as untrusted reference data, marks AutoLog as conversation evidence, and escapes stored markup before injection.
+
 ## [0.7.0] - 2026-08-20
 
 ### Breaking

@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 process.env.MEMNEST_TOKEN = "   ";
+process.env.MEMNEST_EXPOSE_SECRET_TOOLS = "1";
 const requests = [];
 globalThis.fetch = async (url, init = {}) => {
 	requests.push({ url, init });

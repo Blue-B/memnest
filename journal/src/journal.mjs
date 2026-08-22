@@ -74,17 +74,18 @@ function noteToMd(note) {
   return stringifyFrontmatter(fm) + (note.value ?? "") + "\n";
 }
 
-// memnest encrypts secret values as `$enc$` + base64(nonce||ciphertext||tag)
-// with AES-256-GCM (see core/src/crypto.rs). A row that does not match that
-// shape is a legacy, hand-edited or corrupt value and may be plaintext, so
-// the exporter refuses to write it.
-const ENC_PREFIX = "$enc$";
+// memnest encrypts secret values as `$enc2$` (row-bound) or legacy `$enc$`,
+// followed by base64(nonce||ciphertext||tag). Anything else may be plaintext,
+// so the exporter refuses to write it.
+const ENC_PREFIXES = ["$enc2$", "$enc$"];
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 const MIN_ENC_BYTES = 12 + 16; // GCM nonce + auth tag, before any payload
 
 export function isEncryptedSecret(value) {
-  if (typeof value !== "string" || !value.startsWith(ENC_PREFIX)) return false;
-  const payload = value.slice(ENC_PREFIX.length);
+  if (typeof value !== "string") return false;
+  const prefix = ENC_PREFIXES.find((candidate) => value.startsWith(candidate));
+  if (!prefix) return false;
+  const payload = value.slice(prefix.length);
   if (!BASE64_RE.test(payload)) return false;
   return Buffer.from(payload, "base64").length >= MIN_ENC_BYTES;
 }
@@ -103,7 +104,7 @@ function assertSecretsEncrypted(rows) {
 }
 
 function secretToMd(secret) {
-  // Callers must run assertSecretsEncrypted first: only validated `$enc$`
+  // Callers must run assertSecretsEncrypted first: only validated ciphertext
   // ciphertext reaches this function, so the frontmatter claim below is
   // true by construction. The file is safe to commit *iff* master.key is
   // not in the repo (we enforce that via .gitignore).

@@ -43,7 +43,7 @@ pub async fn dispatch(system: Arc<RwLock<MemorySystem>>, req: &Value) -> Option<
             })
         }
         "tools/list" => {
-            let enabled = system.read().await.vault_enabled;
+            let enabled = system.read().await.secret_tools_enabled;
             json!({"tools": tools(enabled)})
         }
         "tools/call" => {
@@ -159,8 +159,8 @@ fn write_response(stdout: &mut io::Stdout, value: Value) -> Result<()> {
 
 fn tools(crypto_enabled: bool) -> Vec<Value> {
     let mut tools = vec![
-        json!({"name":"memory_remember","description":"Save durable memory. Sensitive values are rejected; use secret_set.","inputSchema":{"type":"object","properties":{"text":{"type":"string"},"project":{"type":"string","default":"default"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"],"default":"knowledge"},"memory_kind":{"type":"string","enum":["record","fact","rule","procedure"],"default":"record"},"confidence":{"type":"number","minimum":0,"maximum":1},"source_ids":{"type":"array","items":{"type":"string"}},"supersedes":{"type":"string"},"sensitive":{"type":"boolean","description":"Must be false; use secret_set for sensitive values."}},"required":["text"]}}),
-        json!({"name":"memory_search","description":"Hybrid memory search. project=all is explicit cross-project search; internal trash and superseded buckets are always excluded.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string"},"n_results":{"type":"integer","default":3,"minimum":1,"maximum":50},"recent_first":{"type":"boolean","default":false},"category":{"type":"string"}},"required":["query","project"]}}),
+        json!({"name":"memory_remember","description":"Save durable memory. Pass project explicitly or cwd for an isolated workspace. Sensitive values are rejected; use secret_set.","inputSchema":{"type":"object","properties":{"text":{"type":"string"},"project":{"type":"string"},"cwd":{"type":"string","description":"Absolute workspace path; used only when project is omitted."},"importance":{"type":"string","enum":["log","knowledge","decision","preference"],"default":"knowledge"},"memory_kind":{"type":"string","enum":["record","fact","rule","procedure"],"default":"record"},"confidence":{"type":"number","minimum":0,"maximum":1},"source_ids":{"type":"array","items":{"type":"string"}},"supersedes":{"type":"string"},"sensitive":{"type":"boolean","description":"Must be false; use secret_set for sensitive values."}},"required":["text"]}}),
+        json!({"name":"memory_search","description":"Hybrid memory search. Pass project explicitly or cwd for the isolated workspace plus playbook. project=all is explicit cross-project search.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string"},"cwd":{"type":"string","description":"Absolute workspace path; used only when project is omitted."},"n_results":{"type":"integer","default":3,"minimum":1,"maximum":50},"recent_first":{"type":"boolean","default":false},"category":{"type":"string"}},"required":["query"]}}),
         json!({"name":"memory_get","description":"Fetch one memory by id.","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}),
         json!({"name":"memory_update","description":"Update one memory and refresh indexes.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"project":{"type":"string"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"]},"chunk_type":{"type":"string","enum":["auto_log","manual","filtered","consolidated"]},"sensitive":{"type":"boolean","description":"Must be false; use secret_set for sensitive values."}},"required":["id"]}}),
         json!({"name":"memory_delete","description":"Soft-delete one memory to the internal trash bucket.","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}),
@@ -197,8 +197,8 @@ async fn call_tool(system: Arc<RwLock<MemorySystem>>, params: &Value) -> Result<
 
 async fn require_vault(system: &Arc<RwLock<MemorySystem>>) -> Result<()> {
     anyhow::ensure!(
-        system.read().await.vault_enabled && crate::crypto::is_enabled(),
-        "secret vault crypto is unavailable"
+        system.read().await.secret_tools_enabled && crate::crypto::is_enabled(),
+        "secret tools are disabled; set MEMNEST_EXPOSE_SECRET_TOOLS=1"
     );
     Ok(())
 }
@@ -308,6 +308,7 @@ async fn secret_delete(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Resul
 async fn memory_remember(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
     let mut metadata = Metadata {
         chunk_type: ChunkType::Manual,
+        importance: Importance::Knowledge,
         adapter: Some(
             args.get("adapter")
                 .and_then(Value::as_str)
@@ -347,6 +348,7 @@ async fn memory_remember(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Res
         .get("supersedes")
         .and_then(Value::as_str)
         .map(str::to_string);
+    metadata.cwd = args.get("cwd").and_then(Value::as_str).map(str::to_string);
     let out = super::operations::remember(
         system,
         super::operations::RememberInput {
@@ -358,8 +360,9 @@ async fn memory_remember(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Res
             project: args
                 .get("project")
                 .and_then(Value::as_str)
-                .unwrap_or("default")
+                .unwrap_or("")
                 .to_string(),
+            cwd: args.get("cwd").and_then(Value::as_str).map(str::to_string),
             metadata: Some(metadata),
             sensitive: args
                 .get("sensitive")
@@ -429,6 +432,7 @@ pub(crate) async fn memory_search(
         super::operations::SearchInput {
             query: query.to_string(),
             project: project.to_string(),
+            cwd: args.get("cwd").and_then(Value::as_str).map(str::to_string),
             n_results: n,
             recent_first: args
                 .get("recent_first")
@@ -496,12 +500,10 @@ mod tests {
             .iter()
             .find(|tool| tool["name"] == "memory_search")
             .unwrap();
-        assert!(
-            search["inputSchema"]["required"]
-                .as_array()
-                .unwrap()
-                .contains(&json!("project"))
-        );
+        let required = search["inputSchema"]["required"].as_array().unwrap();
+        assert!(required.contains(&json!("query")));
+        assert!(!required.contains(&json!("project")));
+        assert!(search["inputSchema"]["properties"]["cwd"].is_object());
         assert!(
             search["inputSchema"]["properties"]["project"]
                 .get("default")
@@ -671,6 +673,7 @@ mod tests {
             Json(crate::server::api::AddRequest {
                 text: "canonical parity probe".into(),
                 project: "contract".into(),
+                cwd: None,
                 metadata: None,
                 sensitive: None,
             }),
@@ -693,6 +696,7 @@ mod tests {
             Json(crate::server::api::SearchRequest {
                 query: "must fail closed".into(),
                 project: String::new(),
+                cwd: None,
                 n_results: 3,
                 recent_first: false,
                 category: String::new(),
@@ -708,6 +712,7 @@ mod tests {
             Json(crate::server::api::SearchRequest {
                 query: "canonical parity probe".into(),
                 project: "contract".into(),
+                cwd: None,
                 n_results: 3,
                 recent_first: false,
                 category: String::new(),
@@ -727,6 +732,7 @@ mod tests {
             Json(crate::server::api::AddRequest {
                 text: "rejected".into(),
                 project: "_trash".into(),
+                cwd: None,
                 metadata: None,
                 sensitive: None,
             }),
@@ -845,6 +851,7 @@ mod tests {
             crate::server::operations::RememberInput {
                 text: "mcp delete parity probe".into(),
                 project: "contract".into(),
+                cwd: None,
                 metadata: None,
                 sensitive: false,
             },

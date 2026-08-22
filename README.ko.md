@@ -26,7 +26,7 @@ Rust 코어는 LLM을 호출하지 않습니다. 임베딩은 `intfloat/multilin
 
 ![memnest 로컬 우선 아키텍처](docs/architecture.png)
 
-도구 호출, 프롬프트 시점 회상, 대화 캡처는 하나의 Rust 서비스로 들어오되 명시적으로 분리된 데이터 경로를 사용합니다.
+도구 호출, 프롬프트 시점 회상, 대화 캡처는 하나의 Rust 서비스로 들어오되 서로 다른 데이터 경로를 사용합니다. 구조는 세 가지로 이해하면 됩니다. workspace에는 폴더 하나의 기억이, `playbook`에는 모든 workspace가 공유하는 규칙이, 대화 기록에는 검색 가능한 과거 발언이 들어갑니다. SQLite가 원본이고 Tantivy와 HNSW는 다시 만들 수 있는 검색 색인입니다.
 
 ## 설치
 
@@ -61,7 +61,7 @@ http://127.0.0.1:3111/mcp
 }
 ```
 
-여러 클라이언트가 서버와 데이터 디렉터리 하나를 공유할 수 있는 Streamable HTTP 방식을 권장합니다. stdio는 클라이언트 하나가 저장소를 단독으로 쓸 때만 사용합니다.
+여러 클라이언트가 서버와 데이터 디렉터리 하나를 공유할 수 있는 Streamable HTTP 방식을 권장합니다. stdio는 그 프로세스가 저장소를 단독으로 쓸 때만 사용합니다. 같은 데이터 디렉터리를 열려는 두 번째 writer는 색인을 덮어쓰지 못하도록 바로 거부됩니다.
 
 ```json
 {
@@ -82,7 +82,7 @@ npm install
 pi install .
 ```
 
-pi 확장은 같은 툴을 등록하고, 프로젝트 범위 Autocontext와 상태 확인용 `/memnest`를 추가합니다. 자세한 내용은 [`pi-extension/README.md`](pi-extension/README.md)에 있습니다.
+pi 확장은 메모리 툴 6개와 workspace 범위 Autocontext, 상태 확인용 `/memnest`를 추가합니다. 금고 툴은 선택해서 켭니다. 자세한 내용은 [`pi-extension/README.md`](pi-extension/README.md)에 있습니다.
 
 ### HTTP와 직접 연동
 
@@ -101,7 +101,7 @@ memory_delete
 memory_feedback
 ```
 
-금고가 초기화되면 시크릿 툴 4개가 추가됩니다.
+로컬 금고 API는 초기화되지만 모델용 시크릿 툴은 기본적으로 숨깁니다. 신뢰하는 에이전트 프로세스에서 `MEMNEST_EXPOSE_SECRET_TOOLS=1`을 설정하면 다음 4개가 추가됩니다.
 
 ```text
 secret_set
@@ -110,15 +110,19 @@ secret_list
 secret_delete
 ```
 
-검색은 프로젝트 범위로 동작합니다. 클라이언트는 프로젝트를 지정하거나 `project=all`을 명시해야 합니다. 모든 검색은 `recall_id`를 반환합니다. `recall_id`와 `memory_id`를 함께 보낸 피드백은 그 검색 결과 하나에만 반영됩니다. 삭제한 기억은 바로 지우지 않고 휴지통으로 이동합니다.
+검색은 workspace 범위로 동작합니다. 클라이언트는 절대 경로인 `cwd`, 명시적인 `project`, 또는 의도적인 전체 검색인 `project=all`을 보냅니다. 모든 검색은 `recall_id`를 반환합니다. `recall_id`와 `memory_id`를 함께 보낸 피드백은 그 검색 결과 하나에만 반영됩니다. 삭제한 기억은 바로 지우지 않고 휴지통으로 이동합니다.
 
-### 프로젝트는 디렉터리 이름으로 구분합니다
+### Workspace 식별과 기존 프로젝트
 
-프로젝트 이름은 전체 경로가 아니라 작업 디렉터리의 마지막 이름입니다. 그래서 `/work/client-a/api`와 `/personal/api`는 둘 다 `api` 프로젝트가 되고, 아무 경고 없이 서로의 기억을 함께 읽고 씁니다. 지금은 디렉터리 이름을 다르게 두거나 호출할 때마다 `project`를 직접 지정해서 피해야 합니다. 전체 경로를 구분하는 방식으로 바꿀 계획입니다.
+자동으로 만든 workspace ID는 정규화한 작업 디렉터리 절대 경로의 안정적인 해시입니다. 경로 원문은 공개 collection 이름에 나타나지 않습니다. `/work/client-a/api`와 `/personal/api`는 서로 다른 workspace이며, 자동 검색은 현재 workspace와 `playbook`만 읽습니다.
+
+기존 basename collection은 그 이름을 쓰는 등록 workspace가 하나일 때만 호환 별칭으로 읽습니다. 두 번째 `api` workspace가 나타나면 기존 행의 소유자를 추측하지 않고 두 workspace 모두에서 모호한 `api` 별칭을 끕니다. 이름을 직접 관리하는 기존 collection을 쓸 때는 `project`를 명시하면 됩니다.
+
+`supersedes=<id>`로 저장한 기억은 같은 범위의 활성 기억만 교체할 수 있습니다. 새 기억 저장과 기존 행의 `_superseded` 이동은 SQLite 트랜잭션 하나에서 처리합니다. 구조화한 fact, rule, 출처, 교정은 메타데이터가 사라지지 않도록 semantic content dedup 대상에서 제외합니다. `confidence`와 `verified_at`은 클라이언트가 보낸 주장으로 남으며 검색 순위를 자동으로 높이지 않습니다.
 
 ## 자동 컨텍스트와 대화 저장
 
-`memnest hook`은 호스트의 프롬프트 이벤트를 stdin으로 읽고, 현재 프로젝트와 관련된 짧은 컨텍스트를 출력합니다. 작업 디렉터리를 알 수 없거나 서비스가 꺼져 있으면 아무것도 출력하지 않고 프롬프트를 막지 않습니다.
+`memnest hook`은 호스트의 프롬프트 이벤트를 stdin으로 읽고, 현재 workspace와 관련된 짧은 컨텍스트를 출력합니다. 작업 디렉터리를 알 수 없거나 서비스가 꺼져 있으면 아무것도 출력하지 않고 프롬프트를 막지 않습니다. 검색 텍스트는 신뢰하지 않는 참고자료로 표시합니다. transcript 결과는 과거 대화 증거로 따로 표시하고, 주입 전에 포함된 markup을 escape합니다.
 
 Claude Code 설정 예시입니다.
 
@@ -153,9 +157,9 @@ watcher는 알려진 transcript 디렉터리를 감시하고 `<data-dir>/watch-s
 기본 데이터 디렉터리는 `~/.memnest`입니다.
 
 ```text
-memory.db       SQLite 레코드와 메타데이터
-text_index/     Tantivy BM25 색인
-vectors/        HNSW 벡터 색인
+memory.db       SQLite 레코드, workspace 등록 정보, 대기 중인 색인 작업
+text_index/     다시 만들 수 있는 Tantivy BM25 색인
+vectors/        다시 만들 수 있는 HNSW 벡터 색인
 models/         로컬 임베딩 모델
 master.key      금고 키
 archive/        완전 삭제된 기억의 평문 JSONL
@@ -168,7 +172,7 @@ watch-state.json
 
 서버는 기본적으로 `127.0.0.1`에 바인딩합니다. `MEMNEST_TOKEN`이 비어 있으면 외부 주소 바인딩을 거부합니다. 토큰을 설정한 경우 클라이언트는 `Authorization: Bearer <token>`을 보내야 합니다.
 
-일반 메모리 텍스트는 로컬에 저장되지만 저장 시 암호화되지는 않습니다. 자격증명처럼 보이는 문자열을 저장 전에 가리지만, 비밀값은 검색 메모리가 아니라 금고에 넣어야 합니다. 새 저장소는 `<data-dir>/master.key`를 만들고 금고 값을 AES-256-GCM으로 암호화합니다. 기존 금고를 현재 키로 복호화할 수 없으면 시작 단계에서 실패합니다. 평문으로 대신 반환하는 경로는 어디에도 없으니, 키는 데이터 디렉터리와 별도로 백업해 두세요.
+일반 메모리 텍스트는 로컬에 저장되지만 저장 시 암호화되지는 않습니다. 자격증명처럼 보이는 문자열을 저장 전에 가리고, 기존 `raw_chunk` 필드는 공개 메모리 작업으로 쓸 수 없습니다. 비밀값은 검색 메모리가 아니라 금고에 넣어야 합니다. 새 저장소는 비공개 권한으로 `<data-dir>/master.key`를 만들고 AES-256-GCM을 사용합니다. 새 암호문은 secret key 또는 server 이름에 묶이며 기존 `$enc$` 행도 계속 읽을 수 있습니다. 저장된 암호문이 현재 키와 맞지 않으면 시작 단계에서 실패합니다. `master.key`는 별도로 백업해 두세요.
 
 삭제는 완전 삭제가 아닙니다. 지운 기억은 30일 동안 휴지통에 남고, 휴지통에서 최종 삭제될 때 레코드 전체가 `<data-dir>/archive/YYYY-MM.jsonl`에 평문으로 기록됩니다. `MEMNEST_ARCHIVE=0`으로 이 파일 기록을 끌 수 있고, 이미 쌓인 `archive/` 디렉터리는 직접 지워야 합니다.
 
@@ -179,7 +183,7 @@ watch-state.json
 | 디렉터리 | 역할 |
 | --- | --- |
 | [`core/`](core) | Rust 서버, CLI, 색인, MCP, 금고, watcher, 대시보드 |
-| [`pi-extension/`](pi-extension) | 얇은 pi 어댑터와 프로젝트 범위 Autocontext |
+| [`pi-extension/`](pi-extension) | 얇은 pi 어댑터와 workspace 범위 Autocontext |
 | [`adapters/`](adapters) | 연동 계약과 일반 HTTP 어댑터 |
 | [`journal/`](journal) | 선택 기능인 Markdown 및 git 감사 미러, 데이터베이스 백업은 아님 |
 

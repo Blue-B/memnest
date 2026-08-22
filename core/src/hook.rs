@@ -52,6 +52,7 @@ pub enum HookFormat {
 pub struct Resolved {
     pub prompt: String,
     pub project: Option<String>,
+    pub cwd: Option<String>,
     /// Never `Auto`: detection has already run.
     pub format: HookFormat,
 }
@@ -59,7 +60,7 @@ pub struct Resolved {
 /// Read the payload. Unknown shapes fall back to plain text rather than
 /// failing, because an unrecognised host should still get memory.
 pub fn resolve(raw: &str, requested: HookFormat) -> Resolved {
-    let (prompt, project, detected) = match serde_json::from_str::<Value>(raw) {
+    let (prompt, project, cwd, detected) = match serde_json::from_str::<Value>(raw) {
         Ok(Value::Object(map)) => {
             let prompt = PROMPT_KEYS
                 .iter()
@@ -78,23 +79,23 @@ pub fn resolve(raw: &str, requested: HookFormat) -> Resolved {
                 .and_then(Value::as_str)
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
-                .map(str::to_string)
-                .or_else(|| {
-                    map.get("cwd")
-                        .and_then(Value::as_str)
-                        .and_then(|cwd| std::path::Path::new(cwd).file_name())
-                        .and_then(|name| name.to_str())
-                        .map(str::to_string)
-                });
-            (prompt, project, format)
+                .map(str::to_string);
+            let cwd = map
+                .get("cwd")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            (prompt, project, cwd, format)
         }
         // Unknown workspace means no automatic recall, never all-project recall.
-        _ => (raw.to_string(), None, HookFormat::Text),
+        _ => (raw.to_string(), None, None, HookFormat::Text),
     };
 
     Resolved {
         prompt: prompt.trim().to_string(),
         project,
+        cwd,
         format: match requested {
             HookFormat::Auto => detected,
             explicit => explicit,
@@ -149,7 +150,8 @@ pub fn resolve_url(flag: Option<&str>) -> String {
 async fn fetch_context(
     base_url: &str,
     prompt: &str,
-    project: &str,
+    project: Option<&str>,
+    cwd: Option<&str>,
     timeout_ms: u64,
 ) -> Result<String> {
     let client = reqwest::Client::builder()
@@ -157,7 +159,8 @@ async fn fetch_context(
         .build()?;
     let mut request = client.post(context_endpoint(base_url)).json(&json!({
         "query": prompt,
-        "project": project,
+        "project": project.unwrap_or_default(),
+        "cwd": cwd,
         "max_notes": 0,
         "max_facts": 0,
         "adapter": "memnest-hook",
@@ -189,13 +192,14 @@ pub async fn respond(
     timeout_ms: u64,
 ) -> (String, Option<String>) {
     let resolved = resolve(raw, requested);
-    if !should_search(&resolved.prompt) || resolved.project.is_none() {
+    if !should_search(&resolved.prompt) || (resolved.project.is_none() && resolved.cwd.is_none()) {
         return (String::new(), None);
     }
     match fetch_context(
         base_url,
         &resolved.prompt,
-        resolved.project.as_deref().unwrap_or_default(),
+        resolved.project.as_deref(),
+        resolved.cwd.as_deref(),
         timeout_ms,
     )
     .await
@@ -229,7 +233,8 @@ mod tests {
         let resolved = resolve(raw, HookFormat::Auto);
         assert_eq!(resolved.format, HookFormat::ClaudeCode);
         assert_eq!(resolved.prompt, "what did we decide about the deploy port");
-        assert_eq!(resolved.project.as_deref(), Some("deploy"));
+        assert_eq!(resolved.project, None);
+        assert_eq!(resolved.cwd.as_deref(), Some("/work/deploy"));
     }
 
     #[test]

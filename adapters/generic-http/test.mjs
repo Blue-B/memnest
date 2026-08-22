@@ -24,6 +24,9 @@ const search = eventToRequest({
 });
 assert.equal(search.path, "/search");
 assert.equal(search.body.adapter, "test-host");
+const cwdSearch = eventToRequest({ type: "search", query: "deploy", cwd: "/work/demo" });
+assert.equal(cwdSearch.body.project, "");
+assert.equal(cwdSearch.body.cwd, "/work/demo");
 
 const feedback = eventToRequest({
 	type: "feedback",
@@ -47,7 +50,7 @@ assert.equal(captured.init.headers.authorization, "Bearer adapter-token");
 
 assert.throws(
 	() => eventToRequest({ type: "search", query: "unsafe" }),
-	/search project is required/,
+	/search project or cwd is required/,
 );
 assert.throws(
 	() => eventToRequest({ type: "unknown" }),
@@ -63,4 +66,4 @@ for (const type of ["message", "summary"]) {
 	);
 }
 
-console.log("generic-http adapter: 20 assertions passed");
+console.log("generic-http adapter: 22 assertions passed");

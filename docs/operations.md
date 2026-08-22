@@ -95,16 +95,29 @@ Operational history is capped at 90 days and holds redacted queries and status m
 
 Processing jobs that were queued or running when the service stopped are marked failed on the next startup, so interrupted work is visible instead of appearing active forever.
 
+## Workspace scope and index recovery
+
+When a client supplies `cwd`, memnest derives a non-reversible public workspace ID from the normalized absolute path. That workspace searches its own rows plus `playbook`. `project=all` is still the only implicit-scope bypass. Existing basename collections are included only while the basename belongs to one registered workspace; an ambiguous alias is disabled rather than guessed.
+
+SQLite is authoritative. Every chunk insert, update, replacement, trash move, restore, and hard delete writes an `index_queue` row in the same transaction. Tantivy and HNSW changes clear that row only after both indexes are durable. Pending work, missing files, an old index schema, or a corrupt HNSW sidecar triggers a complete rebuild from all SQLite rows without a row-count cap. Index directories are staged beside the live directory and then renamed. Only one process may own a data directory for writing.
+
 ## Backup and restore
 
-Stop any service using the data directory before copying or restoring it.
+A backup may run while the service is active. The CLI uses SQLite `VACUUM INTO` for a consistent database snapshot, copies durable auxiliary files, omits rebuildable indexes and the model cache, then validates SQLite and encrypted vault rows before renaming the staged directory into place.
 
 ```bash
 memnest --data-dir ~/.memnest --backup-dir ~/memnest-backup
+```
+
+Stop the service before restore. Restore rejects source and target paths that overlap. It builds and validates a temporary sibling first, then swaps directories. `--force` permits replacing a non-empty target but never deletes that target before the staged copy passes validation.
+
+```bash
 memnest --data-dir ~/.memnest --restore-dir ~/memnest-backup --force
 ```
 
-`memnest-journal` is a readable audit mirror, not a replacement for this data-directory backup. A git revert in the journal changes the journal files only.
+The backup includes `master.key`, but keep a second protected copy of that key. `memnest-journal` is a readable audit mirror, not a replacement for this backup. A git revert in the journal changes the journal files only.
+
+New vault rows use `$enc2$` ciphertext whose AES-GCM associated data includes the secret key or server name. Moving ciphertext to another row therefore fails decryption. Existing `$enc$` rows use the compatibility decrypt path and remain readable until rewritten. Model-facing secret tools are hidden unless `MEMNEST_EXPOSE_SECRET_TOOLS=1`; the localhost HTTP vault API remains available.
 
 ## CLI reference
 
@@ -136,6 +149,8 @@ Common options: `--host`, `--port`, `--data-dir`, `--backup-dir`, `--restore-dir
 | `MEMNEST_EMBED_DIM` | Embedding dimension, defaults to 768 |
 | `MEMNEST_TTL_AUTOLOG_DAYS` | Legacy AutoLog retention window, defaults to 30; transcript events are permanent |
 | `MEMNEST_ARCHIVE` | Set to `0` to stop writing archive JSONL before hard deletion |
+| `MEMNEST_EXPOSE_SECRET_TOOLS` | Set to `1` to expose four vault tools to MCP and the pi extension; hidden by default |
+| `MEMNEST_REBUILD_INDEXES` | Set to `1` for a full SQLite-to-Tantivy/HNSW rebuild at startup |
 
 ## Development checks
 

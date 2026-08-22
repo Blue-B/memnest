@@ -656,7 +656,8 @@ async fn post_event(client: &reqwest::Client, base_url: &str, event: &Event) -> 
             .post(format!("{}/add", base_url.trim_end_matches('/')))
             .json(&json!({
                 "text": document,
-                "project": event.project(),
+                "project": if event.cwd.is_none() { event.project() } else { Default::default() },
+                "cwd": event.cwd,
                 "metadata": metadata,
             }));
         if let Ok(token) = std::env::var("MEMNEST_TOKEN")
