@@ -1,6 +1,7 @@
 use crate::MemorySystem;
 use crate::models::{Metadata, RecallEvent, is_internal_project};
 use crate::redaction::redact_text;
+use crate::workspace::{SearchScope, identity as workspace_identity};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -71,10 +72,30 @@ pub fn exclude_project(project: &str, cross_project: bool) -> bool {
         || (cross_project && matches!(project, "root" | "default" | "global"))
 }
 
+fn validate_truth_fields(
+    confidence: Option<f32>,
+    supersedes: Option<&str>,
+    verified_at: Option<&str>,
+) -> Result<(), OperationError> {
+    if confidence.is_some_and(|value| !value.is_finite() || !(0.0..=1.0).contains(&value)) {
+        return Err(OperationError::bad("confidence must be between 0 and 1"));
+    }
+    if supersedes.is_some_and(|id| id.trim().is_empty()) {
+        return Err(OperationError::bad("supersedes must not be empty"));
+    }
+    if let Some(value) = verified_at
+        && chrono::DateTime::parse_from_rfc3339(value).is_err()
+    {
+        return Err(OperationError::bad("verified_at must be RFC 3339"));
+    }
+    Ok(())
+}
+
 #[derive(Debug)]
 pub struct RememberInput {
     pub text: String,
     pub project: String,
+    pub cwd: Option<String>,
     pub metadata: Option<Metadata>,
     pub sensitive: bool,
 }
@@ -89,15 +110,36 @@ pub struct RememberOutput {
 
 pub async fn remember(
     system: Arc<RwLock<MemorySystem>>,
-    input: RememberInput,
+    mut input: RememberInput,
 ) -> Result<RememberOutput, OperationError> {
     if input.text.trim().is_empty() {
         return Err(OperationError::bad("text is required"));
     }
-    let project = if input.project.trim().is_empty() {
-        "default".to_string()
-    } else {
+    if let Some(metadata) = &input.metadata {
+        validate_truth_fields(
+            metadata.confidence,
+            metadata.supersedes.as_deref(),
+            metadata.verified_at.as_deref(),
+        )?;
+    }
+    let project = if !input.project.trim().is_empty() {
         input.project.trim().to_string()
+    } else if let Some(cwd) = input.cwd.as_deref() {
+        let workspace =
+            workspace_identity(cwd).map_err(|error| OperationError::bad(error.to_string()))?;
+        let sys = system.read().await;
+        sys.db
+            .write()
+            .await
+            .register_workspace_scope(&workspace)
+            .map_err(|error| OperationError::internal(error.to_string()))?;
+        let metadata = input.metadata.get_or_insert_with(Metadata::default);
+        if metadata.cwd.is_none() {
+            metadata.cwd = Some(cwd.to_string());
+        }
+        workspace.id
+    } else {
+        "default".to_string()
     };
     validate_write_project(&project)?;
     if input.sensitive || input.metadata.as_ref().is_some_and(|m| m.sensitive) {
@@ -110,6 +152,7 @@ pub async fn remember(
         api::AddRequest {
             text: input.text,
             project,
+            cwd: None,
             metadata: input.metadata,
             sensitive: None,
         },
@@ -139,6 +182,7 @@ pub async fn remember(
 pub struct SearchInput {
     pub query: String,
     pub project: String,
+    pub cwd: Option<String>,
     pub n_results: usize,
     pub recent_first: bool,
     pub category: Option<String>,
@@ -153,6 +197,33 @@ pub struct SearchOutput {
     pub recall_id: String,
 }
 
+pub(crate) async fn resolve_search_scope(
+    system: Arc<RwLock<MemorySystem>>,
+    project: &str,
+    cwd: Option<&str>,
+) -> Result<SearchScope, OperationError> {
+    if !project.trim().is_empty() {
+        return Ok(SearchScope::explicit(project.trim()));
+    }
+    let cwd = cwd.ok_or_else(|| {
+        OperationError::bad(
+            "project or cwd is required; use project=all explicitly for cross-project search",
+        )
+    })?;
+    let workspace =
+        workspace_identity(cwd).map_err(|error| OperationError::bad(error.to_string()))?;
+    let allowed = {
+        let sys = system.read().await;
+        let db = sys.db.write().await;
+        db.register_workspace_scope(&workspace)
+            .map_err(|error| OperationError::internal(error.to_string()))?
+    };
+    Ok(SearchScope::Projects {
+        primary: workspace.id,
+        allowed,
+    })
+}
+
 pub async fn search(
     system: Arc<RwLock<MemorySystem>>,
     input: SearchInput,
@@ -163,17 +234,13 @@ pub async fn search(
     if !(1..=50).contains(&input.n_results) {
         return Err(OperationError::bad("n_results must be between 1 and 50"));
     }
-    let project = input.project.trim();
-    if project.is_empty() {
-        return Err(OperationError::bad(
-            "project is required; use project=all explicitly for cross-project search",
-        ));
-    }
+    let scope = resolve_search_scope(system.clone(), &input.project, input.cwd.as_deref()).await?;
+    let project = scope.primary().to_string();
     let started = std::time::Instant::now();
-    let items = api::run_hybrid_search(
+    let items = api::run_hybrid_search_scope(
         system.clone(),
         &input.query,
-        project,
+        &scope,
         input.n_results,
         input.recent_first,
         input.exclude_reserved,
@@ -184,7 +251,7 @@ pub async fn search(
     let event = RecallEvent {
         id: format!("recall_{}", uuid::Uuid::new_v4().simple()),
         query: redact_text(&input.query),
-        project: project.to_string(),
+        project: project.clone(),
         result_ids: items.iter().map(|item| item.id.clone()).collect(),
         duration_ms: elapsed_ms.min(i64::MAX as u128) as i64,
         adapter: input.adapter,
@@ -249,6 +316,13 @@ pub async fn update(
     if let Some(project) = req.project.as_deref() {
         validate_write_project(project)?;
     }
+    if let Some(metadata) = &req.metadata {
+        validate_truth_fields(
+            metadata.confidence,
+            metadata.supersedes.as_deref(),
+            metadata.verified_at.as_deref(),
+        )?;
+    }
     let map = api::update_impl(system, req).await;
     match map.get("status").and_then(Value::as_str) {
         Some("ok") => Ok(map),
@@ -289,17 +363,8 @@ pub async fn delete(
         }
     }
     if !deleted.is_empty() {
-        sys.remove_text_docs(&deleted)
+        sys.sync_pending_indexes()
             .await
-            .map_err(|error| OperationError::internal(error.to_string()))?;
-        let mut index = sys.vector_index.write().await;
-        for id in &deleted {
-            index
-                .remove(id)
-                .map_err(|error| OperationError::internal(error.to_string()))?;
-        }
-        index
-            .save()
             .map_err(|error| OperationError::internal(error.to_string()))?;
     }
     Ok(json!({"deleted": deleted, "not_found": not_found}))

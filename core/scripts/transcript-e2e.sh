@@ -69,7 +69,7 @@ run_watch() {
 assert_two() {
   curl -fsS -X POST "http://127.0.0.1:$port/search" \
     -H 'content-type: application/json' \
-    -d "{\"query\":\"$token\",\"project\":\"scratch-project\",\"n_results\":10}" \
+    -d "{\"query\":\"$token\",\"project\":\"\",\"cwd\":\"/tmp/scratch-project\",\"n_results\":10}" \
     >"$scratch/search.json"
   python3 - "$scratch/search.json" "$token" <<'PY'
 import json, sys

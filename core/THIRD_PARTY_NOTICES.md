@@ -82,7 +82,7 @@ Denied markers for automatic release checks:
 
 Any new dependency outside the allowed list must be reviewed before release.
 
-## Rust dependencies (332 crates)
+## Rust dependencies (333 crates)
 
 | Crate | Version | License | Copyright |
 | --- | --- | --- | --- |
@@ -174,6 +174,7 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [fnv](https://github.com/servo/rust-fnv) | 1.0.7 | Apache-2.0 / MIT | Copyright (c) 2017 Contributors |
 | [foldhash](https://github.com/orlp/foldhash) | 0.2.0 | Zlib | Copyright (c) 2024 Orson Peters |
 | [form_urlencoded](https://github.com/servo/rust-url) | 1.2.2 | MIT OR Apache-2.0 | Copyright (c) 2013-2016 The rust-url developers |
+| [fs2](https://github.com/danburkert/fs2-rs) | 0.4.3 | MIT/Apache-2.0 | Copyright (c) 2015 The Rust Project Developers |
 | [fs4](https://github.com/al8n/fs4-rs) | 0.13.1 | MIT OR Apache-2.0 | Copyright (c) 2015 The Rust Project Developers |
 | [futures-channel](https://github.com/rust-lang/futures-rs) | 0.3.32 | MIT OR Apache-2.0 | Copyright (c) 2016 Alex Crichton |
 | [futures-core](https://github.com/rust-lang/futures-rs) | 0.3.32 | MIT OR Apache-2.0 | Copyright (c) 2016 Alex Crichton |
@@ -1090,7 +1091,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 8. ahash 0.8.12 and 64 other crates
+### 8. ahash 0.8.12 and 65 other crates
 
 <details><summary>Used by</summary>
 
@@ -1113,6 +1114,7 @@ DEALINGS IN THE SOFTWARE.
 - flate2 1.1.9
 - fnv 1.0.7
 - form_urlencoded 1.2.2
+- fs2 0.4.3
 - fs4 0.13.1
 - hashbrown 0.16.1
 - hashbrown 0.17.1
@@ -5558,10 +5560,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 70. fs4 0.13.1 and 4 other crates
+### 70. fs2 0.4.3 and 5 other crates
 
 <details><summary>Used by</summary>
 
+- fs2 0.4.3
 - fs4 0.13.1
 - heck 0.5.0
 - unicode-normalization-alignments 0.1.12

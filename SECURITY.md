@@ -56,8 +56,10 @@ Some consequences worth stating directly:
   as permission to send secrets through it.
 - **The secret vault is the only path meant for sensitive values.** It encrypts
   them with AES-256-GCM using a key derived with Argon2id from
-  `<data-dir>/master.key`, which memnest creates on startup with mode 0600, or
-  from `MEMNEST_MASTER_KEY` when that is set.
+  `<data-dir>/master.key`, which is created with mode 0600 before key bytes are
+  written, or from `MEMNEST_MASTER_KEY`. New ciphertext is bound to its secret
+  key or server name. Model-facing vault tools are hidden unless
+  `MEMNEST_EXPOSE_SECRET_TOOLS=1` is set.
 - **The vault fails closed. There is no plaintext fallback anywhere.** An empty
   or unreadable `master.key` aborts startup. A key that cannot decrypt the vault
   values already in the store aborts startup with `vault key validation failed`,
@@ -72,9 +74,13 @@ Some consequences worth stating directly:
   Set `MEMNEST_ARCHIVE=0` to stop writing those files, and delete the existing
   `archive/` directory yourself if a memory must really be gone. Vault values are
   not archived.
-- **A data directory has one writer.** Each MCP client started over stdio spawns
-  its own process, so pointing two of them at one directory means two writers on
-  the same files.
+- **A data directory has one writer.** The first service or stdio MCP process
+  holds an operating-system file lock. A second writer fails at startup instead
+  of racing SQLite or the derived indexes.
+- **Retrieved memory is untrusted input.** Prompt-time context labels transcript
+  rows as conversation evidence, tells the agent not to follow stored commands,
+  and escapes markup. This reduces prompt-injection risk but does not make a
+  malicious memory trustworthy.
 
 ## Out of scope
 
@@ -85,23 +91,21 @@ will be closed with a pointer back to this section:
 - Reaching an unauthenticated instance that the operator bound to a non loopback
   address after setting `MEMNEST_TOKEN`, from a network the operator exposed it to
 - Redaction failing to catch a credential format it does not recognise
-- Corruption caused by running two writers against one data directory
 - Reading a hard-deleted memory out of `<data-dir>/archive/` when archiving was
   left enabled
-- Two directories with the same basename sharing one project bucket, described
-  below
 
-## Known limitation: projects are keyed by directory name
+## Workspace boundaries
 
-The project a memory belongs to is the basename of the working directory, not
-its full path. `/work/client-a/api` and `/personal/api` are both the project
-`api`, so they read and write each other's memories, and an automatic context
-block in one can surface text from the other. Nothing warns about the collision.
+An inferred workspace is keyed by a hash of the normalized absolute working
+directory, so same-basename directories do not share new writes. The full path
+is not used as the public collection name. Automatic recall includes the current
+workspace and `playbook`, and fails closed when neither `cwd` nor an explicit
+project is available.
 
-If that matters, give the directories distinct names, or pass an explicit
-`project` on every call instead of letting it be inferred. This is a known
-design limitation rather than a vulnerability, and it is planned to change to a
-key that distinguishes full paths.
+Legacy basename collections are included only while one registered workspace
+owns that basename. Once the basename is ambiguous, memnest disables the alias
+for every claimant instead of assigning old rows by guesswork. Operators can
+still address a legacy collection with an explicit `project`.
 
 A report is in scope when it shows memnest doing something the description above
 says it does not: authentication being bypassed, a non loopback bind being

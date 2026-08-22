@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 process.env.MEMNEST_URL = "http://memnest.invalid";
+process.env.MEMNEST_EXPOSE_SECRET_TOOLS = "1";
 const requests = [];
 globalThis.fetch = async (url, init = {}) => {
 	requests.push({ url: String(url), init });
@@ -22,7 +23,7 @@ extension.default(pi);
 const missing = await tools.get("secret_get").execute("id", { key: "missing" });
 assert.match(missing.content[0].text, /^Error: memnest error 404:/);
 const unscoped = await tools.get("memory_search").execute("id", { query: "unsafe" }, undefined, undefined, {});
-assert.match(unscoped.content[0].text, /current project is unavailable/);
+assert.match(unscoped.content[0].text, /current workspace is unavailable/);
 const beforeExplicit = requests.length;
 await tools.get("memory_search").execute("id", { query: "explicit", project: "all", n_results: 2 }, undefined, undefined, {});
 assert.equal(requests.length, beforeExplicit + 1);

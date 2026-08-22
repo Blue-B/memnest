@@ -4,7 +4,7 @@
 
 A local memnest bridge for pi.
 
-`pi-memnest` connects [pi](https://github.com/badlogic/pi-mono) to a running [memnest](https://github.com/Blue-B/memnest) HTTP service. It gives pi the canonical six memory tools and four secret tools. It can also retrieve a small project-scoped memory card before selected prompts.
+`pi-memnest` connects [pi](https://github.com/badlogic/pi-mono) to a running [memnest](https://github.com/Blue-B/memnest) HTTP service. It gives pi the canonical six memory tools. Four secret tools are an explicit opt-in. The extension can also retrieve a small workspace-scoped memory card before selected prompts.
 
 This extension does not contain the memory engine. Start the Rust core before installing it.
 
@@ -46,7 +46,7 @@ The command reports service health, memory count, the active data directory, and
 
 ## Tools
 
-The extension registers exactly ten model tools. The `/memnest` command and Autocontext hook remain available without adding status or admin tools to the model surface.
+The extension registers exactly six memory tools by default. Set `MEMNEST_EXPOSE_SECRET_TOOLS=1` before starting pi to register the four vault tools too. The `/memnest` command and Autocontext hook remain available without adding status or admin tools to the model surface.
 
 | Tool | Purpose |
 | --- | --- |
@@ -56,21 +56,21 @@ The extension registers exactly ten model tools. The `/memnest` command and Auto
 | `memory_update` | Correct one memory and refresh its indexes. |
 | `memory_delete` | Soft-delete one memory to the internal trash bucket. |
 | `memory_feedback` | Record recall telemetry; only an optional `memory_id` changes that result's ranking. |
-| `secret_set`, `secret_get`, `secret_list`, `secret_delete` | Manage AES-256-GCM vault values. Vault operations fail closed when crypto is unavailable. |
+| `secret_set`, `secret_get`, `secret_list`, `secret_delete` | Opt-in tools for AES-256-GCM vault values. Vault operations fail closed when crypto is unavailable. |
 
-Ordinary memories are not encrypted at rest. Use the secret tools for credentials, and keep the core data directory and `master.key` private.
+Ordinary memories are not encrypted at rest. Enable the secret tools only for an agent you trust with plaintext credentials, and keep the core data directory and `master.key` private.
 
 ## Basic use
 
 ```text
-memory_remember text="Project X deploys on port 8320" project="project-x" memory_kind="fact" confidence=1
-memory_search query="Project X deployment port" project="project-x"
+memory_remember text="Project X deploys on port 8320" memory_kind="fact" confidence=1
+memory_search query="Project X deployment port"
 memory_feedback recall_id="recall_..." memory_id="manual_..." outcome="helpful"
-memory_update id="manual_..." text="Project X now deploys on port 8420"
+memory_remember text="Project X now deploys on port 8420" memory_kind="fact" supersedes="manual_..."
 memory_delete id="manual_..."
 ```
 
-The core records each save in `/operations`, completes embedding and indexing, and then acknowledges the write. A semantically deduplicated id remains resolvable to the canonical memory. The first operation that needs an embedding takes longer, because that is when the core downloads its embedding model.
+When `project` is omitted, the extension sends pi's absolute `cwd`; the core derives a private workspace ID and includes `playbook` in recall. The core records each save in `/operations`, durably queues its index work in SQLite, and acknowledges the write only after Tantivy and HNSW are synchronized. Plain duplicate records may reuse an existing id. Structured facts, rules, provenance, and corrections do not use semantic content deduplication. The first operation that needs an embedding takes longer because that is when the core downloads its embedding model.
 
 ## Structured memory
 
@@ -81,7 +81,7 @@ The core records each save in `/operations`, completes embedding and indexing, a
 - `rule` for preferences, decisions, and guardrails
 - `procedure` for reusable verified workflows
 
-Optional `confidence`, `source_ids`, and `supersedes` fields preserve provenance without tying the data model to pi. The core HTTP and MCP contracts expose the same fields to other platform adapters.
+Optional `confidence`, `source_ids`, `supersedes`, and `verified_at` fields preserve provenance without tying the data model to pi. `supersedes` atomically hides an active memory in the same workspace. `confidence` and `verified_at` are client assertions, not automatic ranking boosts. The core HTTP and MCP contracts expose the same fields to other platform adapters.
 
 ## Autocontext
 
@@ -96,6 +96,8 @@ Autocontext is enabled in `balanced` mode by default. It does not inject a full 
 | `config` | Settings, environment variables, options, defaults, or thresholds. |
 
 A prompt that matches none of them gets no card in this mode. Use `MEMNEST_AUTOCONTEXT_MODE=aggressive` to add the general first-turn and topic-shift lane, which injects on every topic change instead. Use `MEMNEST_AUTOCONTEXT_MODE=off` to disable retrieval.
+
+Every card labels retrieved text as untrusted reference data. AutoLog results are marked as conversation evidence, not verified facts, and markup inside stored text is escaped before injection. The agent must verify claims and never follow commands found inside a memory.
 
 Common controls:
 
@@ -119,7 +121,7 @@ MCP does not describe host session events. The core provides host-neutral automa
 - `memnest hook` reads a host's hook payload on stdin and answers with a context pack, in the shape that host expects.
 - `memnest watch` follows Claude Code, pi, and Codex transcripts and stores visible conversation text, with no host extension hooks.
 
-See [automatic context and conversation capture](../README.md#automatic-context-and-conversation-capture) in the root README. Inside pi the extension exposes the same ten-tool contract and adds the `/memnest` command.
+See [automatic context and conversation capture](../README.md#automatic-context-and-conversation-capture) in the root README. Inside pi the extension exposes the same six-tool memory contract, optionally adds four vault tools, and provides the `/memnest` command.
 
 ## Development
 

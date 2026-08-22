@@ -1,10 +1,11 @@
 use crate::models::*;
+use crate::workspace::WorkspaceIdentity;
 use anyhow::Result;
 use chrono::Utc;
 use half::f16;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use serde_json;
 use std::path::Path;
 
@@ -89,6 +90,16 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_chunks_project ON chunks(project);
             CREATE INDEX IF NOT EXISTS idx_chunks_created ON chunks(created_at);
             CREATE INDEX IF NOT EXISTS idx_chunks_project_created ON chunks(project, created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS workspaces (
+                id TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                legacy_project TEXT,
+                first_seen_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_workspaces_legacy
+                ON workspaces(legacy_project);
 
             CREATE TABLE IF NOT EXISTS session_summaries (
                 id TEXT PRIMARY KEY,
@@ -175,6 +186,19 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_processing_jobs_state
                 ON processing_jobs(state, updated_at DESC);
 
+            -- SQLite is authoritative. Every chunk mutation queues the derived
+            -- Tantivy/HNSW change in the same transaction.
+            CREATE TABLE IF NOT EXISTS index_queue (
+                chunk_id TEXT PRIMARY KEY,
+                operation TEXT NOT NULL CHECK (operation IN ('upsert','delete')),
+                generation INTEGER NOT NULL DEFAULT 1,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS index_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS recall_events (
                 id TEXT PRIMARY KEY,
                 query TEXT NOT NULL,
@@ -200,6 +224,12 @@ impl Database {
             "#,
         )?;
         migrate_legacy_schema(&conn)?;
+        add_column_if_missing(
+            &conn,
+            "index_queue",
+            "generation",
+            "ALTER TABLE index_queue ADD COLUMN generation INTEGER NOT NULL DEFAULT 1;",
+        )?;
         conn.execute_batch(
             r#"
             CREATE INDEX IF NOT EXISTS idx_chunks_type ON chunks(json_extract(metadata, '$.chunk_type'));
@@ -244,17 +274,51 @@ impl Database {
         Ok(Self { pool })
     }
 
+    pub fn register_workspace_scope(&self, workspace: &WorkspaceIdentity) -> Result<Vec<String>> {
+        let conn = self.pool.get()?;
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO workspaces (id, display_name, legacy_project, first_seen_at, last_seen_at)
+             VALUES (?1, ?2, ?3, ?4, ?4)
+             ON CONFLICT(id) DO UPDATE SET
+                 display_name = excluded.display_name,
+                 legacy_project = excluded.legacy_project,
+                 last_seen_at = excluded.last_seen_at",
+            params![
+                workspace.id,
+                workspace.display_name,
+                workspace.legacy_project,
+                now
+            ],
+        )?;
+
+        let mut projects = vec![workspace.id.clone()];
+        if let Some(legacy) = &workspace.legacy_project {
+            let owners: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM workspaces WHERE legacy_project = ?1",
+                params![legacy],
+                |row| row.get(0),
+            )?;
+            if owners == 1 {
+                projects.push(legacy.clone());
+            }
+        }
+        projects.push("playbook".to_string());
+        Ok(projects)
+    }
+
     // ── Chunks ───────────────────────────────────────────────
 
     pub fn insert_chunk(&self, chunk: &MemoryChunk) -> Result<()> {
-        let conn = self.pool.get()?;
+        let mut conn = self.pool.get()?;
         let embedding_bytes = chunk
             .embedding
             .as_ref()
             .map(|embedding| encode_embedding(embedding))
             .unwrap_or_default();
         let meta = serde_json::to_string(&chunk.metadata)?;
-        conn.execute(
+        let tx = conn.transaction()?;
+        tx.execute(
             "INSERT OR REPLACE INTO chunks (id, project, document, embedding, metadata, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
@@ -267,6 +331,70 @@ impl Database {
                 chunk.updated_at.to_rfc3339(),
             ],
         )?;
+        tx.execute(
+            "INSERT INTO index_queue (chunk_id, operation, generation, updated_at)
+             VALUES (?1, 'upsert', 1, ?2)
+             ON CONFLICT(chunk_id) DO UPDATE SET
+                 operation = excluded.operation,
+                 generation = index_queue.generation + 1,
+                 updated_at = excluded.updated_at",
+            params![chunk.id, Utc::now().to_rfc3339()],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn insert_superseding_chunk(&self, chunk: &MemoryChunk, superseded_id: &str) -> Result<()> {
+        anyhow::ensure!(
+            chunk.id != superseded_id,
+            "a memory cannot supersede itself"
+        );
+        let mut conn = self.pool.get()?;
+        let embedding_bytes = chunk
+            .embedding
+            .as_ref()
+            .map(|embedding| encode_embedding(embedding))
+            .unwrap_or_default();
+        let meta = serde_json::to_string(&chunk.metadata)?;
+        let tx = conn.transaction()?;
+        let previous_project: String = tx.query_row(
+            "SELECT project FROM chunks WHERE id = ?1",
+            params![superseded_id],
+            |row| row.get(0),
+        )?;
+        anyhow::ensure!(
+            previous_project == chunk.project,
+            "superseded memory must be active in the same project"
+        );
+        tx.execute(
+            "UPDATE chunks SET project = '_superseded', updated_at = ?2 WHERE id = ?1",
+            params![superseded_id, Utc::now().to_rfc3339()],
+        )?;
+        tx.execute(
+            "INSERT OR REPLACE INTO chunks (id, project, document, embedding, metadata, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                chunk.id,
+                chunk.project,
+                chunk.document,
+                embedding_bytes,
+                meta,
+                chunk.created_at.to_rfc3339(),
+                chunk.updated_at.to_rfc3339(),
+            ],
+        )?;
+        for id in [superseded_id, chunk.id.as_str()] {
+            tx.execute(
+                "INSERT INTO index_queue (chunk_id, operation, generation, updated_at)
+                 VALUES (?1, 'upsert', 1, ?2)
+                 ON CONFLICT(chunk_id) DO UPDATE SET
+                     operation = excluded.operation,
+                     generation = index_queue.generation + 1,
+                     updated_at = excluded.updated_at",
+                params![id, Utc::now().to_rfc3339()],
+            )?;
+        }
+        tx.commit()?;
         Ok(())
     }
 
@@ -277,6 +405,27 @@ impl Database {
              FROM chunks WHERE project = ?1 ORDER BY created_at DESC LIMIT ?2",
         )?;
         let mut rows = stmt.query(params![project, limit as i64])?;
+        let mut chunks = Vec::new();
+        while let Some(row) = rows.next()? {
+            chunks.push(self.row_to_chunk(row)?);
+        }
+        Ok(chunks)
+    }
+
+    pub fn get_chunks_by_projects(&self, projects: &[String]) -> Result<Vec<MemoryChunk>> {
+        if projects.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.pool.get()?;
+        let placeholders = std::iter::repeat_n("?", projects.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT id, project, document, embedding, metadata, created_at, updated_at
+             FROM chunks WHERE project IN ({placeholders}) ORDER BY created_at DESC"
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let mut rows = stmt.query(params_from_iter(projects.iter()))?;
         let mut chunks = Vec::new();
         while let Some(row) = rows.next()? {
             chunks.push(self.row_to_chunk(row)?);
@@ -296,6 +445,89 @@ impl Database {
             chunks.push(self.row_to_chunk(row)?);
         }
         Ok(chunks)
+    }
+
+    pub fn get_all_chunks_unbounded(&self) -> Result<Vec<MemoryChunk>> {
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, project, document, embedding, metadata, created_at, updated_at
+             FROM chunks ORDER BY created_at DESC",
+        )?;
+        let mut rows = stmt.query([])?;
+        let mut chunks = Vec::new();
+        while let Some(row) = rows.next()? {
+            chunks.push(self.row_to_chunk(row)?);
+        }
+        Ok(chunks)
+    }
+
+    pub fn queue_index_upsert(&self, id: &str) -> Result<()> {
+        let conn = self.pool.get()?;
+        conn.execute(
+            "INSERT INTO index_queue (chunk_id, operation, generation, updated_at)
+             VALUES (?1, 'upsert', 1, ?2)
+             ON CONFLICT(chunk_id) DO UPDATE SET
+                 operation = excluded.operation,
+                 generation = index_queue.generation + 1,
+                 updated_at = excluded.updated_at",
+            params![id, Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    pub fn pending_index_ops(&self) -> Result<Vec<(String, String, i64)>> {
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare(
+            "SELECT chunk_id, operation, generation
+             FROM index_queue ORDER BY updated_at, chunk_id",
+        )?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn index_rebuild_required(&self) -> Result<bool> {
+        let conn = self.pool.get()?;
+        let version: Option<String> = conn
+            .query_row(
+                "SELECT value FROM index_meta WHERE key = 'schema_version'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let pending: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM index_queue LIMIT 1)",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(version.as_deref() != Some("1") || pending)
+    }
+
+    pub fn complete_index_ops(&self, completed: &[(String, i64)]) -> Result<()> {
+        if completed.is_empty() {
+            return Ok(());
+        }
+        let mut conn = self.pool.get()?;
+        let tx = conn.transaction()?;
+        for (id, generation) in completed {
+            tx.execute(
+                "DELETE FROM index_queue WHERE chunk_id = ?1 AND generation = ?2",
+                params![id, generation],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn complete_index_rebuild(&self) -> Result<()> {
+        let mut conn = self.pool.get()?;
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM index_queue", [])?;
+        tx.execute(
+            "INSERT OR REPLACE INTO index_meta (key, value) VALUES ('schema_version', '1')",
+            [],
+        )?;
+        tx.commit()?;
+        Ok(())
     }
 
     /// Per-collection aggregates. Internal buckets (`_trash`, `_superseded`)
@@ -498,6 +730,17 @@ impl Database {
             params![canonical_id],
         )?;
         let affected = tx.execute("DELETE FROM chunks WHERE id = ?1", params![canonical_id])?;
+        if affected > 0 {
+            tx.execute(
+                "INSERT INTO index_queue (chunk_id, operation, generation, updated_at)
+                 VALUES (?1, 'delete', 1, ?2)
+                 ON CONFLICT(chunk_id) DO UPDATE SET
+                     operation = excluded.operation,
+                     generation = index_queue.generation + 1,
+                     updated_at = excluded.updated_at",
+                params![canonical_id, Utc::now().to_rfc3339()],
+            )?;
+        }
         tx.commit()?;
         Ok(affected > 0)
     }
@@ -764,7 +1007,8 @@ impl Database {
     // ── Servers ──────────────────────────────────────────────
 
     pub fn insert_server(&self, server: &ServerInfo) -> Result<()> {
-        let encrypted_password = crate::crypto::encrypt(&server.password)?;
+        let encrypted_password =
+            crate::crypto::encrypt_bound(&format!("server:{}", server.name), &server.password)?;
         let conn = self.pool.get()?;
         conn.execute(
             "INSERT OR REPLACE INTO servers (name, host, user, password, port, ssh_cmd, scp_cmd, note, project_path, updated)
@@ -793,12 +1037,15 @@ impl Database {
         let mut rows = stmt.query([])?;
         let mut servers = Vec::new();
         while let Some(row) = rows.next()? {
+            let name: String = row.get(0)?;
             let encrypted_password: String = row.get(3)?;
+            let password =
+                crate::crypto::decrypt_bound(&format!("server:{name}"), &encrypted_password)?;
             servers.push(ServerInfo {
-                name: row.get(0)?,
+                name,
                 host: row.get(1)?,
                 user: row.get(2)?,
-                password: crate::crypto::decrypt(&encrypted_password)?,
+                password,
                 port: row.get(4)?,
                 ssh_cmd: row.get(5)?,
                 scp_cmd: row.get(6)?,
@@ -857,11 +1104,13 @@ impl Database {
                     project_path,
                     updated,
                 )| {
+                    let password =
+                        crate::crypto::decrypt_bound(&format!("server:{name}"), &password)?;
                     Ok(ServerInfo {
                         name,
                         host,
                         user,
-                        password: crate::crypto::decrypt(&password)?,
+                        password,
                         port,
                         ssh_cmd,
                         scp_cmd,
@@ -945,22 +1194,33 @@ impl Database {
 
     // ── Secrets (encrypted) ──────────────────────────────────
 
-    pub(crate) fn encrypted_vault_values(&self) -> Result<Vec<String>> {
+    pub(crate) fn encrypted_vault_values(&self) -> Result<Vec<(String, String)>> {
         let conn = self.pool.get()?;
         let mut values = Vec::new();
-        for sql in [
-            "SELECT value FROM secrets ORDER BY key",
-            "SELECT password FROM servers ORDER BY name",
-        ] {
-            let mut stmt = conn.prepare(sql)?;
-            let rows = stmt.query_map([], |row| row.get(0))?;
-            values.extend(rows.collect::<Result<Vec<String>, _>>()?);
+        {
+            let mut stmt = conn.prepare("SELECT key, value FROM secrets ORDER BY key")?;
+            let rows = stmt.query_map([], |row| {
+                let key: String = row.get(0)?;
+                let value: String = row.get(1)?;
+                Ok((format!("secret:{key}"), value))
+            })?;
+            values.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
+        }
+        {
+            let mut stmt = conn.prepare("SELECT name, password FROM servers ORDER BY name")?;
+            let rows = stmt.query_map([], |row| {
+                let name: String = row.get(0)?;
+                let value: String = row.get(1)?;
+                Ok((format!("server:{name}"), value))
+            })?;
+            values.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
         }
         Ok(values)
     }
 
     pub fn insert_secret(&self, secret: &Secret) -> Result<()> {
-        let encrypted = crate::crypto::encrypt(&secret.value)?;
+        let encrypted =
+            crate::crypto::encrypt_bound(&format!("secret:{}", secret.key), &secret.value)?;
         let conn = self.pool.get()?;
         conn.execute(
             "INSERT OR REPLACE INTO secrets (key, kind, value, note, updated)
@@ -999,10 +1259,11 @@ impl Database {
             .optional()?;
         result
             .map(|(key, kind, encrypted, note, updated)| {
+                let value = crate::crypto::decrypt_bound(&format!("secret:{key}"), &encrypted)?;
                 Ok(Secret {
                     key,
                     kind,
-                    value: crate::crypto::decrypt(&encrypted)?,
+                    value,
                     note,
                     updated,
                 })
@@ -1388,6 +1649,90 @@ mod tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    #[tokio::test]
+    async fn superseding_insert_hides_old_truth_and_queues_both_indexes() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        let old = sample_chunk("service", "port is 8320", Importance::Knowledge);
+        let mut new = sample_chunk("service", "port is 9440", Importance::Knowledge);
+        new.metadata.supersedes = Some(old.id.clone());
+        db.insert_chunk(&old).unwrap();
+        db.complete_index_ops(&[(old.id.clone(), 1)]).unwrap();
+
+        db.insert_superseding_chunk(&new, &old.id).unwrap();
+        assert_eq!(
+            db.get_chunk(&old.id).unwrap().unwrap().project,
+            "_superseded"
+        );
+        assert_eq!(db.get_chunk(&new.id).unwrap().unwrap().project, "service");
+        assert_eq!(
+            db.pending_index_ops().unwrap(),
+            vec![
+                (old.id.clone(), "upsert".to_string(), 1),
+                (new.id.clone(), "upsert".to_string(), 1),
+            ]
+        );
+
+        let cross_project = sample_chunk("other", "bad replacement", Importance::Knowledge);
+        assert!(
+            db.insert_superseding_chunk(&cross_project, &new.id)
+                .is_err()
+        );
+        assert!(db.get_chunk(&cross_project.id).unwrap().is_none());
+        assert_eq!(db.get_chunk(&new.id).unwrap().unwrap().project, "service");
+    }
+
+    #[tokio::test]
+    async fn chunk_mutations_queue_derived_index_work_transactionally() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        let mut chunk = sample_chunk("project", "queued index work", Importance::Knowledge);
+        let id = chunk.id.clone();
+
+        db.insert_chunk(&chunk).unwrap();
+        let first = db.pending_index_ops().unwrap();
+        assert_eq!(first, vec![(id.clone(), "upsert".to_string(), 1)]);
+
+        chunk.document = "newer queued index work".to_string();
+        db.insert_chunk(&chunk).unwrap();
+        db.complete_index_ops(&[(id.clone(), 1)]).unwrap();
+        assert_eq!(
+            db.pending_index_ops().unwrap(),
+            vec![(id.clone(), "upsert".to_string(), 2)]
+        );
+        db.complete_index_ops(&[(id.clone(), 2)]).unwrap();
+        assert!(db.pending_index_ops().unwrap().is_empty());
+        db.complete_index_rebuild().unwrap();
+        assert!(!db.index_rebuild_required().unwrap());
+
+        assert!(db.delete_chunk(&id).unwrap());
+        assert_eq!(
+            db.pending_index_ops().unwrap(),
+            vec![(id, "delete".to_string(), 1)]
+        );
+    }
+
+    #[tokio::test]
+    async fn workspace_legacy_alias_is_used_only_while_unambiguous() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        let first = crate::workspace::identity("/work/client-a/api").unwrap();
+        let second = crate::workspace::identity("/personal/api").unwrap();
+
+        assert_eq!(
+            db.register_workspace_scope(&first).unwrap(),
+            vec![first.id.clone(), "api".to_string(), "playbook".to_string()]
+        );
+        assert_eq!(
+            db.register_workspace_scope(&second).unwrap(),
+            vec![second.id.clone(), "playbook".to_string()]
+        );
+        assert_eq!(
+            db.register_workspace_scope(&first).unwrap(),
+            vec![first.id, "playbook".to_string()]
+        );
     }
 
     #[tokio::test]
@@ -1853,6 +2198,47 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn secret_ciphertext_is_bound_to_its_database_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        crate::crypto::init_crypto(Some("row-bound-key")).unwrap();
+        let now = Utc::now();
+        for (key, value) in [("alpha", "value-a"), ("beta", "value-b")] {
+            db.insert_secret(&Secret {
+                key: key.to_string(),
+                kind: String::new(),
+                value: value.to_string(),
+                note: String::new(),
+                updated: now,
+            })
+            .unwrap();
+        }
+        let conn = db.pool.get().unwrap();
+        let alpha: String = conn
+            .query_row("SELECT value FROM secrets WHERE key = 'alpha'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let beta: String = conn
+            .query_row("SELECT value FROM secrets WHERE key = 'beta'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        conn.execute(
+            "UPDATE secrets SET value = ?1 WHERE key = 'alpha'",
+            params![beta],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE secrets SET value = ?1 WHERE key = 'beta'",
+            params![alpha],
+        )
+        .unwrap();
+        assert!(db.get_secret("alpha").is_err());
+        assert!(db.get_secret("beta").is_err());
     }
 
     #[tokio::test]

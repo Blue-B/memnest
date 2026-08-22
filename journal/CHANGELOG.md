@@ -19,8 +19,8 @@ All notable changes to `memnest-journal`.
 ### Fixed
 
 - Secret export no longer trusts the stored value. With `--include-secrets`,
-  every row must be `$enc$` + base64 with at least an AES-256-GCM nonce and
-  tag; a single failing row aborts the whole export before any file is
+  every row must be row-bound `$enc2$` or legacy `$enc$` plus base64 with at
+  least an AES-256-GCM nonce and tag; a single failing row aborts the whole export before any file is
   written, so a legacy, hand-edited or corrupt plaintext row can no longer be
   committed under frontmatter claiming `encryption: aes-256-gcm`. Error output
   names the failing keys only.

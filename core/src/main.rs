@@ -1,5 +1,6 @@
 use anyhow::{Context, bail};
 use clap::{Parser, Subcommand};
+use fs2::FileExt;
 use memnest::hook::HookFormat;
 use memnest::models::{ChunkType, Importance, MemoryChunk, Metadata};
 use memnest::{MemorySystem, config::Config};
@@ -347,61 +348,241 @@ fn enforce_bind_safety(host: &str) -> anyhow::Result<()> {
 }
 
 fn backup_data_dir(source: &Path, target: &Path) -> anyhow::Result<()> {
-    if !source.exists() {
-        bail!("data directory does not exist: {}", source.display());
-    }
+    validate_source_target(source, target)?;
     if target.exists() {
         bail!("backup target already exists: {}", target.display());
     }
-    copy_dir_recursive(source, target)
-        .with_context(|| format!("failed to backup {}", source.display()))
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let staging = sibling_temp_path(target, "backup-staging");
+    let result = (|| -> anyhow::Result<()> {
+        create_consistent_snapshot(source, &staging)?;
+        validate_backup_dir(&staging)?;
+        std::fs::rename(&staging, target)?;
+        Ok(())
+    })();
+    if staging.exists() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    result.with_context(|| format!("failed to backup {}", source.display()))
 }
 
 fn restore_data_dir(source: &Path, target: &Path, force: bool) -> anyhow::Result<()> {
-    if !source.exists() {
-        bail!("restore source does not exist: {}", source.display());
+    validate_source_target(source, target)?;
+    if target.exists() && !target.is_dir() {
+        bail!("data directory is not a directory: {}", target.display());
     }
-    if target.exists() {
-        let mut entries = std::fs::read_dir(target)
-            .with_context(|| format!("cannot read data directory {}", target.display()))?;
-        if entries.next().is_some() {
-            if !force {
-                bail!(
-                    "data directory is not empty: {}; pass --force to replace it",
-                    target.display()
-                );
-            }
-            std::fs::remove_dir_all(target)
-                .with_context(|| format!("failed to remove {}", target.display()))?;
+    if target.exists()
+        && std::fs::read_dir(target)
+            .with_context(|| format!("cannot read data directory {}", target.display()))?
+            .next()
+            .is_some()
+        && !force
+    {
+        bail!(
+            "data directory is not empty: {}; pass --force to replace it",
+            target.display()
+        );
+    }
+
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let _target_lock = memnest::acquire_writer_lock(target)
+        .context("cannot restore while another memnest writer is active")?;
+    let _legacy_target_lock = acquire_legacy_writer_lock(target)?;
+    let staging = sibling_temp_path(target, "restore-staging");
+    if let Err(error) =
+        create_consistent_snapshot(source, &staging).and_then(|_| validate_backup_dir(&staging))
+    {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(error)
+            .with_context(|| format!("failed to stage restore from {}", source.display()));
+    }
+
+    let previous = sibling_temp_path(target, "restore-previous");
+    let had_target = target.exists();
+    if had_target {
+        std::fs::rename(target, &previous)?;
+    }
+    if let Err(error) = std::fs::rename(&staging, target) {
+        if had_target {
+            let _ = std::fs::rename(&previous, target);
         }
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(error).context("failed to install staged restore");
     }
-    copy_dir_recursive(source, target)
-        .with_context(|| format!("failed to restore {}", source.display()))
+    if had_target {
+        std::fs::remove_dir_all(previous)?;
+    }
+    Ok(())
 }
 
-fn copy_dir_recursive(source: &Path, target: &Path) -> anyhow::Result<()> {
-    std::fs::create_dir_all(target)
-        .with_context(|| format!("failed to create {}", target.display()))?;
+fn acquire_legacy_writer_lock(target: &Path) -> anyhow::Result<Option<std::fs::File>> {
+    let path = target.join(".writer.lock");
+    if !path.exists() {
+        return Ok(None);
+    }
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)?;
+    lock.try_lock_exclusive()
+        .context("cannot restore while a legacy memnest writer is active")?;
+    Ok(Some(lock))
+}
+
+fn create_consistent_snapshot(source: &Path, target: &Path) -> anyhow::Result<()> {
+    std::fs::create_dir_all(target)?;
     for entry in
         std::fs::read_dir(source).with_context(|| format!("failed to read {}", source.display()))?
     {
         let entry = entry?;
-        let source_path = entry.path();
-        let target_path = target.join(entry.file_name());
-        let metadata = entry.metadata()?;
-        if metadata.is_dir() {
-            copy_dir_recursive(&source_path, &target_path)?;
-        } else if metadata.is_file() {
-            std::fs::copy(&source_path, &target_path).with_context(|| {
-                format!(
-                    "failed to copy {} to {}",
-                    source_path.display(),
-                    target_path.display()
-                )
-            })?;
+        let name = entry.file_name();
+        let name_text = name.to_string_lossy();
+        if matches!(
+            name_text.as_ref(),
+            "memory.db"
+                | "memory.db-wal"
+                | "memory.db-shm"
+                | "vectors"
+                | "text_index"
+                | "models"
+                | ".writer.lock"
+        ) || name_text.starts_with(".vectors.")
+            || name_text.starts_with(".text_index.")
+        {
+            continue;
         }
+        copy_entry(&entry.path(), &target.join(name))?;
+    }
+
+    let database = source.join("memory.db");
+    if !database.is_file() {
+        bail!("backup source has no memory.db: {}", source.display());
+    }
+    let destination = target.join("memory.db");
+    let connection = rusqlite::Connection::open(&database)?;
+    connection.execute(
+        "VACUUM INTO ?1",
+        rusqlite::params![destination.to_string_lossy().as_ref()],
+    )?;
+    Ok(())
+}
+
+fn copy_entry(source: &Path, target: &Path) -> anyhow::Result<()> {
+    let metadata = std::fs::symlink_metadata(source)?;
+    if metadata.file_type().is_symlink() {
+        bail!(
+            "refusing to copy symlink in data directory: {}",
+            source.display()
+        );
+    }
+    if metadata.is_dir() {
+        std::fs::create_dir_all(target)?;
+        for entry in std::fs::read_dir(source)? {
+            let entry = entry?;
+            copy_entry(&entry.path(), &target.join(entry.file_name()))?;
+        }
+    } else if metadata.is_file() {
+        std::fs::copy(source, target)?;
     }
     Ok(())
+}
+
+fn validate_backup_dir(path: &Path) -> anyhow::Result<()> {
+    let database = path.join("memory.db");
+    let connection = rusqlite::Connection::open_with_flags(
+        &database,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?;
+    let check: String = connection.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+    if check != "ok" {
+        bail!("SQLite quick_check failed: {check}");
+    }
+
+    let mut encrypted = Vec::new();
+    if sqlite_table_exists(&connection, "secrets")? {
+        let mut stmt = connection.prepare("SELECT key, value FROM secrets")?;
+        let rows = stmt.query_map([], |row| {
+            let key: String = row.get(0)?;
+            let value: String = row.get(1)?;
+            Ok((format!("secret:{key}"), value))
+        })?;
+        encrypted.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
+    }
+    if sqlite_table_exists(&connection, "servers")? {
+        let mut stmt = connection.prepare("SELECT name, password FROM servers")?;
+        let rows = stmt.query_map([], |row| {
+            let name: String = row.get(0)?;
+            let value: String = row.get(1)?;
+            Ok((format!("server:{name}"), value))
+        })?;
+        encrypted.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
+    }
+    if !encrypted.is_empty() {
+        let key = std::env::var("MEMNEST_MASTER_KEY")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| value.trim().to_string())
+            .or_else(|| std::fs::read_to_string(path.join("master.key")).ok())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("backup contains vault rows but no master key"))?;
+        memnest::crypto::validate_ciphertexts(&key, &encrypted)?;
+    }
+    Ok(())
+}
+
+fn sqlite_table_exists(connection: &rusqlite::Connection, table: &str) -> anyhow::Result<bool> {
+    Ok(connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+        rusqlite::params![table],
+        |row| row.get(0),
+    )?)
+}
+
+fn validate_source_target(source: &Path, target: &Path) -> anyhow::Result<()> {
+    if !source.is_dir() {
+        bail!("data directory does not exist: {}", source.display());
+    }
+    let source = canonical_candidate(source)?;
+    let target = canonical_candidate(target)?;
+    if source.starts_with(&target) || target.starts_with(&source) {
+        bail!(
+            "source and target directories must not overlap: {} and {}",
+            source.display(),
+            target.display()
+        );
+    }
+    Ok(())
+}
+
+fn canonical_candidate(path: &Path) -> anyhow::Result<PathBuf> {
+    let mut cursor = path;
+    let mut tail = Vec::new();
+    while !cursor.exists() {
+        let name = cursor
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("cannot resolve path {}", path.display()))?;
+        tail.push(name.to_os_string());
+        cursor = cursor
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("cannot resolve path {}", path.display()))?;
+    }
+    let mut resolved = std::fs::canonicalize(cursor)?;
+    for part in tail.iter().rev() {
+        resolved.push(part);
+    }
+    Ok(resolved)
+}
+
+fn sibling_temp_path(path: &Path, label: &str) -> PathBuf {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("memnest");
+    parent.join(format!(".{name}.{label}-{}", uuid::Uuid::new_v4().simple()))
 }
 
 async fn import_jsonl(
@@ -411,9 +592,6 @@ async fn import_jsonl(
     let file = std::fs::File::open(path)?;
     let reader = BufReader::new(file);
     let sys = system.read().await;
-    let db = sys.db.write().await;
-    let mut vector_index = sys.vector_index.write().await;
-    let mut text_docs = Vec::new();
     let mut count = 0usize;
 
     for line in reader.lines() {
@@ -438,31 +616,25 @@ async fn import_jsonl(
             Some(v) if !v.is_empty() => Some(v),
             _ => Some(sys.embedder.encode_document(&document)?),
         };
+        let mut metadata = rec.metadata.unwrap_or(Metadata {
+            chunk_type: ChunkType::AutoLog,
+            importance: Importance::Log,
+            ..Default::default()
+        });
+        metadata.raw_chunk = None;
         let chunk = MemoryChunk {
             id: id.clone(),
             project: project.clone(),
             document,
             embedding,
-            metadata: rec.metadata.unwrap_or(Metadata {
-                chunk_type: ChunkType::AutoLog,
-                importance: Importance::Log,
-                ..Default::default()
-            }),
+            metadata,
             created_at,
             updated_at: created_at,
         };
-        db.insert_chunk(&chunk)?;
-        if let Some(embedding) = &chunk.embedding {
-            vector_index.add(&chunk.id, embedding)?;
-        }
-        text_docs.push((
-            chunk.id.clone(),
-            chunk.project.clone(),
-            chunk.document.clone(),
-        ));
+        sys.db.write().await.insert_chunk(&chunk)?;
         count += 1;
     }
-    sys.add_text_docs(&text_docs).await?;
+    sys.sync_pending_indexes().await?;
     Ok(count)
 }
 
@@ -489,6 +661,65 @@ fn parse_import_timestamp(value: Option<&str>) -> chrono::DateTime<chrono::Utc> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write_test_database(path: &Path, value: &str) {
+        std::fs::create_dir_all(path).unwrap();
+        let connection = rusqlite::Connection::open(path.join("memory.db")).unwrap();
+        connection
+            .execute_batch("CREATE TABLE marker (value TEXT NOT NULL);")
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO marker (value) VALUES (?1)",
+                rusqlite::params![value],
+            )
+            .unwrap();
+    }
+
+    fn read_test_marker(path: &Path) -> String {
+        rusqlite::Connection::open(path.join("memory.db"))
+            .unwrap()
+            .query_row("SELECT value FROM marker", [], |row| row.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn backup_rejects_overlaps_and_omits_rebuildable_indexes() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("data");
+        write_test_database(&source, "source");
+        std::fs::create_dir_all(source.join("vectors")).unwrap();
+        std::fs::write(source.join("vectors/index.hnsw"), "derived").unwrap();
+
+        assert!(backup_data_dir(&source, &source.join("nested-backup")).is_err());
+        let backup = temp.path().join("backup");
+        backup_data_dir(&source, &backup).unwrap();
+        assert_eq!(read_test_marker(&backup), "source");
+        assert!(!backup.join("vectors").exists());
+    }
+
+    #[test]
+    fn failed_restore_keeps_existing_target_and_valid_restore_swaps_it() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("target");
+        write_test_database(&target, "old");
+        let invalid = temp.path().join("invalid");
+        std::fs::create_dir_all(&invalid).unwrap();
+        std::fs::write(invalid.join("memory.db"), "not sqlite").unwrap();
+
+        assert!(restore_data_dir(&invalid, &target, true).is_err());
+        assert_eq!(read_test_marker(&target), "old");
+
+        let source = temp.path().join("source");
+        write_test_database(&source, "new");
+        let active_writer = memnest::acquire_writer_lock(&target).unwrap();
+        assert!(restore_data_dir(&source, &target, true).is_err());
+        assert_eq!(read_test_marker(&target), "old");
+        drop(active_writer);
+        assert!(restore_data_dir(&source, &target, false).is_err());
+        restore_data_dir(&source, &target, true).unwrap();
+        assert_eq!(read_test_marker(&target), "new");
+    }
 
     #[test]
     fn dashboard_hosts_are_safe_for_urls() {

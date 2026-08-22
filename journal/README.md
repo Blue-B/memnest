@@ -200,7 +200,7 @@ Common options:
 - Sensitive chunks are skipped unless `--include-sensitive` is supplied.
 - Ordinary chunks, notes, facts, and session summaries are plaintext Markdown. Use a private repository.
 - The `secrets` table is not exported unless `--include-secrets` is supplied.
-- With `--include-secrets`, every row is checked before anything is written: the value must start with `$enc$` and carry a base64 payload at least as long as an AES-256-GCM nonce and authentication tag. If any row fails, the whole export aborts and no file is written. The error names the failing keys only, never the values. Inspect the generated `secrets/` tree before any push.
+- With `--include-secrets`, every row is checked before anything is written: the value must start with row-bound `$enc2$` or legacy `$enc$` and carry a base64 payload at least as long as an AES-256-GCM nonce and authentication tag. If any row fails, the whole export aborts and no file is written. The error names the failing keys only, never the values. Inspect the generated `secrets/` tree before any push.
 - `MEMNEST_TOKEN` is read from the environment for `pjournal import` and sent as a bearer token. It is not written to journal files, logs, or error output.
 - `master.key`, SQLite files, and index directories are added to the generated `.gitignore`.
 - The CLI uses your existing git configuration. It does not enable signed commits or enforce branch protection.

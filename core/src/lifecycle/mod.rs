@@ -167,19 +167,13 @@ pub async fn prune_expired(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
         {
             let db = sys.db.write().await;
             for id in &to_trash {
-                if db.trash_chunk(id, &now_str).unwrap_or(false) {
+                if db.trash_chunk(id, &now_str)? {
                     count += 1;
                 }
             }
         }
-        // Remove from search indexes so trash is invisible to queries.
         if count > 0 {
-            let _ = sys.remove_text_docs(&to_trash).await;
-            let mut vector_index = sys.vector_index.write().await;
-            for id in &to_trash {
-                let _ = vector_index.remove(id);
-            }
-            let _ = vector_index.save();
+            sys.sync_pending_indexes().await?;
         }
         tracing::info!(
             "lifecycle prune: trashed {}/{} expired chunks",
@@ -284,26 +278,17 @@ pub async fn prune_trash(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
 
     let deleted = if !to_delete.is_empty() {
         let mut count = 0usize;
-        let mut deleted_ids: Vec<String> = Vec::new();
         {
             let db = sys.db.write().await;
             for chunk in &to_delete {
                 archive_chunk_before_delete(&sys.config.data_dir, chunk);
-                if db.delete_chunk(&chunk.id).unwrap_or(false) {
-                    deleted_ids.push(chunk.id.clone());
+                if db.delete_chunk(&chunk.id)? {
                     count += 1;
                 }
             }
         }
-        // Defensive index cleanup: trash rows should not be indexed, but
-        // remove defensively in case of any inconsistency.
         if count > 0 {
-            let _ = sys.remove_text_docs(&deleted_ids).await;
-            let mut vector_index = sys.vector_index.write().await;
-            for id in &deleted_ids {
-                let _ = vector_index.remove(id);
-            }
-            let _ = vector_index.save();
+            sys.sync_pending_indexes().await?;
         }
         tracing::info!("trash_gc: hard-deleted {} expired trash rows", count);
         count

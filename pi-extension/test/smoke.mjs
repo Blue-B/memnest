@@ -78,10 +78,6 @@ const EXPECTED = [
 	"memory_update",
 	"memory_delete",
 	"memory_feedback",
-	"secret_set",
-	"secret_get",
-	"secret_list",
-	"secret_delete",
 ];
 
 assert(

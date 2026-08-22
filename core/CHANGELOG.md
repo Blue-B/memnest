@@ -6,6 +6,11 @@ All notable changes to `memnest`, the Rust engine.
 
 ### Fixed
 
+- Added stable path-derived workspace IDs, fail-closed legacy aliases, and project filtering during lexical and vector candidate generation, preventing same-basename scope leaks and scoped-result starvation.
+- Made SQLite authoritative through a transactional index queue, uncapped startup rebuilds, corrupt-sidecar detection, atomic HNSW/Tantivy replacement, and an exclusive writer lock.
+- Added untrusted-reference labeling and markup escaping for automatic context, atomic `supersedes` semantics, and correction-safe content deduplication. New writes cannot populate the legacy `raw_chunk` field.
+- Made backup and restore stage and validate consistent SQLite snapshots before directory replacement. Overlapping paths are rejected and failed restore leaves the target intact.
+- Bound new vault ciphertext to its row identity, preserved legacy `$enc$` reads, created `master.key` with private permissions before writing, and hid model-facing secret tools by default.
 - Escaped collection names on every dashboard render path. A crafted collection
   name could previously be injected into the page body, the `<title>`, and
   generated links.
@@ -29,9 +34,8 @@ All notable changes to `memnest`, the Rust engine.
 
 ### Changed
 
-- Canonicalized the model surface to six memory tools and four vault tools, with shared HTTP/MCP memory operations, scoped automatic recall, soft delete, targeted feedback, strict auth token normalization, and fail-closed secrets.
-- `/context` now requires an explicit project, matching `/search`. It no longer
-  falls back to a cross-project scan.
+- Canonicalized the model surface to six memory tools and four capability-gated vault tools, with shared HTTP/MCP memory operations, scoped automatic recall, soft delete, targeted feedback, strict auth token normalization, and fail-closed secrets. Vault tools now require `MEMNEST_EXPOSE_SECRET_TOOLS=1`.
+- `/search` and `/context` accept an absolute `cwd` for isolated workspace recall. Without `cwd` or an explicit project they fail closed; `project=all` remains explicit.
 
 ## [0.2.0] - 2026-08-17
 
