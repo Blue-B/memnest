@@ -24,7 +24,7 @@ The Rust core does not call an LLM. Embeddings run locally with `intfloat/multil
 
 ## Architecture
 
-![memnest local-first architecture](docs/architecture.png)
+![memnest local-first architecture](docs/architecture.svg)
 
 Tool traffic, prompt-time recall, and transcript capture share one Rust service while keeping separate data paths. The mental model is small: a workspace holds one directory's memories, `playbook` holds rules shared by every workspace, and conversation history is searchable evidence rather than trusted instruction. SQLite is the source of truth. Tantivy and HNSW are derived indexes that the service can rebuild.
 

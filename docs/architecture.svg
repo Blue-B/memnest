@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="960" viewBox="0 0 1440 960" role="img" aria-labelledby="title desc">
+  <title id="title">Memnest local-first memory architecture</title>
+  <desc id="desc">Four client types use common entry points, a workspace-scoped Rust core, and local SQLite with rebuildable search indexes and a separate encrypted vault.</desc>
+  <defs>
+    <style>
+      .canvas { fill: #f7f6f2; }
+      .surface { fill: #ffffff; stroke: #d8d6cf; stroke-width: 1.5; }
+      .core { fill: #ffffff; stroke: #0d5c57; stroke-width: 2; }
+      .soft { fill: #e9f1ee; }
+      .soft-blue { fill: #eaf1f5; }
+      .ink { fill: #1b1d1f; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+      .muted { fill: #686b70; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+      .accent { fill: #0d5c57; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+      .mono { fill: #555960; font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+      .section { font-size: 13px; font-weight: 700; letter-spacing: 1.8px; }
+      .card-title { font-size: 21px; font-weight: 650; }
+      .card-copy { font-size: 15px; }
+      .arrow { fill: none; stroke: #7b7d80; stroke-width: 1.6; marker-end: url(#arrow); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7b7d80"/>
+    </marker>
+  </defs>
+
+  <rect class="canvas" width="1440" height="960"/>
+
+  <text class="accent section" x="72" y="62">MEMNEST / SYSTEM MAP</text>
+  <text class="ink" x="72" y="116" font-size="46" font-weight="680" letter-spacing="-1.4">Local memory, one durable core</text>
+  <text class="muted" x="72" y="151" font-size="18">pi, Claude Code, Codex, and other clients share one contract. The source data stays local.</text>
+
+  <text class="muted section" x="72" y="192">01 / CLIENTS</text>
+
+  <g transform="translate(72 208)">
+    <rect class="surface" width="297" height="90" rx="6"/>
+    <text class="ink card-title" x="22" y="38">pi</text>
+    <text class="muted card-copy" x="22" y="66">Extension and memory tools</text>
+  </g>
+  <g transform="translate(405 208)">
+    <rect class="surface" width="297" height="90" rx="6"/>
+    <text class="ink card-title" x="22" y="38">Claude Code</text>
+    <text class="muted card-copy" x="22" y="66">MCP and prompt hook</text>
+  </g>
+  <g transform="translate(738 208)">
+    <rect class="surface" width="297" height="90" rx="6"/>
+    <text class="ink card-title" x="22" y="38">Codex</text>
+    <text class="muted card-copy" x="22" y="66">MCP and transcript capture</text>
+  </g>
+  <g transform="translate(1071 208)">
+    <rect class="surface" width="297" height="90" rx="6"/>
+    <text class="ink card-title" x="22" y="38">Other clients</text>
+    <text class="muted card-copy" x="22" y="66">HTTP or stdio MCP</text>
+  </g>
+
+  <path class="arrow" d="M720 304 V328"/>
+  <text class="muted section" x="72" y="348">02 / ENTRY POINTS</text>
+
+  <g transform="translate(72 365)">
+    <rect class="surface" width="297" height="100" rx="6"/>
+    <text class="ink card-title" x="22" y="38">6 memory tools</text>
+    <text class="muted card-copy" x="22" y="67">One contract for every host</text>
+  </g>
+  <g transform="translate(405 365)">
+    <rect class="surface" width="297" height="100" rx="6"/>
+    <text class="ink card-title" x="22" y="38">Opt-in vault tools</text>
+    <text class="muted card-copy" x="22" y="67">Hidden until explicitly enabled</text>
+  </g>
+  <g transform="translate(738 365)">
+    <rect class="surface" width="297" height="100" rx="6"/>
+    <text class="ink card-title" x="22" y="38">memnest watch</text>
+    <text class="muted card-copy" x="22" y="67">Redact and store visible dialogue</text>
+  </g>
+  <g transform="translate(1071 365)">
+    <rect class="surface" width="297" height="100" rx="6"/>
+    <text class="ink card-title" x="22" y="38">memnest hook</text>
+    <text class="muted card-copy" x="22" y="67">Small scoped context, fail closed</text>
+  </g>
+
+  <path class="arrow" d="M720 472 V496"/>
+  <rect class="core" x="72" y="510" width="1296" height="190" rx="8"/>
+  <text class="accent section" x="96" y="538">03 / MEMNEST RUST CORE</text>
+
+  <g transform="translate(96 554)">
+    <rect class="soft" width="380" height="92" rx="5"/>
+    <text class="ink card-title" x="20" y="35">Workspace scope</text>
+    <text class="muted card-copy" x="20" y="62">cwd → stable workspace ID, includes playbook</text>
+  </g>
+  <g transform="translate(530 554)">
+    <rect class="soft" width="380" height="92" rx="5"/>
+    <text class="ink card-title" x="20" y="35">Canonical operations</text>
+    <text class="muted card-copy" x="20" y="62">Remember / search / update / delete / feedback</text>
+  </g>
+  <g transform="translate(964 554)">
+    <rect class="soft" width="380" height="92" rx="5"/>
+    <text class="ink card-title" x="20" y="35">Scoped recall</text>
+    <text class="muted card-copy" x="20" y="62">BM25 + vectors, feedback ranking</text>
+  </g>
+  <path class="arrow" d="M482 600 H518"/>
+  <path class="arrow" d="M916 600 H952"/>
+  <rect class="soft-blue" x="96" y="660" width="1248" height="24" rx="4"/>
+  <text class="muted" x="720" y="677" font-size="13" text-anchor="middle">Retrieved text remains reference data. It is never promoted to instruction.</text>
+
+  <path class="arrow" d="M720 706 V730"/>
+  <text class="muted section" x="72" y="750">04 / LOCAL STORAGE</text>
+
+  <g transform="translate(72 766)">
+    <rect class="surface" width="390" height="108" rx="6"/>
+    <text class="ink card-title" x="22" y="38">SQLite / source of truth</text>
+    <text class="muted card-copy" x="22" y="66">Memory / lineage / feedback / index queue</text>
+    <text class="mono" x="22" y="89" font-size="12">transactional writes</text>
+  </g>
+  <g transform="translate(510 766)">
+    <rect class="surface" width="260" height="108" rx="6"/>
+    <text class="ink card-title" x="22" y="38">Tantivy</text>
+    <text class="muted card-copy" x="22" y="66">BM25 text index</text>
+    <text class="mono" x="22" y="89" font-size="12">rebuilt from SQLite</text>
+  </g>
+  <g transform="translate(794 766)">
+    <rect class="surface" width="260" height="108" rx="6"/>
+    <text class="ink card-title" x="22" y="38">HNSW</text>
+    <text class="muted card-copy" x="22" y="66">Local vector index</text>
+    <text class="mono" x="22" y="89" font-size="12">rebuilt from SQLite</text>
+  </g>
+  <g transform="translate(1078 766)">
+    <rect class="surface" width="290" height="108" rx="6"/>
+    <text class="ink card-title" x="22" y="38">AES-256-GCM vault</text>
+    <text class="muted card-copy" x="22" y="66">Separate key boundary</text>
+    <text class="mono" x="22" y="89" font-size="12">model tools are opt-in</text>
+  </g>
+
+  <line x1="72" y1="910" x2="1368" y2="910" stroke="#d8d6cf" stroke-width="1"/>
+  <text class="mono" x="72" y="936" font-size="13">LOCAL-FIRST</text>
+  <text class="mono" x="314" y="936" font-size="13">NO CORE LLM CALLS</text>
+  <text class="mono" x="646" y="936" font-size="13">ONE WRITER</text>
+  <text class="mono" x="916" y="936" font-size="13">INDEXES CAN BE REBUILT</text>
+</svg>
