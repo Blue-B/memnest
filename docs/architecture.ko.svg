@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="960" viewBox="0 0 1440 960" role="img" aria-labelledby="title desc">
+  <title id="title">Memnest 로컬 우선 메모리 아키텍처</title>
+  <desc id="desc">네 종류의 클라이언트가 공통 진입 경로와 워크스페이스 범위 Rust 코어를 거쳐 로컬 SQLite, 재생성 가능한 검색 색인, 분리된 암호화 금고를 사용하는 구조입니다.</desc>
+  <defs>
+    <style>
+      .canvas { fill: #f7f6f2; }
+      .surface { fill: #ffffff; stroke: #d8d6cf; stroke-width: 1.5; }
+      .core { fill: #ffffff; stroke: #0d5c57; stroke-width: 2; }
+      .soft { fill: #e9f1ee; }
+      .soft-blue { fill: #eaf1f5; }
+      .ink { fill: #1b1d1f; font-family: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", sans-serif; }
+      .muted { fill: #686b70; font-family: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", sans-serif; }
+      .accent { fill: #0d5c57; font-family: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", sans-serif; }
+      .mono { fill: #555960; font-family: "D2Coding", "SFMono-Regular", Consolas, monospace; }
+      .section { font-size: 13px; font-weight: 700; letter-spacing: 1.4px; }
+      .card-title { font-size: 21px; font-weight: 650; }
+      .card-copy { font-size: 15px; }
+      .arrow { fill: none; stroke: #7b7d80; stroke-width: 1.6; marker-end: url(#arrow); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7b7d80"/>
+    </marker>
+  </defs>
+
+  <rect class="canvas" width="1440" height="960"/>
+
+  <text class="accent section" x="72" y="62">MEMNEST / 시스템 구조</text>
+  <text class="ink" x="72" y="116" font-size="46" font-weight="680" letter-spacing="-1.4">로컬 기억을 지키는 하나의 코어</text>
+  <text class="muted" x="72" y="151" font-size="18">pi, Claude Code, Codex가 같은 계약을 사용하고, 원본 데이터는 이 컴퓨터에 남습니다.</text>
+
+  <text class="muted section" x="72" y="192">01 / 클라이언트</text>
+
+  <g transform="translate(72 208)">
+    <rect class="surface" width="297" height="90" rx="6"/>
+    <text class="ink card-title" x="22" y="38">pi</text>
+    <text class="muted card-copy" x="22" y="66">확장과 메모리 툴</text>
+  </g>
+  <g transform="translate(405 208)">
+    <rect class="surface" width="297" height="90" rx="6"/>
+    <text class="ink card-title" x="22" y="38">Claude Code</text>
+    <text class="muted card-copy" x="22" y="66">MCP와 프롬프트 hook</text>
+  </g>
+  <g transform="translate(738 208)">
+    <rect class="surface" width="297" height="90" rx="6"/>
+    <text class="ink card-title" x="22" y="38">Codex</text>
+    <text class="muted card-copy" x="22" y="66">MCP와 대화 기록</text>
+  </g>
+  <g transform="translate(1071 208)">
+    <rect class="surface" width="297" height="90" rx="6"/>
+    <text class="ink card-title" x="22" y="38">기타 클라이언트</text>
+    <text class="muted card-copy" x="22" y="66">HTTP 또는 stdio MCP</text>
+  </g>
+
+  <path class="arrow" d="M720 304 V328"/>
+  <text class="muted section" x="72" y="348">02 / 진입 경로</text>
+
+  <g transform="translate(72 365)">
+    <rect class="surface" width="297" height="100" rx="6"/>
+    <text class="ink card-title" x="22" y="38">메모리 툴 6개</text>
+    <text class="muted card-copy" x="22" y="67">모든 호스트가 같은 계약 사용</text>
+  </g>
+  <g transform="translate(405 365)">
+    <rect class="surface" width="297" height="100" rx="6"/>
+    <text class="ink card-title" x="22" y="38">선택형 금고 툴</text>
+    <text class="muted card-copy" x="22" y="67">명시적으로 켤 때만 노출</text>
+  </g>
+  <g transform="translate(738 365)">
+    <rect class="surface" width="297" height="100" rx="6"/>
+    <text class="ink card-title" x="22" y="38">memnest watch</text>
+    <text class="muted card-copy" x="22" y="67">보이는 대화를 가린 뒤 저장</text>
+  </g>
+  <g transform="translate(1071 365)">
+    <rect class="surface" width="297" height="100" rx="6"/>
+    <text class="ink card-title" x="22" y="38">memnest hook</text>
+    <text class="muted card-copy" x="22" y="67">작은 범위 컨텍스트, 실패 시 미주입</text>
+  </g>
+
+  <path class="arrow" d="M720 472 V496"/>
+  <rect class="core" x="72" y="510" width="1296" height="190" rx="8"/>
+  <text class="accent section" x="96" y="538">03 / MEMNEST RUST 코어</text>
+
+  <g transform="translate(96 554)">
+    <rect class="soft" width="380" height="92" rx="5"/>
+    <text class="ink card-title" x="20" y="35">워크스페이스 범위</text>
+    <text class="muted card-copy" x="20" y="62">cwd → 안정적인 ID, playbook 포함</text>
+  </g>
+  <g transform="translate(530 554)">
+    <rect class="soft" width="380" height="92" rx="5"/>
+    <text class="ink card-title" x="20" y="35">표준 작업</text>
+    <text class="muted card-copy" x="20" y="62">저장, 검색, 수정, 삭제, 피드백</text>
+  </g>
+  <g transform="translate(964 554)">
+    <rect class="soft" width="380" height="92" rx="5"/>
+    <text class="ink card-title" x="20" y="35">범위 검색</text>
+    <text class="muted card-copy" x="20" y="62">BM25 + 벡터, 피드백 순위</text>
+  </g>
+  <path class="arrow" d="M482 600 H518"/>
+  <path class="arrow" d="M916 600 H952"/>
+  <rect class="soft-blue" x="96" y="660" width="1248" height="24" rx="4"/>
+  <text class="muted" x="720" y="677" font-size="13" text-anchor="middle">검색된 텍스트는 명령이 아니라 참고 데이터로만 다룹니다.</text>
+
+  <path class="arrow" d="M720 706 V730"/>
+  <text class="muted section" x="72" y="750">04 / 로컬 저장소</text>
+
+  <g transform="translate(72 766)">
+    <rect class="surface" width="390" height="108" rx="6"/>
+    <text class="ink card-title" x="22" y="38">SQLite 원본 데이터</text>
+    <text class="muted card-copy" x="22" y="66">기억, 계보, 피드백, 색인 큐</text>
+    <text class="mono" x="22" y="89" font-size="12">트랜잭션 저장</text>
+  </g>
+  <g transform="translate(510 766)">
+    <rect class="surface" width="260" height="108" rx="6"/>
+    <text class="ink card-title" x="22" y="38">Tantivy</text>
+    <text class="muted card-copy" x="22" y="66">BM25 텍스트 색인</text>
+    <text class="mono" x="22" y="89" font-size="12">SQLite에서 재생성</text>
+  </g>
+  <g transform="translate(794 766)">
+    <rect class="surface" width="260" height="108" rx="6"/>
+    <text class="ink card-title" x="22" y="38">HNSW</text>
+    <text class="muted card-copy" x="22" y="66">로컬 벡터 색인</text>
+    <text class="mono" x="22" y="89" font-size="12">SQLite에서 재생성</text>
+  </g>
+  <g transform="translate(1078 766)">
+    <rect class="surface" width="290" height="108" rx="6"/>
+    <text class="ink card-title" x="22" y="38">AES-256-GCM 금고</text>
+    <text class="muted card-copy" x="22" y="66">분리된 키 경계</text>
+    <text class="mono" x="22" y="89" font-size="12">모델 툴은 선택형</text>
+  </g>
+
+  <line x1="72" y1="910" x2="1368" y2="910" stroke="#d8d6cf" stroke-width="1"/>
+  <text class="mono" x="72" y="936" font-size="13">로컬 우선</text>
+  <text class="mono" x="314" y="936" font-size="13">코어 LLM 호출 없음</text>
+  <text class="mono" x="646" y="936" font-size="13">단일 writer</text>
+  <text class="mono" x="916" y="936" font-size="13">색인 재생성 가능</text>
+</svg>

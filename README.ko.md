@@ -24,7 +24,7 @@ Rust 코어는 LLM을 호출하지 않습니다. 임베딩은 `intfloat/multilin
 
 ## 아키텍처
 
-![memnest 로컬 우선 아키텍처](docs/architecture.png)
+![memnest 로컬 우선 아키텍처](docs/architecture.ko.svg)
 
 도구 호출, 프롬프트 시점 회상, 대화 캡처는 하나의 Rust 서비스로 들어오되 서로 다른 데이터 경로를 사용합니다. 구조는 세 가지로 이해하면 됩니다. workspace에는 폴더 하나의 기억이, `playbook`에는 모든 workspace가 공유하는 규칙이, 대화 기록에는 검색 가능한 과거 발언이 들어갑니다. SQLite가 원본이고 Tantivy와 HNSW는 다시 만들 수 있는 검색 색인입니다.
 
