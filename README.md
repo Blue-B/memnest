@@ -10,7 +10,7 @@ Your AI coding agent forgets everything when the session ends. Memnest keeps tha
 ![Rust](https://img.shields.io/badge/core-Rust-orange.svg)
 ![Protocol](https://img.shields.io/badge/interface-MCP%20%2B%20HTTP-blue.svg)
 
-![memnest local-first architecture](docs/architecture.svg)
+![memnest local-first architecture](docs/architecture.png)
 
 ## What you get
 
