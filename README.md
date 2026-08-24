@@ -4,29 +4,26 @@
 
 [한국어 README](README.ko.md)
 
-Local memory for AI coding agents. Memnest stores durable memories and searchable conversation text on your machine, then exposes the same small tool contract to pi, Claude Code, Codex, and other MCP clients.
+Your AI coding agent forgets everything when the session ends. Memnest keeps that memory on your machine and hands it back to the next session, through one small tool contract that pi, Claude Code, Codex, and other MCP clients all speak.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 ![Rust](https://img.shields.io/badge/core-Rust-orange.svg)
 ![Protocol](https://img.shields.io/badge/interface-MCP%20%2B%20HTTP-blue.svg)
 
-![memnest operations dashboard](docs/dashboard.png)
-
-## What it does
-
-- Stores manual memories, project decisions, preferences, and corrections.
-- Searches with local BM25 and HNSW vector indexes.
-- Preserves redacted user and assistant conversation text without LLM summarization.
-- Records recall feedback so one useful or harmful result can affect future ranking.
-- Keeps credentials in a separate AES-256-GCM vault.
-
-The Rust core does not call an LLM. Embeddings run locally with `intfloat/multilingual-e5-base`.
-
-## Architecture
-
 ![memnest local-first architecture](docs/architecture.svg)
 
-Tool traffic, prompt-time recall, and transcript capture share one Rust service while keeping separate data paths. The mental model is small: a workspace holds one directory's memories, `playbook` holds rules shared by every workspace, and conversation history is searchable evidence rather than trusted instruction. SQLite is the source of truth. Tantivy and HNSW are derived indexes that the service can rebuild.
+## What you get
+
+| Capability | What it means |
+| --- | --- |
+| Durable memory | Decisions, preferences, and corrections you save on purpose, not a chat log dump. |
+| Conversation history | Redacted user and assistant text, kept verbatim and searchable, with no LLM summarization. |
+| Hybrid search | Local BM25 keyword matching and HNSW vector similarity over both kinds of memory. |
+| Project isolation | One directory's memory stays in its own workspace. `playbook` carries rules shared everywhere. |
+| Recall feedback | Mark a returned result helpful or harmful and future ranking follows that signal. |
+| Secret vault | Credentials live in an AES-256-GCM store, separate from anything searchable. |
+
+One Rust service handles tool calls, prompt-time recall, and transcript capture on separate data paths. SQLite is the source of truth; the Tantivy and HNSW indexes beside it are derived and rebuildable. Nothing here calls an LLM, and embeddings run locally with `intfloat/multilingual-e5-base`.
 
 ## Install
 
@@ -38,14 +35,16 @@ install -m755 target/release/memnest ~/.local/bin/memnest
 memnest --data-dir ~/.memnest
 ```
 
-The service, dashboard, HTTP API, and Streamable HTTP MCP endpoint share one address:
+One address serves the dashboard, the HTTP API, and the Streamable HTTP MCP endpoint:
 
 ```text
-http://127.0.0.1:3111
-http://127.0.0.1:3111/mcp
+http://127.0.0.1:3111        dashboard and HTTP API
+http://127.0.0.1:3111/mcp    MCP endpoint
 ```
 
-Starting the service does not download anything. The embedding model is fetched on the first operation that needs it, which is the first write or the first search, so that call takes longer than the rest. Run `memnest --warmup-embedding` to pay that cost ahead of time. Linux, WSL, Windows service setup, backup, restore, and retention options are in [`docs/operations.md`](docs/operations.md).
+Starting the service downloads nothing. The embedding model arrives on the first operation that needs it, meaning the first write or the first search runs slower than the rest. Run `memnest --warmup-embedding` to pay that cost up front.
+
+Service setup for Linux, WSL, and Windows, plus backup, restore, and retention, is in [`docs/operations.md`](docs/operations.md).
 
 ## Connect an agent
 
@@ -112,13 +111,17 @@ secret_delete
 
 Search is workspace-scoped. A client passes an absolute `cwd`, an explicit `project`, or `project=all` for a deliberate cross-project search. Every search returns a `recall_id`; feedback with both `recall_id` and `memory_id` changes only that returned memory. Delete moves a memory to trash instead of erasing it immediately.
 
-### Workspace identity and legacy projects
+### How a workspace is identified
 
-An inferred workspace ID is a stable hash of the normalized absolute working directory. The path itself is not exposed as the public collection name, and `/work/client-a/api` cannot mix with `/personal/api`. Inferred searches include that workspace and `playbook`.
+An inferred workspace ID is a stable hash of the normalized absolute working directory, so the path never becomes the public collection name and `/work/client-a/api` cannot mix with `/personal/api`. An inferred search covers that workspace plus `playbook`.
 
-Existing basename collections remain readable as a legacy alias while only one registered workspace owns that basename. If a second `api` workspace appears, the ambiguous `api` alias is disabled for both instead of guessing where old rows belong. Pass an explicit `project` when you intentionally use a named legacy collection.
+Collections named after a directory basename stay readable as a legacy alias, but only while a single registered workspace owns that name. The moment a second `api` workspace appears, the ambiguous alias is disabled for both rather than guessing where the old rows belong. Pass an explicit `project` when you mean a named legacy collection.
 
-A memory saved with `supersedes=<id>` must replace an active memory in the same scope. Both changes happen in one SQLite transaction, and the old row moves to the hidden `_superseded` collection. Structured facts, rules, provenance, and corrections bypass semantic content deduplication so metadata is not discarded. `confidence` and `verified_at` remain client assertions and do not receive an automatic ranking bonus.
+### Replacing a memory
+
+Saving with `supersedes=<id>` must replace an active memory in the same scope. Both changes land in one SQLite transaction and the old row moves to the hidden `_superseded` collection.
+
+Structured facts, rules, provenance, and corrections skip semantic content deduplication so their metadata survives. The `confidence` and `verified_at` fields stay client assertions and earn no automatic ranking bonus.
 
 ## Automatic context and conversation capture
 
@@ -166,7 +169,9 @@ archive/        plaintext JSONL of hard-deleted memories
 watch-state.json
 ```
 
-The dashboard at `http://127.0.0.1:3111` shows stored memories, searches, latency, processing failures, and recall feedback.
+The dashboard at `http://127.0.0.1:3111` shows stored memories, searches, latency, processing failures, and recall feedback on one screen.
+
+![memnest operations dashboard](docs/dashboard.png)
 
 ## Security
 

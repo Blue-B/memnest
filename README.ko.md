@@ -4,29 +4,26 @@
 
 [English README](README.md)
 
-AI 코딩 에이전트를 위한 로컬 메모리입니다. 프로젝트 기억과 검색 가능한 대화 원문을 내 컴퓨터에 저장하고, pi, Claude Code, Codex, MCP 클라이언트에 같은 툴 계약을 제공합니다.
+AI 코딩 에이전트는 세션이 끝나면 전부 잊습니다. memnest는 그 기억을 내 컴퓨터에 남겨 다음 세션에 돌려주고, pi와 Claude Code, Codex, 다른 MCP 클라이언트가 모두 같은 툴 계약으로 꺼내 쓰게 합니다.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 ![Rust](https://img.shields.io/badge/core-Rust-orange.svg)
 ![Protocol](https://img.shields.io/badge/interface-MCP%20%2B%20HTTP-blue.svg)
 
-![memnest 운영 대시보드](docs/dashboard.ko.png)
-
-## 하는 일
-
-- 직접 저장한 기억, 프로젝트 결정, 선호, 교정 내용을 보관합니다.
-- 로컬 BM25와 HNSW 벡터 색인으로 검색합니다.
-- 사용자와 어시스턴트의 대화 원문을 LLM 요약 없이 검색 가능하게 저장합니다.
-- 어떤 검색 결과가 도움이 됐는지 기록해 다음 검색 순위에 반영합니다.
-- 자격증명은 AES-256-GCM으로 암호화하는 별도 금고에 보관합니다.
-
-Rust 코어는 LLM을 호출하지 않습니다. 임베딩은 `intfloat/multilingual-e5-base` 모델로 로컬에서 처리합니다.
-
-## 아키텍처
-
 ![memnest 로컬 우선 아키텍처](docs/architecture.ko.svg)
 
-도구 호출, 프롬프트 시점 회상, 대화 캡처는 하나의 Rust 서비스로 들어오되 서로 다른 데이터 경로를 사용합니다. 구조는 세 가지로 이해하면 됩니다. workspace에는 폴더 하나의 기억이, `playbook`에는 모든 workspace가 공유하는 규칙이, 대화 기록에는 검색 가능한 과거 발언이 들어갑니다. SQLite가 원본이고 Tantivy와 HNSW는 다시 만들 수 있는 검색 색인입니다.
+## 무엇을 해주나
+
+| 기능 | 설명 |
+| --- | --- |
+| 기억 보관 | 결정, 선호, 교정처럼 의도해서 남긴 내용을 저장합니다. 대화 로그를 통째로 붓지 않습니다. |
+| 대화 기록 | 사용자와 어시스턴트의 발언을 자격증명만 가린 원문 그대로, LLM 요약 없이 검색 가능하게 둡니다. |
+| 하이브리드 검색 | 두 종류 모두를 로컬 BM25 단어 검색과 HNSW 벡터 유사도로 함께 찾습니다. |
+| 프로젝트 분리 | 폴더 하나의 기억은 그 workspace 안에 머물고, `playbook`이 전역 공유 규칙을 맡습니다. |
+| 회상 피드백 | 나온 결과에 도움됨이나 해로움을 표시하면 다음 순위가 그 신호를 따릅니다. |
+| 비밀 금고 | 자격증명은 AES-256-GCM 저장소에 두어 검색 대상과 분리합니다. |
+
+도구 호출과 프롬프트 시점 회상, 대화 캡처는 하나의 Rust 서비스가 서로 다른 데이터 경로로 처리합니다. 원본은 SQLite이고 옆에 있는 Tantivy, HNSW 색인은 지워도 다시 만들 수 있습니다. 어느 단계에서도 LLM을 호출하지 않으며 임베딩은 `intfloat/multilingual-e5-base`로 로컬에서 돌아갑니다.
 
 ## 설치
 
@@ -38,14 +35,16 @@ install -m755 target/release/memnest ~/.local/bin/memnest
 memnest --data-dir ~/.memnest
 ```
 
-서비스, 대시보드, HTTP API, Streamable HTTP MCP가 같은 주소를 사용합니다.
+대시보드와 HTTP API, Streamable HTTP MCP 엔드포인트가 주소 하나를 공유합니다.
 
 ```text
-http://127.0.0.1:3111
-http://127.0.0.1:3111/mcp
+http://127.0.0.1:3111        대시보드와 HTTP API
+http://127.0.0.1:3111/mcp    MCP 엔드포인트
 ```
 
-서비스를 켜는 것만으로는 아무것도 내려받지 않습니다. 임베딩 모델은 처음 저장하거나 처음 검색할 때, 즉 임베딩이 실제로 필요한 첫 요청에서 내려받습니다. 그래서 그 요청만 유독 오래 걸립니다. `memnest --warmup-embedding`으로 미리 받아 둘 수 있습니다. Linux, WSL, Windows 서비스 설정과 백업, 복구, 보존 정책은 [`docs/operations.md`](docs/operations.md)에 있습니다.
+서비스를 켜는 것만으로는 아무것도 내려받지 않습니다. 임베딩 모델은 실제로 필요한 첫 요청, 그러니까 처음 저장하거나 처음 검색할 때 내려받아서 그 요청만 유독 오래 걸립니다. `memnest --warmup-embedding`으로 미리 받아 둘 수 있습니다.
+
+Linux, WSL, Windows 서비스 설정과 백업, 복구, 보존 정책은 [`docs/operations.md`](docs/operations.md)에 있습니다.
 
 ## 에이전트 연결
 
@@ -112,13 +111,17 @@ secret_delete
 
 검색은 workspace 범위로 동작합니다. 클라이언트는 절대 경로인 `cwd`, 명시적인 `project`, 또는 의도적인 전체 검색인 `project=all`을 보냅니다. 모든 검색은 `recall_id`를 반환합니다. `recall_id`와 `memory_id`를 함께 보낸 피드백은 그 검색 결과 하나에만 반영됩니다. 삭제한 기억은 바로 지우지 않고 휴지통으로 이동합니다.
 
-### Workspace 식별과 기존 프로젝트
+### workspace를 식별하는 방식
 
-자동으로 만든 workspace ID는 정규화한 작업 디렉터리 절대 경로의 안정적인 해시입니다. 경로 원문은 공개 collection 이름에 나타나지 않습니다. `/work/client-a/api`와 `/personal/api`는 서로 다른 workspace이며, 자동 검색은 현재 workspace와 `playbook`만 읽습니다.
+자동으로 만든 workspace ID는 정규화한 작업 디렉터리 절대 경로의 안정적인 해시라서 경로 원문이 공개 collection 이름으로 드러나지 않습니다. `/work/client-a/api`와 `/personal/api`는 서로 다른 workspace이며, 자동 검색은 현재 workspace와 `playbook`만 읽습니다.
 
-기존 basename collection은 그 이름을 쓰는 등록 workspace가 하나일 때만 호환 별칭으로 읽습니다. 두 번째 `api` workspace가 나타나면 기존 행의 소유자를 추측하지 않고 두 workspace 모두에서 모호한 `api` 별칭을 끕니다. 이름을 직접 관리하는 기존 collection을 쓸 때는 `project`를 명시하면 됩니다.
+폴더 이름을 따른 기존 collection은 그 이름을 쓰는 등록 workspace가 하나일 때만 호환 별칭으로 읽습니다. 두 번째 `api` workspace가 나타나는 순간, 기존 행의 소유자를 추측하는 대신 두 쪽 모두에서 모호한 별칭을 끕니다. 이름을 직접 관리하는 기존 collection을 쓸 때는 `project`를 명시하면 됩니다.
 
-`supersedes=<id>`로 저장한 기억은 같은 범위의 활성 기억만 교체할 수 있습니다. 새 기억 저장과 기존 행의 `_superseded` 이동은 SQLite 트랜잭션 하나에서 처리합니다. 구조화한 fact, rule, 출처, 교정은 메타데이터가 사라지지 않도록 semantic content dedup 대상에서 제외합니다. `confidence`와 `verified_at`은 클라이언트가 보낸 주장으로 남으며 검색 순위를 자동으로 높이지 않습니다.
+### 기억을 교체할 때
+
+`supersedes=<id>`로 저장한 기억은 같은 범위의 활성 기억만 교체할 수 있습니다. 새 기억 저장과 기존 행의 `_superseded` 이동은 SQLite 트랜잭션 하나에서 처리합니다.
+
+구조화한 fact, rule, 출처, 교정은 메타데이터가 사라지지 않도록 semantic content dedup 대상에서 제외합니다. `confidence`와 `verified_at`은 클라이언트가 보낸 주장으로 남으며 검색 순위를 자동으로 높이지 않습니다.
 
 ## 자동 컨텍스트와 대화 저장
 
@@ -166,7 +169,9 @@ archive/        완전 삭제된 기억의 평문 JSONL
 watch-state.json
 ```
 
-`http://127.0.0.1:3111` 대시보드에서 저장된 기억, 검색 기록, 지연, 처리 실패, 회상 피드백을 확인할 수 있습니다.
+`http://127.0.0.1:3111` 대시보드에서 저장된 기억, 검색 기록, 지연, 처리 실패, 회상 피드백을 한 화면에서 확인할 수 있습니다.
+
+![memnest 운영 대시보드](docs/dashboard.ko.png)
 
 ## 보안
 
