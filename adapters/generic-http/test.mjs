@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 process.env.MEMNEST_TOKEN = "  adapter-token  ";
-const { eventToRequest, sendEvent } = await import("./memnest-adapter.mjs?test");
+const { eventToRequest, sendEvent } = await import(
+	"./memnest-adapter.mjs?test"
+);
 
 const add = eventToRequest({
 	type: "remember",
@@ -24,7 +26,11 @@ const search = eventToRequest({
 });
 assert.equal(search.path, "/search");
 assert.equal(search.body.adapter, "test-host");
-const cwdSearch = eventToRequest({ type: "search", query: "deploy", cwd: "/work/demo" });
+const cwdSearch = eventToRequest({
+	type: "search",
+	query: "deploy",
+	cwd: "/work/demo",
+});
 assert.equal(cwdSearch.body.project, "");
 assert.equal(cwdSearch.body.cwd, "/work/demo");
 

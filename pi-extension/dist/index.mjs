@@ -181,7 +181,8 @@ async function searchMemnest(query, cwd) {
     });
     if (!res.ok) return [];
     const json = await res.json();
-    if (typeof json.project !== "string" || !Array.isArray(json.results)) return [];
+    if (typeof json.project !== "string" || !Array.isArray(json.results))
+      return [];
     return json.results.filter(isMemResult).filter(
       (result2) => !result2.project || result2.project === json.project || result2.project === "playbook"
     );

@@ -11,7 +11,11 @@ import { stringifyFrontmatter, parseFrontmatter } from "./yaml.mjs";
 
 const SAFE_NAME = /[^a-zA-Z0-9._-]/g;
 function safeName(s) {
-  return String(s ?? "unknown").replace(SAFE_NAME, "_").slice(0, 80) || "unknown";
+  return (
+    String(s ?? "unknown")
+      .replace(SAFE_NAME, "_")
+      .slice(0, 80) || "unknown"
+  );
 }
 
 function chunkRelPath(chunk) {
@@ -21,7 +25,10 @@ function chunkRelPath(chunk) {
 }
 function factRelPath(fact) {
   // facts table has no project; subject can be huge — hash for filename
-  const h = createHash("sha256").update(fact.id || fact.subject).digest("hex").slice(0, 16);
+  const h = createHash("sha256")
+    .update(fact.id || fact.subject)
+    .digest("hex")
+    .slice(0, 16);
   return `facts/${h}.md`;
 }
 function noteRelPath(note) {
@@ -38,7 +45,9 @@ function sessionRelPath(sess) {
 
 function chunkToMd(chunk) {
   let metadata = {};
-  try { metadata = JSON.parse(chunk.metadata || "{}"); } catch {}
+  try {
+    metadata = JSON.parse(chunk.metadata || "{}");
+  } catch {}
   // Strip noisy raw_chunk and large keyword arrays from frontmatter; keep
   // them out of git history. They remain in the DB.
   const { raw_chunk: _r, keywords: _k, ...meta } = metadata;
@@ -93,13 +102,17 @@ export function isEncryptedSecret(value) {
 function assertSecretsEncrypted(rows) {
   // Keys only — a value that failed validation may be plaintext and must
   // never reach a log line, an error message or a file.
-  const bad = rows.filter((s) => !isEncryptedSecret(s.value)).map((s) => String(s.key));
+  const bad = rows
+    .filter((s) => !isEncryptedSecret(s.value))
+    .map((s) => String(s.key));
   if (!bad.length) return;
-  const shown = bad.slice(0, 5).join(", ") + (bad.length > 5 ? `, +${bad.length - 5} more` : "");
+  const shown =
+    bad.slice(0, 5).join(", ") +
+    (bad.length > 5 ? `, +${bad.length - 5} more` : "");
   throw new Error(
     `refusing to export: ${bad.length} secret row(s) are not AES-256-GCM ciphertext (keys: ${shown}). ` +
-    "Exporting them could commit plaintext. Re-set them through the memnest API so they are encrypted, " +
-    "or drop --include-secrets.",
+      "Exporting them could commit plaintext. Re-set them through the memnest API so they are encrypted, " +
+      "or drop --include-secrets.",
   );
 }
 
@@ -138,12 +151,25 @@ async function writeIfChanged(path, content) {
   return true;
 }
 
-export async function exportAll({ dbPath, repoDir, since = null, projects = null, includeSensitive = false, includeSecrets = false }) {
+export async function exportAll({
+  dbPath,
+  repoDir,
+  since = null,
+  projects = null,
+  includeSensitive = false,
+  includeSecrets = false,
+}) {
   const db = await openDB(dbPath, { readonly: true });
   const written = { chunks: 0, facts: 0, notes: 0, secrets: 0, sessions: 0 };
   // A null `seen` bucket means "this export did not cover that subtree", so
   // prune must leave it alone.
-  const seen = { chunks: new Set(), facts: new Set(), notes: new Set(), secrets: null, sessions: new Set() };
+  const seen = {
+    chunks: new Set(),
+    facts: new Set(),
+    notes: new Set(),
+    secrets: null,
+    sessions: new Set(),
+  };
 
   try {
     // secrets are opt-in, and every value is validated before anything at
@@ -156,10 +182,14 @@ export async function exportAll({ dbPath, repoDir, since = null, projects = null
     }
 
     // chunks
-    let sql = "SELECT id, project, document, metadata, created_at, updated_at FROM chunks";
+    let sql =
+      "SELECT id, project, document, metadata, created_at, updated_at FROM chunks";
     const where = [];
     const args = [];
-    if (since) { where.push("(updated_at > ? OR created_at > ?)"); args.push(since, since); }
+    if (since) {
+      where.push("(updated_at > ? OR created_at > ?)");
+      args.push(since, since);
+    }
     if (projects && projects.length) {
       where.push(`project IN (${projects.map(() => "?").join(",")})`);
       args.push(...projects);
@@ -167,39 +197,50 @@ export async function exportAll({ dbPath, repoDir, since = null, projects = null
     if (where.length) sql += " WHERE " + where.join(" AND ");
     for (const c of db.all(sql, ...args)) {
       let meta = {};
-      try { meta = JSON.parse(c.metadata || "{}"); } catch {}
+      try {
+        meta = JSON.parse(c.metadata || "{}");
+      } catch {}
       if (!includeSensitive && meta.sensitive) continue;
       const rel = chunkRelPath(c);
       seen.chunks.add(rel);
-      if (await writeIfChanged(join(repoDir, rel), chunkToMd(c))) written.chunks++;
+      if (await writeIfChanged(join(repoDir, rel), chunkToMd(c)))
+        written.chunks++;
     }
 
     // facts
-    for (const f of db.all("SELECT id, subject, predicate, object, timestamp, source_session FROM facts")) {
+    for (const f of db.all(
+      "SELECT id, subject, predicate, object, timestamp, source_session FROM facts",
+    )) {
       const rel = factRelPath(f);
       seen.facts.add(rel);
-      if (await writeIfChanged(join(repoDir, rel), factToMd(f))) written.facts++;
+      if (await writeIfChanged(join(repoDir, rel), factToMd(f)))
+        written.facts++;
     }
 
     // notes
     for (const n of db.all("SELECT key, value, updated FROM notes")) {
       const rel = noteRelPath(n);
       seen.notes.add(rel);
-      if (await writeIfChanged(join(repoDir, rel), noteToMd(n))) written.notes++;
+      if (await writeIfChanged(join(repoDir, rel), noteToMd(n)))
+        written.notes++;
     }
 
     // secrets (validated ciphertext only, and only when opted in)
     for (const s of secrets) {
       const rel = secretRelPath(s);
       seen.secrets.add(rel);
-      if (await writeIfChanged(join(repoDir, rel), secretToMd(s))) written.secrets++;
+      if (await writeIfChanged(join(repoDir, rel), secretToMd(s)))
+        written.secrets++;
     }
 
     // sessions
-    for (const s of db.all("SELECT id, project, session_id, summary, created_at FROM session_summaries")) {
+    for (const s of db.all(
+      "SELECT id, project, session_id, summary, created_at FROM session_summaries",
+    )) {
       const rel = sessionRelPath(s);
       seen.sessions.add(rel);
-      if (await writeIfChanged(join(repoDir, rel), sessionToMd(s))) written.sessions++;
+      if (await writeIfChanged(join(repoDir, rel), sessionToMd(s)))
+        written.sessions++;
     }
   } finally {
     db.close();
@@ -252,22 +293,39 @@ function authHeader() {
 async function httpJSON(url, method, body) {
   const r = await fetch(url, {
     method,
-    headers: { ...(body ? { "content-type": "application/json" } : {}), ...authHeader() },
+    headers: {
+      ...(body ? { "content-type": "application/json" } : {}),
+      ...authHeader(),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await r.text();
-  if (!r.ok) throw new Error(`HTTP ${r.status} ${method} ${url}: ${text.slice(0, 200)}`);
-  try { return JSON.parse(text); } catch { return text; }
+  if (!r.ok)
+    throw new Error(`HTTP ${r.status} ${method} ${url}: ${text.slice(0, 200)}`);
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
-export async function importChangedFiles({ repoDir, baseURL = "http://127.0.0.1:3111", files }) {
+export async function importChangedFiles({
+  repoDir,
+  baseURL = "http://127.0.0.1:3111",
+  files,
+}) {
   // Apply user edits back into memnest. Strategy:
   //   chunks/*: POST /add as a new memory with a provenance marker; the
   //             original chunk is left intact (see below).
   //   notes/*:  counted as pending only. The server exposes no notes write
   //             API, so edited note files are reported and left alone.
   //   secrets/*: refuse — secrets must be set via API, not file edits.
-  const stats = { chunks_applied: 0, chunks_skipped: 0, notes_pending: 0, errors: [] };
+  const stats = {
+    chunks_applied: 0,
+    chunks_skipped: 0,
+    notes_pending: 0,
+    errors: [],
+  };
   for (const f of files) {
     const abs = join(repoDir, f);
     const text = await readFile(abs, "utf8");
@@ -280,8 +338,10 @@ export async function importChangedFiles({ repoDir, baseURL = "http://127.0.0.1:
         // (project, text) pairs, so we append a hidden provenance marker:
         // it makes the post unique even when the body is unchanged, and
         // gives reviewers an audit trail.
-        const project = data.project && !/^(root|default|global)$/.test(data.project)
-          ? data.project : "playbook";
+        const project =
+          data.project && !/^(root|default|global)$/.test(data.project)
+            ? data.project
+            : "playbook";
         const marker = `\n\n<!-- memnest-journal: edited-from=${data.id ?? "unknown"} at=${new Date().toISOString()} -->`;
         await httpJSON(`${baseURL}/add`, "POST", {
           project,
