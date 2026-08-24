@@ -10,7 +10,7 @@ AI 코딩 에이전트는 세션이 끝나면 전부 잊습니다. memnest는 �
 ![Rust](https://img.shields.io/badge/core-Rust-orange.svg)
 ![Protocol](https://img.shields.io/badge/interface-MCP%20%2B%20HTTP-blue.svg)
 
-![memnest 로컬 우선 아키텍처](docs/architecture.ko.svg)
+![memnest 로컬 우선 아키텍처](docs/architecture.ko.png)
 
 ## 무엇을 해주나
 
