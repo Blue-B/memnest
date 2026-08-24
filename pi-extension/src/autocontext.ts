@@ -223,7 +223,8 @@ async function searchMemnest(
 		});
 		if (!res.ok) return [];
 		const json = (await res.json()) as { project?: unknown; results?: unknown };
-		if (typeof json.project !== "string" || !Array.isArray(json.results)) return [];
+		if (typeof json.project !== "string" || !Array.isArray(json.results))
+			return [];
 		return json.results
 			.filter(isMemResult)
 			.filter(
@@ -253,11 +254,15 @@ function formatBlock(
 	if (kept.length === 0) return null;
 
 	const escape = (value: string) =>
-		value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+		value
+			.replaceAll("&", "&amp;")
+			.replaceAll("<", "&lt;")
+			.replaceAll(">", "&gt;");
 	const lines = kept.map((r, i) => {
 		const proj = r.project ? `[${escape(r.project)}]` : "";
 		const score = typeof r.score === "number" ? ` (${r.score.toFixed(2)})` : "";
-		const kind = r.chunk_type === "AutoLog" ? "conversation evidence" : "durable memory";
+		const kind =
+			r.chunk_type === "AutoLog" ? "conversation evidence" : "durable memory";
 		let doc = (r.document || "").replace(/\s+/g, " ").trim();
 		if (doc.length > DOC_CHARS) doc = `${doc.slice(0, DOC_CHARS)}…`;
 		return `${i + 1}. ${kind} ${proj}${score} ${escape(doc)}`;

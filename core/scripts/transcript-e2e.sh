@@ -27,7 +27,8 @@ with open(path, "w", encoding="utf-8") as handle:
         handle.write(json.dumps(row) + "\n")
 PY
 
-port=$(python3 - <<'PY'
+port=$(
+  python3 - <<'PY'
 import socket
 sock = socket.socket()
 sock.bind(("127.0.0.1", 0))

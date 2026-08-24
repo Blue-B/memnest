@@ -26,7 +26,11 @@ function rejectPending(error) {
 child.on("error", rejectPending);
 child.on("exit", (code, signal) => {
 	if (pending.size)
-		rejectPending(new Error(`MCP exited before responding (code=${code}, signal=${signal})\n${stderr.join("").slice(-2000)}`));
+		rejectPending(
+			new Error(
+				`MCP exited before responding (code=${code}, signal=${signal})\n${stderr.join("").slice(-2000)}`,
+			),
+		);
 });
 child.stdout.on("data", (chunk) => {
 	buffer += chunk.toString();
@@ -110,12 +114,14 @@ try {
 		name: "memory_search",
 		arguments: { query: "must fail closed" },
 	});
-	if (!omittedScope.result?.isError) throw new Error("unscoped search was accepted");
+	if (!omittedScope.result?.isError)
+		throw new Error("unscoped search was accepted");
 	const alias = await request("tools/call", {
 		name: "memory_add",
 		arguments: { text: "hidden alias" },
 	});
-	if (!alias.result?.isError) throw new Error("memory_add alias remains callable");
+	if (!alias.result?.isError)
+		throw new Error("memory_add alias remains callable");
 	const searched = await request("tools/call", {
 		name: "memory_search",
 		arguments: {
@@ -127,30 +133,43 @@ try {
 	const searchText = searched.result?.content?.[0]?.text ?? "";
 	if (!searchText.includes("canonical contract e2e probe"))
 		throw new Error("search did not find remembered memory");
-	if (searchText.includes("one-line stubs")) throw new Error("search returned hidden extra candidates");
+	if (searchText.includes("one-line stubs"))
+		throw new Error("search returned hidden extra candidates");
 	const recallId = searchText.match(/recall_id=(recall_[^\n]+)/)?.[1];
 	const mismatch = await request("tools/call", {
 		name: "memory_feedback",
-		arguments: { recall_id: recallId, memory_id: "not-returned", outcome: "helpful" },
+		arguments: {
+			recall_id: recallId,
+			memory_id: "not-returned",
+			outcome: "helpful",
+		},
 	});
-	if (!mismatch.result?.isError) throw new Error("feedback mismatch was accepted");
+	if (!mismatch.result?.isError)
+		throw new Error("feedback mismatch was accepted");
 	const feedback = await request("tools/call", {
 		name: "memory_feedback",
 		arguments: { recall_id: recallId, memory_id: memoryId, outcome: "helpful" },
 	});
-	if (feedback.result?.isError) throw new Error(feedback.result.content?.[0]?.text);
+	if (feedback.result?.isError)
+		throw new Error(feedback.result.content?.[0]?.text);
 	const missingSecret = await request("tools/call", {
 		name: "secret_get",
 		arguments: { key: "missing-e2e-secret" },
 	});
-	if (!missingSecret.result?.isError) throw new Error("missing secret did not fail");
+	if (!missingSecret.result?.isError)
+		throw new Error("missing secret did not fail");
 	const deleted = await request("tools/call", {
 		name: "memory_delete",
 		arguments: { id: memoryId },
 	});
-	if (deleted.result?.isError || !deleted.result.content[0].text.includes(memoryId))
+	if (
+		deleted.result?.isError ||
+		!deleted.result.content[0].text.includes(memoryId)
+	)
 		throw new Error("delete failed");
-	console.log("MCP E2E: exact tools, scoped search, feedback, secret error, and delete passed");
+	console.log(
+		"MCP E2E: exact tools, scoped search, feedback, secret error, and delete passed",
+	);
 } finally {
 	await stopChild();
 	rmSync(data, { recursive: true, force: true });
