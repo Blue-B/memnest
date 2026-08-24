@@ -192,6 +192,11 @@ pub struct SearchInput {
 #[derive(Serialize)]
 pub struct SearchOutput {
     pub results: Vec<api::SearchResultItem>,
+    /// Primary project the scope resolved to (from `project`, or from `cwd`
+    /// when the caller did not name one). Clients scope retrieved rows against
+    /// this; dropping it silently broke pi autocontext, which treats a missing
+    /// value as a failed search.
+    pub project: String,
     pub total: usize,
     pub elapsed_ms: u128,
     pub recall_id: String,
@@ -267,6 +272,7 @@ pub async fn search(
     Ok(SearchOutput {
         total: items.len(),
         results: items,
+        project,
         elapsed_ms,
         recall_id: event.id,
     })

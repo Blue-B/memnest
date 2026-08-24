@@ -6,6 +6,10 @@ All notable changes to `memnest`, the Rust engine.
 
 ### Fixed
 
+- Restored the resolved `project` on the `/search` response. Canonicalizing the
+  memory tool contract dropped it, and clients that scope retrieved rows against
+  it (pi Autocontext) treated every search as a failure and silently returned
+  nothing.
 - Added stable path-derived workspace IDs, fail-closed legacy aliases, and project filtering during lexical and vector candidate generation, preventing same-basename scope leaks and scoped-result starvation.
 - Made SQLite authoritative through a transactional index queue, uncapped startup rebuilds, corrupt-sidecar detection, atomic HNSW/Tantivy replacement, and an exclusive writer lock.
 - Added untrusted-reference labeling and markup escaping for automatic context, atomic `supersedes` semantics, and correction-safe content deduplication. New writes cannot populate the legacy `raw_chunk` field.
