@@ -109,6 +109,7 @@ Common controls:
 | `MEMNEST_AUTOCONTEXT_MIN_SCORE` | `0.25` | Minimum score for the general lane. |
 | `MEMNEST_AUTOCONTEXT_RISK_MIN_SCORE` | `0.25` | Minimum score for a risk-triggered card. |
 | `MEMNEST_AUTOCONTEXT_EXCLUDE` | `_superseded,default,root,global` | Collections excluded from automatic retrieval. |
+| `MEMNEST_AUTOCONTEXT_GENERAL` | unset | Set to `1` to add the general lane without leaving `balanced` mode. |
 
 ## Automatic conversation capture
 
