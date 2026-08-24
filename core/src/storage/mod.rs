@@ -206,21 +206,15 @@ impl Database {
                 result_ids TEXT NOT NULL DEFAULT '[]',
                 duration_ms INTEGER NOT NULL DEFAULT 0,
                 adapter TEXT NOT NULL DEFAULT 'http',
-                outcome TEXT NOT NULL DEFAULT 'pending'
-                    CHECK (outcome IN ('pending','helpful','harmful','ignored')),
-                feedback_note TEXT,
                 created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_recall_events_created
                 ON recall_events(created_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_recall_events_outcome
-                ON recall_events(outcome, created_at DESC);
-            CREATE TABLE IF NOT EXISTS recall_result_feedback (
-                recall_id TEXT NOT NULL,
-                memory_id TEXT NOT NULL,
-                outcome TEXT NOT NULL CHECK (outcome IN ('helpful','harmful','ignored')),
-                PRIMARY KEY (recall_id, memory_id)
-            );
+            -- Recall feedback is gone. Older stores still carry the table and
+            -- the outcome index; drop them so a rebuilt store and an upgraded
+            -- one converge on the same schema.
+            DROP INDEX IF EXISTS idx_recall_events_outcome;
+            DROP TABLE IF EXISTS recall_result_feedback;
             "#,
         )?;
         migrate_legacy_schema(&conn)?;
@@ -1357,8 +1351,8 @@ impl Database {
         let conn = self.pool.get()?;
         conn.execute(
             "INSERT INTO recall_events
-             (id, query, project, result_ids, duration_ms, adapter, outcome, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+             (id, query, project, result_ids, duration_ms, adapter, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 event.id,
                 event.query,
@@ -1366,7 +1360,6 @@ impl Database {
                 serde_json::to_string(&event.result_ids)?,
                 event.duration_ms,
                 event.adapter,
-                event.outcome,
                 event.created_at.to_rfc3339(),
             ],
         )?;
@@ -1376,7 +1369,7 @@ impl Database {
     pub fn recent_recall_events(&self, limit: usize) -> Result<Vec<RecallEvent>> {
         let conn = self.pool.get()?;
         let mut stmt = conn.prepare(
-            "SELECT id, query, project, result_ids, duration_ms, adapter, outcome, created_at
+            "SELECT id, query, project, result_ids, duration_ms, adapter, created_at
              FROM recall_events ORDER BY created_at DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit as i64], |row| {
@@ -1388,118 +1381,22 @@ impl Database {
                 result_ids: serde_json::from_str(&ids).unwrap_or_default(),
                 duration_ms: row.get(4)?,
                 adapter: row.get(5)?,
-                outcome: row.get(6)?,
-                created_at: row.get(7)?,
+                created_at: row.get(6)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    pub fn set_recall_feedback(
-        &self,
-        id: &str,
-        memory_id: Option<&str>,
-        outcome: &str,
-        note: Option<&str>,
-    ) -> Result<Option<Vec<String>>> {
-        let mut conn = self.pool.get()?;
-        let tx = conn.transaction()?;
-        let event: Option<String> = tx
-            .query_row(
-                "SELECT result_ids FROM recall_events WHERE id = ?1",
-                params![id],
-                |row| row.get(0),
-            )
-            .optional()?;
-        let Some(ids_json) = event else {
-            return Ok(None);
-        };
-        let result_ids: Vec<String> = serde_json::from_str(&ids_json).unwrap_or_default();
-        let ids: Vec<String> = match memory_id {
-            Some(memory_id) if result_ids.iter().any(|id| id == memory_id) => {
-                vec![memory_id.to_string()]
-            }
-            Some(memory_id) => {
-                return Err(anyhow::anyhow!(
-                    "memory {memory_id} was not returned by recall {id}"
-                ));
-            }
-            None => Vec::new(),
-        };
-        for memory_id in &ids {
-            let previous_outcome: Option<String> = tx
-                .query_row(
-                    "SELECT outcome FROM recall_result_feedback WHERE recall_id = ?1 AND memory_id = ?2",
-                    params![id, memory_id],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            if previous_outcome.as_deref() == Some(outcome) {
-                continue;
-            }
-            let canonical_id: String = tx
-                .query_row(
-                    "SELECT canonical_id FROM memory_aliases WHERE alias_id = ?1",
-                    params![memory_id],
-                    |row| row.get(0),
-                )
-                .optional()?
-                .unwrap_or_else(|| memory_id.clone());
-            let metadata_json: Option<String> = tx
-                .query_row(
-                    "SELECT metadata FROM chunks WHERE id = ?1",
-                    params![canonical_id],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            let Some(metadata_json) = metadata_json else {
-                continue;
-            };
-            let mut metadata: Metadata = serde_json::from_str(&metadata_json)?;
-            match previous_outcome.as_deref() {
-                Some("helpful") => metadata.helpful_count = (metadata.helpful_count - 1).max(0),
-                Some("harmful") => metadata.harmful_count = (metadata.harmful_count - 1).max(0),
-                _ => {}
-            }
-            match outcome {
-                "helpful" => metadata.helpful_count += 1,
-                "harmful" => metadata.harmful_count += 1,
-                _ => {}
-            }
-            tx.execute(
-                "UPDATE chunks SET metadata = ?2, updated_at = ?3 WHERE id = ?1",
-                params![
-                    canonical_id,
-                    serde_json::to_string(&metadata)?,
-                    Utc::now().to_rfc3339()
-                ],
-            )?;
-            tx.execute(
-                    "INSERT INTO recall_result_feedback (recall_id, memory_id, outcome) VALUES (?1, ?2, ?3)
-                     ON CONFLICT(recall_id, memory_id) DO UPDATE SET outcome = excluded.outcome",
-                    params![id, memory_id, outcome],
-                )?;
-        }
-        tx.execute(
-            "UPDATE recall_events SET outcome = ?2, feedback_note = ?3 WHERE id = ?1",
-            params![id, outcome, note],
-        )?;
-        tx.commit()?;
-        Ok(Some(ids))
-    }
-
     pub fn operations_summary(&self) -> Result<OperationsSummary> {
         let conn = self.pool.get()?;
-        let (recalls, helpful, harmful, average): (i64, i64, i64, f64) = conn.query_row(
+        let (recalls, average): (i64, f64) = conn.query_row(
             "SELECT
                COUNT(*),
-               COALESCE(SUM(CASE WHEN outcome = 'helpful' THEN 1 ELSE 0 END), 0),
-               COALESCE(SUM(CASE WHEN outcome = 'harmful' THEN 1 ELSE 0 END), 0),
                COALESCE(AVG(duration_ms), 0)
              FROM recall_events
              WHERE datetime(created_at) >= datetime('now', '-24 hours')",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
         let count_state = |state: &str| -> Result<usize> {
             Ok(conn.query_row(
@@ -1510,8 +1407,6 @@ impl Database {
         };
         Ok(OperationsSummary {
             recalls_24h: recalls as usize,
-            helpful_24h: helpful as usize,
-            harmful_24h: harmful as usize,
             queued_jobs: count_state("queued")?,
             running_jobs: count_state("running")?,
             failed_jobs: count_state("failed")?,
@@ -2013,7 +1908,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn operational_events_and_feedback_round_trip() {
+    async fn operational_events_and_jobs_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let db = Database::new(dir.path()).await.unwrap();
         let chunk = sample_chunk("proj", "useful memory", Importance::Knowledge);
@@ -2027,7 +1922,6 @@ mod tests {
             result_ids: vec![chunk_id.clone()],
             duration_ms: 12,
             adapter: "test".to_string(),
-            outcome: "pending".to_string(),
             created_at: now,
         })
         .unwrap();
@@ -2044,86 +1938,15 @@ mod tests {
         })
         .unwrap();
 
-        let aggregate = db
-            .set_recall_feedback("recall-test", None, "helpful", Some("aggregate only"))
-            .unwrap()
-            .unwrap();
-        assert!(aggregate.is_empty());
-        assert_eq!(
-            db.get_chunk(&chunk_id)
-                .unwrap()
-                .unwrap()
-                .metadata
-                .helpful_count,
-            0,
-            "aggregate feedback must not change result ranking"
-        );
-
-        let ids = db
-            .set_recall_feedback("recall-test", Some(&chunk_id), "helpful", Some("worked"))
-            .unwrap()
-            .unwrap();
-        assert_eq!(ids, vec![chunk_id.clone()]);
-        db.set_recall_feedback("recall-test", Some(&chunk_id), "helpful", Some("retry"))
-            .unwrap();
-        assert_eq!(
-            db.get_chunk(&chunk_id)
-                .unwrap()
-                .unwrap()
-                .metadata
-                .helpful_count,
-            1,
-            "same feedback must be idempotent"
-        );
-        db.set_recall_feedback("recall-test", Some(&chunk_id), "harmful", None)
-            .unwrap();
-
         let recalls = db.recent_recall_events(10).unwrap();
         let jobs = db.recent_processing_jobs(10).unwrap();
         let summary = db.operations_summary().unwrap();
-        assert_eq!(recalls[0].outcome, "harmful");
+        assert_eq!(recalls[0].id, "recall-test");
+        assert_eq!(recalls[0].result_ids, vec![chunk_id.clone()]);
+        assert_eq!(recalls[0].adapter, "test");
         assert_eq!(jobs[0].state, "succeeded");
         assert_eq!(summary.recalls_24h, 1);
-        assert_eq!(summary.helpful_24h, 0);
-        assert_eq!(summary.harmful_24h, 1);
-        assert_eq!(
-            db.get_chunk(&chunk_id)
-                .unwrap()
-                .unwrap()
-                .metadata
-                .helpful_count,
-            0
-        );
-        assert_eq!(
-            db.get_chunk(&chunk_id)
-                .unwrap()
-                .unwrap()
-                .metadata
-                .harmful_count,
-            1
-        );
-
-        db.insert_recall_event(&RecallEvent {
-            id: "empty-recall".to_string(),
-            query: "no result".to_string(),
-            project: "proj".to_string(),
-            result_ids: Vec::new(),
-            duration_ms: 2,
-            adapter: "test".to_string(),
-            outcome: "pending".to_string(),
-            created_at: now,
-        })
-        .unwrap();
-        assert_eq!(
-            db.set_recall_feedback("empty-recall", None, "ignored", None)
-                .unwrap(),
-            Some(Vec::new())
-        );
-        assert!(
-            db.set_recall_feedback("missing", None, "ignored", None)
-                .unwrap()
-                .is_none()
-        );
+        assert_eq!(summary.average_recall_ms_24h, 12.0);
     }
 
     #[tokio::test]

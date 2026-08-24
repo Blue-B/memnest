@@ -89,7 +89,7 @@ Real prune and lifecycle operations append records to `<data-dir>/audit.log`. `/
 
 ## Monitoring
 
-`/operations` returns recent recall events and processing jobs as JSON: query scope, result count, latency, adapter, outcome, and job state. The dashboard at `http://localhost:3111/` shows the same data with feedback controls.
+`/operations` returns recent recall events and processing jobs as JSON: query scope, result count, latency, adapter, and job state.
 
 Operational history is capped at 90 days and holds redacted queries and status metadata, never memory bodies or secret values.
 
@@ -122,9 +122,8 @@ New vault rows use `$enc2$` ciphertext whose AES-GCM associated data includes th
 ## CLI reference
 
 ```bash
-memnest status                                   # service state and dashboard URL
-memnest dashboard                                # canonical clickable dashboard URL
-memnest --data-dir ~/.memnest                    # HTTP API, dashboard, and MCP over POST /mcp
+memnest status                                   # service state and endpoint URL
+memnest --data-dir ~/.memnest                    # HTTP API and MCP over POST /mcp
 memnest --mcp --data-dir ~/.memnest              # stdio MCP server
 memnest hook                                     # answer a host prompt hook with a context pack
 memnest watch                                    # follow session transcripts and store new turns
@@ -137,7 +136,7 @@ Common options: `--host`, `--port`, `--data-dir`, `--backup-dir`, `--restore-dir
 
 `hook` reads a host's hook payload on stdin and writes the reply on stdout, choosing the shape from the payload unless `--format` pins it. It never blocks a prompt: an unreachable service means no output and exit 0. `watch` is the single automatic capture path for Claude Code, pi, and Codex transcripts. It keeps a byte offset per file in `<data-dir>/watch-state.json`, follows new files from the end unless `--backfill` asks for existing history, and advances only after storage succeeds or an idempotent retry is confirmed. Both talk to the service over HTTP and take `--url`, falling back to `MEMNEST_URL`.
 
-`--viewer-port` is deprecated. The dashboard is served on `--port` alongside the API.
+`--viewer-port` is deprecated. Every endpoint is served on `--port`.
 
 ## Configuration
 

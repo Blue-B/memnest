@@ -260,26 +260,6 @@ export default function register(pi: ExtensionAPI): void {
 			return result(r.text, r.error);
 		},
 	);
-	registerTool(
-		pi,
-		"memory_feedback",
-		"Memory: feedback",
-		"Record recall telemetry. Ranking changes only when memory_id identifies one returned result.",
-		Type.Object({
-			recall_id: Type.String(),
-			memory_id: Type.Optional(Type.String()),
-			outcome: Type.Union([
-				Type.Literal("helpful"),
-				Type.Literal("harmful"),
-				Type.Literal("ignored"),
-			]),
-			note: Type.Optional(Type.String()),
-		}),
-		async (_id: string, p: any) => {
-			const r = await call("/feedback", p);
-			return result(r.text, r.error);
-		},
-	);
 
 	if (env.MEMNEST_EXPOSE_SECRET_TOOLS === "1") {
 		registerTool(

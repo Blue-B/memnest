@@ -164,7 +164,6 @@ fn tools(crypto_enabled: bool) -> Vec<Value> {
         json!({"name":"memory_get","description":"Fetch one memory by id.","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}),
         json!({"name":"memory_update","description":"Update one memory and refresh indexes.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"project":{"type":"string"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"]},"chunk_type":{"type":"string","enum":["auto_log","manual","filtered","consolidated"]},"sensitive":{"type":"boolean","description":"Must be false; use secret_set for sensitive values."}},"required":["id"]}}),
         json!({"name":"memory_delete","description":"Soft-delete one memory to the internal trash bucket.","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}),
-        json!({"name":"memory_feedback","description":"Record recall telemetry. memory_id is optional; ranking changes only for that returned memory.","inputSchema":{"type":"object","properties":{"recall_id":{"type":"string"},"memory_id":{"type":"string"},"outcome":{"type":"string","enum":["helpful","harmful","ignored"]},"note":{"type":"string"}},"required":["recall_id","outcome"]}}),
     ];
     if crypto_enabled {
         tools.extend([
@@ -186,7 +185,6 @@ async fn call_tool(system: Arc<RwLock<MemorySystem>>, params: &Value) -> Result<
         "memory_get" => memory_get(system, &args).await,
         "memory_update" => memory_update(system, &args).await,
         "memory_delete" => memory_delete(system, &args).await,
-        "memory_feedback" => memory_feedback(system, &args).await,
         "secret_set" => secret_set(system, &args).await,
         "secret_get" => secret_get(system, &args).await,
         "secret_list" => secret_list(system).await,
@@ -467,17 +465,6 @@ pub(crate) async fn memory_search(
     Ok(lines.join("\n"))
 }
 
-async fn memory_feedback(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
-    let value = super::operations::feedback(
-        system,
-        args.get("recall_id").and_then(Value::as_str).unwrap_or(""),
-        args.get("memory_id").and_then(Value::as_str),
-        args.get("outcome").and_then(Value::as_str).unwrap_or(""),
-        args.get("note").and_then(Value::as_str),
-    )
-    .await?;
-    Ok(serde_json::to_string(&value)?)
-}
 
 #[cfg(test)]
 mod tests {
@@ -492,10 +479,10 @@ mod tests {
             .into_iter()
             .map(|tool| tool["name"].as_str().unwrap().to_string())
             .collect();
-        assert_eq!(memory_names.len(), 6);
+        assert_eq!(memory_names.len(), 5);
         assert!(memory_names.iter().all(|name| name.starts_with("memory_")));
         let enabled = tools(true);
-        assert_eq!(enabled.len(), 10);
+        assert_eq!(enabled.len(), 9);
         let search = enabled
             .iter()
             .find(|tool| tool["name"] == "memory_search")
@@ -622,7 +609,7 @@ mod tests {
     #[tokio::test]
     async fn dispatch_executes_tool_calls() {
         let (_tmp, system) = build_system().await;
-        assert_eq!(tools(true).len(), 10);
+        assert_eq!(tools(true).len(), 9);
         let names: Vec<String> = tools(true)
             .iter()
             .filter_map(|tool| tool["name"].as_str().map(str::to_string))
@@ -635,7 +622,6 @@ mod tests {
                 "memory_get",
                 "memory_update",
                 "memory_delete",
-                "memory_feedback",
                 "secret_set",
                 "secret_get",
                 "secret_list",
@@ -778,48 +764,6 @@ mod tests {
         assert_eq!(
             empty_update_response.status(),
             axum::http::StatusCode::BAD_REQUEST
-        );
-
-        let recall_id = searched["recall_id"].as_str().unwrap();
-        let mismatch: crate::server::api::FeedbackRequest = serde_json::from_value(
-            json!({"recall_id":recall_id,"memory_id":"not-returned","outcome":"helpful"}),
-        )
-        .unwrap();
-        let mismatch_response =
-            crate::server::api::recall_feedback(State(system.clone()), Json(mismatch)).await;
-        assert_eq!(mismatch_response.status(), axum::http::StatusCode::CONFLICT);
-        let feedback: crate::server::api::FeedbackRequest = serde_json::from_value(
-            json!({"recall_id":recall_id,"memory_id":id,"outcome":"helpful"}),
-        )
-        .unwrap();
-        let http_feedback = body_json(
-            crate::server::api::recall_feedback(State(system.clone()), Json(feedback)).await,
-        )
-        .await;
-        let mcp_feedback = dispatch(system.clone(), &json!({"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"memory_feedback","arguments":{"recall_id":recall_id,"memory_id":id,"outcome":"helpful"}}})).await.unwrap();
-        let mcp_feedback_value: Value = serde_json::from_str(
-            mcp_feedback["result"]["content"][0]["text"]
-                .as_str()
-                .unwrap(),
-        )
-        .unwrap();
-        assert_eq!(
-            http_feedback["memory_ids"],
-            mcp_feedback_value["memory_ids"]
-        );
-        assert_eq!(
-            system
-                .read()
-                .await
-                .db
-                .read()
-                .await
-                .get_chunk(id)
-                .unwrap()
-                .unwrap()
-                .metadata
-                .helpful_count,
-            1
         );
 
         let delete_request: crate::server::api::DeleteRequest =

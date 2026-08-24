@@ -1,4 +1,4 @@
-use crate::models::{Fact, FactHistory};
+use crate::models::Fact;
 use crate::redaction::redact_text;
 
 pub fn fact_id(subject: &str, predicate: &str) -> String {
@@ -36,19 +36,6 @@ pub fn make_fact(
     })
 }
 
-pub fn merge_fact(existing: Option<Fact>, mut next: Fact) -> Fact {
-    if let Some(existing) = existing {
-        next.history = existing.history;
-        if existing.object != next.object {
-            next.history.push(FactHistory {
-                object: existing.object,
-                timestamp: existing.timestamp,
-                source_session: existing.source_session,
-            });
-        }
-    }
-    next
-}
 
 pub fn extract_explicit_facts(text: &str, source_session: Option<&str>) -> Vec<Fact> {
     let mut facts = Vec::new();

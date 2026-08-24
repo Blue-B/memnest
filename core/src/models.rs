@@ -69,10 +69,6 @@ pub struct Metadata {
     pub supersedes: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verified_at: Option<String>,
-    #[serde(default)]
-    pub helpful_count: i64,
-    #[serde(default)]
-    pub harmful_count: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -247,7 +243,6 @@ pub struct RecallEvent {
     pub result_ids: Vec<String>,
     pub duration_ms: i64,
     pub adapter: String,
-    pub outcome: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -267,8 +262,6 @@ pub struct ProcessingJob {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OperationsSummary {
     pub recalls_24h: usize,
-    pub helpful_24h: usize,
-    pub harmful_24h: usize,
     pub queued_jobs: usize,
     pub running_jobs: usize,
     pub failed_jobs: usize,
@@ -325,8 +318,6 @@ mod tests {
         let meta: Metadata = serde_json::from_str(json).expect("deserialize");
         assert!(!meta.pinned, "pinned must default to false for legacy rows");
         assert_eq!(meta.memory_kind, MemoryKind::Record);
-        assert_eq!(meta.helpful_count, 0);
-        assert_eq!(meta.harmful_count, 0);
     }
 
     #[test]

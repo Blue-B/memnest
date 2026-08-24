@@ -7,10 +7,10 @@ Memnest keeps the core platform-neutral. Any agent can use the HTTP API or the M
 | Surface | Intended use |
 | --- | --- |
 | HTTP API | Long-running local service shared by several clients. |
-| MCP over Streamable HTTP | `POST /mcp` on the same port as the API and dashboard, so several hosts share one process and one store. |
+| MCP over Streamable HTTP | `POST /mcp` on the same port as the API, so several hosts share one process and one store. |
 | MCP over stdio | Tool access for a client that spawns its own child process. |
 | `memnest hook`, `memnest watch` | Core subcommands that give any host prompt-time injection and transcript capture without an extension. |
-| `pi-extension/` | Six canonical memory tools, four opt-in vault tools, scoped Autocontext, and `/memnest`. |
+| `pi-extension/` | Five canonical memory tools, four opt-in vault tools, scoped Autocontext, and `/memnest`. |
 | `adapters/generic-http/` | Dependency-free JSONL reference adapter for other hosts. |
 
 ## Adapter contract
@@ -20,7 +20,6 @@ An adapter should provide these operations:
 - `health`: check the local service
 - `remember`: write a durable record, fact, rule, or procedure
 - `search`: retrieve memory and receive a `recall_id`; pass an absolute `cwd`, an explicit `project`, or `project=all` for deliberate cross-project search
-- `feedback`: submit helpful, harmful, or ignored for a `recall_id`; include `memory_id` to affect one returned result
 
 Conversation capture is deliberately not on that list. `memnest watch` is the single transcript path for every host, so an adapter that also posted messages or session summaries would store the same turn twice. The reference adapter rejects `message` and `summary` events with a pointer to `watch`.
 
@@ -78,9 +77,9 @@ A client that only spawns child processes uses stdio instead:
 }
 ```
 
-A spawned process owns the data directory for as long as it runs. A second stdio client, or stdio alongside the dashboard service, is rejected by the writer lock. The HTTP transport avoids that conflict because every client talks to one service.
+A spawned process owns the data directory for as long as it runs. A second stdio client, or stdio alongside the HTTP service, is rejected by the writer lock. The HTTP transport avoids that conflict because every client talks to one service.
 
-Either shape suits Claude Code, Codex, OpenCode, Cursor, and similar clients. When a host exposes lifecycle hooks but not MCP, reach for `memnest hook` and `memnest watch` first; write an adapter when the host needs operations those two do not cover, such as feedback or structured writes.
+Either shape suits Claude Code, Codex, OpenCode, Cursor, and similar clients. When a host exposes lifecycle hooks but not MCP, reach for `memnest hook` and `memnest watch` first; write an adapter when the host needs operations those two do not cover, such as structured writes.
 
 ## Contribution checklist
 

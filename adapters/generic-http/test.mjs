@@ -34,16 +34,15 @@ const cwdSearch = eventToRequest({
 assert.equal(cwdSearch.body.project, "");
 assert.equal(cwdSearch.body.cwd, "/work/demo");
 
-const feedback = eventToRequest({
-	type: "feedback",
-	recall_id: "recall-1",
-	memory_id: "memory-1",
-	outcome: "helpful",
-});
-assert.equal(feedback.path, "/feedback");
-assert.equal(feedback.body.recall_id, "recall-1");
-assert.equal(feedback.body.memory_id, "memory-1");
-assert.equal(feedback.body.outcome, "helpful");
+assert.throws(
+	() =>
+		eventToRequest({
+			type: "feedback",
+			recall_id: "recall-1",
+			outcome: "helpful",
+		}),
+	/unsupported event type: feedback/,
+);
 
 let captured;
 const result = await sendEvent({ type: "health" }, async (url, init) => {

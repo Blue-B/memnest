@@ -4,9 +4,14 @@ All notable changes to `pi-memnest`.
 
 ## Unreleased
 
+### Removed
+
+- Removed the `memory_feedback` tool. Nothing ever recorded an outcome, so the ranking signal behind it was always zero. The default model surface drops from six memory tools to five.
+- `/memnest` no longer prints a dashboard link, because the core no longer serves an HTML dashboard.
+
 ### Changed
 
-- Default model surface is now six memory tools. The four vault tools require `MEMNEST_EXPOSE_SECRET_TOOLS=1`.
+- Default model surface is now five memory tools. The four vault tools require `MEMNEST_EXPOSE_SECRET_TOOLS=1`.
 - Omitted projects send pi's absolute `cwd`, letting the core isolate same-basename workspaces and include `playbook` safely.
 - Autocontext labels all results as untrusted reference data, marks AutoLog as conversation evidence, and escapes stored markup before injection.
 

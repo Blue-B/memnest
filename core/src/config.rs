@@ -14,7 +14,6 @@ pub struct Config {
     pub recency_penalty_cap: f32,
     pub keyword_max_bonus: f32,
     pub mmr_lambda: f32,
-    pub mmr_diversity_penalty: f32,
     pub enable_lifecycle: bool,
 }
 
@@ -40,7 +39,6 @@ impl Default for Config {
             recency_penalty_cap: 0.30,
             keyword_max_bonus: 0.15,
             mmr_lambda: 0.5,
-            mmr_diversity_penalty: 0.15,
             enable_lifecycle: true,
         }
     }

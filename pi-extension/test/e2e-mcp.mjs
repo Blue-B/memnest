@@ -82,7 +82,6 @@ const expected = [
 	"memory_get",
 	"memory_update",
 	"memory_delete",
-	"memory_feedback",
 	"secret_set",
 	"secret_get",
 	"secret_list",
@@ -135,23 +134,6 @@ try {
 		throw new Error("search did not find remembered memory");
 	if (searchText.includes("one-line stubs"))
 		throw new Error("search returned hidden extra candidates");
-	const recallId = searchText.match(/recall_id=(recall_[^\n]+)/)?.[1];
-	const mismatch = await request("tools/call", {
-		name: "memory_feedback",
-		arguments: {
-			recall_id: recallId,
-			memory_id: "not-returned",
-			outcome: "helpful",
-		},
-	});
-	if (!mismatch.result?.isError)
-		throw new Error("feedback mismatch was accepted");
-	const feedback = await request("tools/call", {
-		name: "memory_feedback",
-		arguments: { recall_id: recallId, memory_id: memoryId, outcome: "helpful" },
-	});
-	if (feedback.result?.isError)
-		throw new Error(feedback.result.content?.[0]?.text);
 	const missingSecret = await request("tools/call", {
 		name: "secret_get",
 		arguments: { key: "missing-e2e-secret" },
@@ -168,7 +150,7 @@ try {
 	)
 		throw new Error("delete failed");
 	console.log(
-		"MCP E2E: exact tools, scoped search, feedback, secret error, and delete passed",
+		"MCP E2E: exact tools, scoped search, secret error, and delete passed",
 	);
 } finally {
 	await stopChild();

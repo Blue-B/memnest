@@ -30,18 +30,6 @@ export function eventToRequest(event) {
 			},
 		};
 	}
-	if (event.type === "feedback") {
-		return {
-			method: "POST",
-			path: "/feedback",
-			body: {
-				recall_id: event.recall_id,
-				memory_id: event.memory_id,
-				outcome: event.outcome,
-				note: event.note,
-			},
-		};
-	}
 	if (event.type === "remember") {
 		return {
 			method: "POST",

@@ -95,16 +95,13 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
         )
         .route("/stats", get(api::stats))
         .route("/operations", get(api::operations))
-        .route("/feedback", post(api::recall_feedback))
         // MCP over Streamable HTTP: same auth and security layers as every other
-        // route, so one service covers the API, the dashboard, and MCP clients.
+        // route, so one service covers the API and MCP clients.
         .route("/mcp", post(mcp::http_endpoint))
-        // The dashboard itself no longer loads an asset, but the mount stays:
+        // No page is served from this process anymore, but the mount stays:
         // the install scripts and preflight checks ship `static/` and assume
         // it is reachable.
         .nest_service("/assets", ServeDir::new("static"))
-        .route("/", get(api::viewer_dashboard))
-        .route("/viewer/search", get(api::viewer_search))
         .layer(middleware::from_fn(security_headers_middleware))
         .layer(middleware::from_fn(auth_middleware))
         .with_state(system)
