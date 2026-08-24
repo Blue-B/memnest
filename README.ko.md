@@ -20,7 +20,6 @@ AI 코딩 에이전트는 세션이 끝나면 전부 잊습니다. memnest는 �
 | 대화 기록 | 사용자와 어시스턴트의 발언을 자격증명만 가린 원문 그대로, LLM 요약 없이 검색 가능하게 둡니다. |
 | 하이브리드 검색 | 두 종류 모두를 로컬 BM25 단어 검색과 HNSW 벡터 유사도로 함께 찾습니다. |
 | 프로젝트 분리 | 폴더 하나의 기억은 그 workspace 안에 머물고, `playbook`이 전역 공유 규칙을 맡습니다. |
-| 회상 피드백 | 나온 결과에 도움됨이나 해로움을 표시하면 다음 순위가 그 신호를 따릅니다. |
 | 비밀 금고 | 자격증명은 AES-256-GCM 저장소에 두어 검색 대상과 분리합니다. |
 
 도구 호출과 프롬프트 시점 회상, 대화 캡처는 하나의 Rust 서비스가 서로 다른 데이터 경로로 처리합니다. 원본은 SQLite이고 옆에 있는 Tantivy, HNSW 색인은 지워도 다시 만들 수 있습니다. 어느 단계에서도 LLM을 호출하지 않으며 임베딩은 `intfloat/multilingual-e5-base`로 로컬에서 돌아갑니다.
@@ -35,10 +34,10 @@ install -m755 target/release/memnest ~/.local/bin/memnest
 memnest --data-dir ~/.memnest
 ```
 
-대시보드와 HTTP API, Streamable HTTP MCP 엔드포인트가 주소 하나를 공유합니다.
+HTTP API와 Streamable HTTP MCP 엔드포인트가 주소 하나를 공유합니다.
 
 ```text
-http://127.0.0.1:3111        대시보드와 HTTP API
+http://127.0.0.1:3111        HTTP API
 http://127.0.0.1:3111/mcp    MCP 엔드포인트
 ```
 
@@ -81,7 +80,7 @@ npm install
 pi install .
 ```
 
-pi 확장은 메모리 툴 6개와 workspace 범위 Autocontext, 상태 확인용 `/memnest`를 추가합니다. 금고 툴은 선택해서 켭니다. 자세한 내용은 [`pi-extension/README.md`](pi-extension/README.md)에 있습니다.
+pi 확장은 메모리 툴 5개와 workspace 범위 Autocontext, 상태 확인용 `/memnest`를 추가합니다. 금고 툴은 선택해서 켭니다. 자세한 내용은 [`pi-extension/README.md`](pi-extension/README.md)에 있습니다.
 
 ### HTTP와 직접 연동
 
@@ -89,7 +88,7 @@ MCP 없이 HTTP API만 사용할 수도 있습니다. [`adapters/generic-http`](
 
 ## 툴 계약
 
-모든 호스트에서 메모리 툴 6개를 사용합니다.
+모든 호스트에서 메모리 툴 5개를 사용합니다.
 
 ```text
 memory_remember
@@ -97,7 +96,6 @@ memory_search
 memory_get
 memory_update
 memory_delete
-memory_feedback
 ```
 
 로컬 금고 API는 초기화되지만 모델용 시크릿 툴은 기본적으로 숨깁니다. 신뢰하는 에이전트 프로세스에서 `MEMNEST_EXPOSE_SECRET_TOOLS=1`을 설정하면 다음 4개가 추가됩니다.
@@ -109,7 +107,7 @@ secret_list
 secret_delete
 ```
 
-검색은 workspace 범위로 동작합니다. 클라이언트는 절대 경로인 `cwd`, 명시적인 `project`, 또는 의도적인 전체 검색인 `project=all`을 보냅니다. 모든 검색은 `recall_id`를 반환합니다. `recall_id`와 `memory_id`를 함께 보낸 피드백은 그 검색 결과 하나에만 반영됩니다. 삭제한 기억은 바로 지우지 않고 휴지통으로 이동합니다.
+검색은 workspace 범위로 동작합니다. 클라이언트는 절대 경로인 `cwd`, 명시적인 `project`, 또는 의도적인 전체 검색인 `project=all`을 보냅니다. 모든 검색은 그 조회를 `/operations`에서 식별하는 `recall_id`를 반환합니다. 삭제한 기억은 바로 지우지 않고 휴지통으로 이동합니다.
 
 ### workspace를 식별하는 방식
 
@@ -155,7 +153,7 @@ memnest watch --backfill
 
 watcher는 알려진 transcript 디렉터리를 감시하고 `<data-dir>/watch-state.json`에 파일별 위치를 기록합니다. 모든 청크가 저장되거나 복구된 뒤에만 위치가 전진합니다. 기본값은 새 대화부터 읽으며, 기존 기록을 가져오려면 `--backfill`을 사용합니다.
 
-## 저장 구조와 대시보드
+## 저장 구조
 
 기본 데이터 디렉터리는 `~/.memnest`입니다.
 
@@ -169,9 +167,7 @@ archive/        완전 삭제된 기억의 평문 JSONL
 watch-state.json
 ```
 
-`http://127.0.0.1:3111` 대시보드에서 저장된 기억, 검색 기록, 지연, 처리 실패, 회상 피드백을 한 화면에서 확인할 수 있습니다.
-
-![memnest 운영 대시보드](docs/dashboard.ko.png)
+서비스 상태는 JSON으로 읽을 수 있습니다. `/health`는 생존 여부와 마지막 정리 작업을, `/stats`는 collection 크기와 디스크 사용량을, `/operations`는 최근 검색과 처리 작업을 돌려줍니다.
 
 ## 보안
 
@@ -187,7 +183,7 @@ watch-state.json
 
 | 디렉터리 | 역할 |
 | --- | --- |
-| [`core/`](core) | Rust 서버, CLI, 색인, MCP, 금고, watcher, 대시보드 |
+| [`core/`](core) | Rust 서버, CLI, 색인, MCP, 금고, watcher |
 | [`pi-extension/`](pi-extension) | 얇은 pi 어댑터와 workspace 범위 Autocontext |
 | [`adapters/`](adapters) | 연동 계약과 일반 HTTP 어댑터 |
 | [`journal/`](journal) | 선택 기능인 Markdown 및 git 감사 미러, 데이터베이스 백업은 아님 |

@@ -20,7 +20,6 @@ Your AI coding agent forgets everything when the session ends. Memnest keeps tha
 | Conversation history | Redacted user and assistant text, kept verbatim and searchable, with no LLM summarization. |
 | Hybrid search | Local BM25 keyword matching and HNSW vector similarity over both kinds of memory. |
 | Project isolation | One directory's memory stays in its own workspace. `playbook` carries rules shared everywhere. |
-| Recall feedback | Mark a returned result helpful or harmful and future ranking follows that signal. |
 | Secret vault | Credentials live in an AES-256-GCM store, separate from anything searchable. |
 
 One Rust service handles tool calls, prompt-time recall, and transcript capture on separate data paths. SQLite is the source of truth; the Tantivy and HNSW indexes beside it are derived and rebuildable. Nothing here calls an LLM, and embeddings run locally with `intfloat/multilingual-e5-base`.
@@ -35,10 +34,10 @@ install -m755 target/release/memnest ~/.local/bin/memnest
 memnest --data-dir ~/.memnest
 ```
 
-One address serves the dashboard, the HTTP API, and the Streamable HTTP MCP endpoint:
+One address serves the HTTP API and the Streamable HTTP MCP endpoint:
 
 ```text
-http://127.0.0.1:3111        dashboard and HTTP API
+http://127.0.0.1:3111        HTTP API
 http://127.0.0.1:3111/mcp    MCP endpoint
 ```
 
@@ -81,7 +80,7 @@ npm install
 pi install .
 ```
 
-The extension registers the six memory tools, adds workspace-scoped Autocontext, and provides `/memnest` for status. Vault tools are opt-in. See [`pi-extension/README.md`](pi-extension/README.md).
+The extension registers the five memory tools, adds workspace-scoped Autocontext, and provides `/memnest` for status. Vault tools are opt-in. See [`pi-extension/README.md`](pi-extension/README.md).
 
 ### HTTP and custom hosts
 
@@ -89,7 +88,7 @@ The HTTP API is available without MCP. [`adapters/generic-http`](adapters/generi
 
 ## Tool contract
 
-All hosts use six memory tools:
+All hosts use five memory tools:
 
 ```text
 memory_remember
@@ -97,7 +96,6 @@ memory_search
 memory_get
 memory_update
 memory_delete
-memory_feedback
 ```
 
 The vault API is initialized locally, but model-facing secret tools are hidden by default. Set `MEMNEST_EXPOSE_SECRET_TOOLS=1` for a trusted agent process to add four tools:
@@ -109,7 +107,7 @@ secret_list
 secret_delete
 ```
 
-Search is workspace-scoped. A client passes an absolute `cwd`, an explicit `project`, or `project=all` for a deliberate cross-project search. Every search returns a `recall_id`; feedback with both `recall_id` and `memory_id` changes only that returned memory. Delete moves a memory to trash instead of erasing it immediately.
+Search is workspace-scoped. A client passes an absolute `cwd`, an explicit `project`, or `project=all` for a deliberate cross-project search. Every search returns a `recall_id` that identifies that lookup in `/operations`. Delete moves a memory to trash instead of erasing it immediately.
 
 ### How a workspace is identified
 
@@ -155,7 +153,7 @@ It stores visible user and assistant text after credential redaction. It skips s
 
 The watcher follows the known transcript directories and stores offsets in `<data-dir>/watch-state.json`. A file offset advances only after all chunks were stored or repaired. `--backfill` imports earlier history; the default starts from new transcript data.
 
-## Storage and dashboard
+## Storage
 
 Memnest keeps its state under the selected data directory, normally `~/.memnest`:
 
@@ -169,9 +167,7 @@ archive/        plaintext JSONL of hard-deleted memories
 watch-state.json
 ```
 
-The dashboard at `http://127.0.0.1:3111` shows stored memories, searches, latency, processing failures, and recall feedback on one screen.
-
-![memnest operations dashboard](docs/dashboard.png)
+Service state is readable as JSON. `/health` reports liveness and the last lifecycle run, `/stats` reports collection sizes and disk use, and `/operations` returns recent searches and processing jobs.
 
 ## Security
 
@@ -187,7 +183,7 @@ Do not expose port 3111 directly to the internet. The rest is in [`SECURITY.md`]
 
 | Directory | Role |
 | --- | --- |
-| [`core/`](core) | Rust server, CLI, indexes, MCP, vault, watcher, and dashboard |
+| [`core/`](core) | Rust server, CLI, indexes, MCP, vault, and watcher |
 | [`pi-extension/`](pi-extension) | Thin pi adapter and workspace-scoped Autocontext |
 | [`adapters/`](adapters) | Integration contract and generic HTTP adapter |
 | [`journal/`](journal) | Optional Markdown and git audit mirror, not a database backup |

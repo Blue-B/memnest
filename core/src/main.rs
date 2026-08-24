@@ -22,7 +22,7 @@ struct Cli {
     #[arg(long, default_value = "127.0.0.1")]
     host: String,
 
-    /// Deprecated compatibility flag. The dashboard always uses --port.
+    /// Deprecated no-op, accepted so existing service files keep starting.
     #[arg(long, hide = true)]
     viewer_port: Option<u16>,
 
@@ -120,7 +120,7 @@ async fn main() -> anyhow::Result<()> {
     config.api_host = cli.host.clone();
     if cli.viewer_port.is_some() {
         eprintln!(
-            "warning: --viewer-port is deprecated; the dashboard uses --port ({})",
+            "warning: --viewer-port is a deprecated no-op; every endpoint is served on --port ({})",
             cli.port
         );
     }

@@ -4737,26 +4737,6 @@ ${c.document}`
       return result(r.text, r.error);
     }
   );
-  registerTool(
-    pi,
-    "memory_feedback",
-    "Memory: feedback",
-    "Record recall telemetry. Ranking changes only when memory_id identifies one returned result.",
-    typebox_exports.Object({
-      recall_id: typebox_exports.String(),
-      memory_id: typebox_exports.Optional(typebox_exports.String()),
-      outcome: typebox_exports.Union([
-        typebox_exports.Literal("helpful"),
-        typebox_exports.Literal("harmful"),
-        typebox_exports.Literal("ignored")
-      ]),
-      note: typebox_exports.Optional(typebox_exports.String())
-    }),
-    async (_id, p) => {
-      const r = await call("/feedback", p);
-      return result(r.text, r.error);
-    }
-  );
   if (env2.MEMNEST_EXPOSE_SECRET_TOOLS === "1") {
     registerTool(
       pi,

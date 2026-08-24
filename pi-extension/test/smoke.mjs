@@ -77,7 +77,6 @@ const EXPECTED = [
 	"memory_get",
 	"memory_update",
 	"memory_delete",
-	"memory_feedback",
 ];
 
 assert(

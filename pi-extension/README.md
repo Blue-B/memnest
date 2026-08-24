@@ -4,7 +4,7 @@
 
 A local memnest bridge for pi.
 
-`pi-memnest` connects [pi](https://github.com/badlogic/pi-mono) to a running [memnest](https://github.com/Blue-B/memnest) HTTP service. It gives pi the canonical six memory tools. Four secret tools are an explicit opt-in. The extension can also retrieve a small workspace-scoped memory card before selected prompts.
+`pi-memnest` connects [pi](https://github.com/badlogic/pi-mono) to a running [memnest](https://github.com/Blue-B/memnest) HTTP service. It gives pi the canonical five memory tools. Four secret tools are an explicit opt-in. The extension can also retrieve a small workspace-scoped memory card before selected prompts.
 
 This extension does not contain the memory engine. Start the Rust core before installing it.
 
@@ -36,17 +36,17 @@ pi install .
 
 The extension uses `MEMNEST_URL` when set, otherwise it connects to `http://127.0.0.1:3111`. Set `MEMNEST_TOKEN` when the core requires bearer authentication.
 
-Check the connection and reveal the dashboard URL from pi:
+Check the connection from pi:
 
 ```text
 /memnest
 ```
 
-The command reports service health, memory count, the active data directory, and the canonical dashboard link.
+The command reports service health, memory count, and the active data directory.
 
 ## Tools
 
-The extension registers exactly six memory tools by default. Set `MEMNEST_EXPOSE_SECRET_TOOLS=1` before starting pi to register the four vault tools too. The `/memnest` command and Autocontext hook remain available without adding status or admin tools to the model surface.
+The extension registers exactly five memory tools by default. Set `MEMNEST_EXPOSE_SECRET_TOOLS=1` before starting pi to register the four vault tools too. The `/memnest` command and Autocontext hook remain available without adding status or admin tools to the model surface.
 
 | Tool | Purpose |
 | --- | --- |
@@ -55,7 +55,6 @@ The extension registers exactly six memory tools by default. Set `MEMNEST_EXPOSE
 | `memory_get` | Fetch one memory by id. |
 | `memory_update` | Correct one memory and refresh its indexes. |
 | `memory_delete` | Soft-delete one memory to the internal trash bucket. |
-| `memory_feedback` | Record recall telemetry; only an optional `memory_id` changes that result's ranking. |
 | `secret_set`, `secret_get`, `secret_list`, `secret_delete` | Opt-in tools for AES-256-GCM vault values. Vault operations fail closed when crypto is unavailable. |
 
 Ordinary memories are not encrypted at rest. Enable the secret tools only for an agent you trust with plaintext credentials, and keep the core data directory and `master.key` private.
@@ -65,7 +64,6 @@ Ordinary memories are not encrypted at rest. Enable the secret tools only for an
 ```text
 memory_remember text="Project X deploys on port 8320" memory_kind="fact" confidence=1
 memory_search query="Project X deployment port"
-memory_feedback recall_id="recall_..." memory_id="manual_..." outcome="helpful"
 memory_remember text="Project X now deploys on port 8420" memory_kind="fact" supersedes="manual_..."
 memory_delete id="manual_..."
 ```

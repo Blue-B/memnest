@@ -4,6 +4,17 @@ All notable changes to `memnest`, the Rust engine.
 
 ## Unreleased
 
+### Removed
+
+- Removed the HTML dashboard, its `/` and `/viewer/search` routes, and the
+  `memnest dashboard` subcommand. The machine-readable `/health`, `/stats`, and
+  `/operations` endpoints stay, so nothing that reads service state is lost.
+- Removed the `memory_feedback` tool, the `/feedback` endpoint, and the
+  helpful and harmful counters that fed a search ranking bonus. No caller ever
+  recorded an outcome, so every stored recall stayed `pending` and the bonus
+  evaluated to zero on every query. The canonical model surface is now five
+  memory tools.
+
 ### Fixed
 
 - Restored the resolved `project` on the `/search` response. Canonicalizing the
@@ -38,7 +49,7 @@ All notable changes to `memnest`, the Rust engine.
 
 ### Changed
 
-- Canonicalized the model surface to six memory tools and four capability-gated vault tools, with shared HTTP/MCP memory operations, scoped automatic recall, soft delete, targeted feedback, strict auth token normalization, and fail-closed secrets. Vault tools now require `MEMNEST_EXPOSE_SECRET_TOOLS=1`.
+- Canonicalized the model surface to five memory tools and four capability-gated vault tools, with shared HTTP/MCP memory operations, scoped automatic recall, soft delete, strict auth token normalization, and fail-closed secrets. Vault tools now require `MEMNEST_EXPOSE_SECRET_TOOLS=1`.
 - `/search` and `/context` accept an absolute `cwd` for isolated workspace recall. Without `cwd` or an explicit project they fail closed; `project=all` remains explicit.
 
 ## [0.2.0] - 2026-08-17

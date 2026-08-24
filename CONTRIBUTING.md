@@ -20,7 +20,7 @@ Only `core/` is required to run memnest. The rest are optional pieces around it.
 
 | Directory | Language | What it is |
 | --- | --- | --- |
-| `core/` | Rust | The engine: HTTP API, MCP server, indexes, dashboard |
+| `core/` | Rust | The engine: HTTP API, MCP server, indexes |
 | `pi-extension/` | TypeScript | pi integration |
 | `journal/` | JavaScript | Markdown and git audit mirror |
 | `adapters/generic-http/` | JavaScript | Reference JSONL adapter |
@@ -71,8 +71,8 @@ MEMNEST_URL=http://127.0.0.1:3150 MEMNEST_DB=/tmp/memnest-dev/memory.db npm run 
 ```
 
 `pi-extension`'s smoke test also reaches for `http://127.0.0.1:3111`, but it
-skips the live section when nothing answers, and its calls are read paths plus
-one recall feedback marker. It does not create memories.
+skips the live section when nothing answers, and its calls are read paths only.
+It does not create memories.
 
 ## Continuous integration
 

@@ -260,7 +260,6 @@ pub async fn search(
         result_ids: items.iter().map(|item| item.id.clone()).collect(),
         duration_ms: elapsed_ms.min(i64::MAX as u128) as i64,
         adapter: input.adapter,
-        outcome: "pending".into(),
         created_at: chrono::Utc::now(),
     };
     let sys = system.read().await;
@@ -374,45 +373,6 @@ pub async fn delete(
             .map_err(|error| OperationError::internal(error.to_string()))?;
     }
     Ok(json!({"deleted": deleted, "not_found": not_found}))
-}
-
-pub async fn feedback(
-    system: Arc<RwLock<MemorySystem>>,
-    recall_id: &str,
-    memory_id: Option<&str>,
-    outcome: &str,
-    note: Option<&str>,
-) -> Result<Value, OperationError> {
-    if recall_id.trim().is_empty() {
-        return Err(OperationError::bad("recall_id is required"));
-    }
-    let outcome = outcome.trim().to_lowercase();
-    if !matches!(outcome.as_str(), "helpful" | "harmful" | "ignored") {
-        return Err(OperationError::bad(
-            "outcome must be helpful, harmful, or ignored",
-        ));
-    }
-    let sys = system.read().await;
-    let ids = sys
-        .db
-        .write()
-        .await
-        .set_recall_feedback(
-            recall_id,
-            memory_id,
-            &outcome,
-            note.map(redact_text).as_deref(),
-        )
-        .map_err(|error| {
-            let message = error.to_string();
-            if message.contains("was not returned by recall") {
-                OperationError::conflict("memory_id was not returned by this recall")
-            } else {
-                OperationError::internal(message)
-            }
-        })?
-        .ok_or_else(|| OperationError::not_found("recall event not found"))?;
-    Ok(json!({"status":"ok","recall_id":recall_id,"outcome":outcome,"memory_ids":ids}))
 }
 
 #[cfg(test)]
