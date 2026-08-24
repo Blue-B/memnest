@@ -46,14 +46,6 @@ fn default_http_adapter() -> String {
     "http".to_string()
 }
 
-#[derive(Serialize)]
-pub struct SearchResponse {
-    pub results: Vec<SearchResultItem>,
-    pub total: usize,
-    pub elapsed_ms: u128,
-    pub recall_id: String,
-}
-
 #[derive(Clone, Serialize)]
 pub struct SearchResultItem {
     pub id: String,
