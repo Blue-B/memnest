@@ -153,14 +153,25 @@ Common options: `--host`, `--port`, `--data-dir`, `--backup-dir`, `--restore-dir
 
 ## Development checks
 
-Each block below is a subshell, so every line starts from the repository root instead of from wherever the previous line left you:
+Run everything with one command. It builds, runs each package suite against a scratch instance on its own port, checks the documentation contract, and prints the latest CI conclusions first:
+
+```bash
+scripts/preflight.sh
+```
+
+Prefer it over the individual commands, because `journal` refuses to run without an explicit scratch target and quietly goes untested otherwise. That is how a change in `core/` once dropped two tables the journal exporter still queried, breaking every export while each package suite stayed green.
+
+The underlying commands, if you want one at a time. Each block is a subshell, so every line starts from the repository root:
 
 ```bash
 (cd core                  && cargo check && cargo test --locked -- --test-threads=1)
 (cd pi-extension          && npm install && npm run build && npm run smoke)
-(cd journal               && npm install && npm run smoke)
+(cd journal               && npm install && MEMNEST_URL=http://127.0.0.1:3150 \
+                             MEMNEST_DB=/tmp/memnest-scratch/memory.db npm run smoke)
 (cd adapters/generic-http && node test.mjs)
 ```
+
+A red run on GitHub Actions does not always mean a test failed. This repository is private, so Actions is billed, and a payment problem stops every job before its first step. Such a run finishes in seconds with no steps recorded and still reports failure, which looks identical to a real break in the run list. Check whether any step ran before trusting the colour.
 
 Against a running service, `scripts/verify-contract.sh` checks the claims in this documentation instead of the code behind them. It calls every endpoint the docs advertise, compares the tool list in the README against what `tools/list` returns, confirms the removed surfaces answer 404, and asserts that the files and CLI subcommands described here exist. Point it at a scratch instance rather than your own store:
 
