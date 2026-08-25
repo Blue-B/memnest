@@ -4,6 +4,14 @@ All notable changes to `memnest-journal`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Export no longer queries the `facts` and `notes` tables. The core dropped
+  them, so every export against an up-to-date store failed on `no such table:
+  facts` and took chunks and sessions down with it, since the query ran inside
+  the same block. Verified against a real store: the export now writes 70,466
+  chunk files where it previously wrote none.
+
 ### Changed (breaking)
 
 - **Secrets are no longer exported by default.** `export` and `sync` skip the

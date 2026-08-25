@@ -37,11 +37,12 @@ const DEFAULT_COLLECTION_META: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// When a collection has no `collection_meta` row yet, classify it by name +
-/// chunk_type distribution. Lets the viewer show sensible defaults for legacy
-/// collections without forcing the user to label everything by hand.
-fn infer_collection_kind(name: &str, _manual: usize, _autolog: usize) -> String {
-    // Only two kinds: playbook (cross-project manual) vs project (per-cwd bucket).
+/// Classifies a collection that has no `collection_meta` row yet, so legacy
+/// collections report a kind without the user labelling each one by hand.
+/// The name decides it: there are only two kinds, `playbook` for the shared
+/// cross-project bucket and `project` for a per-cwd workspace. An earlier
+/// version also took the manual and autolog counts and never read them.
+fn infer_collection_kind(name: &str) -> String {
     if name == "playbook" {
         "playbook".to_string()
     } else {
@@ -523,7 +524,7 @@ impl Database {
             let kind = if !stored_kind.is_empty() {
                 stored_kind
             } else {
-                infer_collection_kind(&name, manual_count, autolog_count)
+                infer_collection_kind(&name)
             };
             Ok(CollectionStat {
                 name,

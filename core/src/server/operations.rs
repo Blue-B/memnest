@@ -43,13 +43,24 @@ impl OperationError {
             message: message.into(),
         }
     }
-    pub fn internal(_message: impl Into<String>) -> Self {
+    /// Logs the real cause and keeps a redacted message. Callers pass things
+    /// like a SQLite failure, which used to be discarded here, leaving no
+    /// record of what actually broke. Operators need it; clients must not see
+    /// it, so the detail goes to the log and never into `message`.
+    pub fn internal(message: impl Into<String>) -> Self {
+        let detail = message.into();
+        tracing::error!(cause = %detail, "internal operation failed");
         Self {
             kind: ErrorKind::Internal,
-            message: "internal operation failed".to_string(),
+            message: INTERNAL_ERROR_MESSAGE.to_string(),
         }
     }
 }
+
+/// The only text a client ever sees for an Internal error. Kept as a constant
+/// so the HTTP and MCP paths cannot drift apart on what they redact to.
+pub const INTERNAL_ERROR_MESSAGE: &str = "internal operation failed";
+
 impl std::fmt::Display for OperationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.message)

@@ -162,6 +162,12 @@ Each block below is a subshell, so every line starts from the repository root in
 (cd adapters/generic-http && node test.mjs)
 ```
 
+Against a running service, `scripts/verify-contract.sh` checks the claims in this documentation instead of the code behind them. It calls every endpoint the docs advertise, compares the tool list in the README against what `tools/list` returns, confirms the removed surfaces answer 404, and asserts that the files and CLI subcommands described here exist. Point it at a scratch instance rather than your own store:
+
+```bash
+scripts/verify-contract.sh http://127.0.0.1:3150 ./target/release/memnest /tmp/memnest-scratch
+```
+
 Core tests run serially because environment-variable and vault lifecycle tests share process-global state and interfere with one another under the default parallel Rust test runner. CI uses the same flag.
 
 `journal`'s smoke test has no default target and exits 2 until `MEMNEST_URL` and `MEMNEST_DB` point at a scratch instance. Never point it at the store you actually use; see [CONTRIBUTING.md](../CONTRIBUTING.md).
