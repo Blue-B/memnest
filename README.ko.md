@@ -47,6 +47,17 @@ Linux, WSL, Windows 서비스 설정과 백업, 복구, 보존 정책은 [`docs/
 
 ## 에이전트 연결
 
+호스트마다 열어 준 확장 지점이 달라서 연결 방법은 갈리지만, 서비스와 데이터, 툴 계약은 하나로 유지됩니다:
+
+| 하네스 | 프롬프트 시점 회상 | 메모리 툴 | 대화 저장 |
+| --- | --- | --- | --- |
+| pi | 확장이 제공하는 Autocontext | 확장이 툴 5개를 등록 | `memnest watch` |
+| Claude Code | `UserPromptSubmit`에서 `memnest hook` | MCP | `memnest watch` |
+| Codex | `UserPromptSubmit`에서 `memnest hook` | MCP | `memnest watch` |
+| 다른 MCP 클라이언트 | 클라이언트 기능에 따름 | MCP | 해당 없음 |
+
+아래 섹션이 각 경로의 설정 방법입니다.
+
 ### MCP
 
 실행 중인 서비스 주소를 MCP 클라이언트에 등록합니다.
@@ -125,7 +136,7 @@ secret_delete
 
 `memnest hook`은 호스트의 프롬프트 이벤트를 stdin으로 읽고, 현재 workspace와 관련된 짧은 컨텍스트를 출력합니다. 작업 디렉터리를 알 수 없거나 서비스가 꺼져 있으면 아무것도 출력하지 않고 프롬프트를 막지 않습니다. 검색 텍스트는 신뢰하지 않는 참고자료로 표시합니다. transcript 결과는 과거 대화 증거로 따로 표시하고, 주입 전에 포함된 markup을 escape합니다.
 
-Claude Code 설정 예시입니다.
+Claude Code와 Codex는 같은 훅 형식을 쓰므로 설정도 동일합니다. Claude Code는 `~/.claude/settings.json`에, Codex는 `~/.codex/hooks.json` 또는 `config.toml`의 `[hooks]`에 둡니다.
 
 ```json
 {
@@ -140,6 +151,8 @@ Claude Code 설정 예시입니다.
   }
 }
 ```
+
+Codex는 새로 추가하거나 수정한 훅을 `/hooks`에서 검토하고 신뢰 처리해야 실행합니다.
 
 `memnest watch`는 pi, Claude Code, Codex 대화를 저장하는 단일 경로입니다.
 
@@ -158,14 +171,17 @@ watcher는 알려진 transcript 디렉터리를 감시하고 `<data-dir>/watch-s
 기본 데이터 디렉터리는 `~/.memnest`입니다.
 
 ```text
-memory.db       SQLite 레코드, workspace 등록 정보, 대기 중인 색인 작업
-text_index/     다시 만들 수 있는 Tantivy BM25 색인
-vectors/        다시 만들 수 있는 HNSW 벡터 색인
+memory.db       SQLite 원본: 기억, workspace 등록 정보, 암호화된
+                secrets 테이블, 대기 중인 색인 작업
+text_index/     memory.db에서 파생된 Tantivy BM25 단어 색인
+vectors/        e5 임베딩을 올린 HNSW 유사도 색인, memory.db에서 파생
 models/         로컬 임베딩 모델
-master.key      금고 키
+master.key      secrets 테이블을 복호화하는 키
 archive/        완전 삭제된 기억의 평문 JSONL
 watch-state.json
 ```
+
+원본은 `memory.db` 하나뿐입니다. 두 색인은 캐시라서 저장이 먼저 SQLite에 기록되고, 대기 중인 색인 작업이 `text_index/`와 `vectors/`를 갱신합니다. 두 디렉터리 중 하나를 지워도 서비스가 데이터베이스에서 다시 만들므로 안전합니다. `memory.db`는 다시 만들 수 없으니 `master.key`와 함께 백업하세요. 키 없이는 secrets 테이블을 복호화할 수 없습니다.
 
 서비스 상태는 JSON으로 읽을 수 있습니다. `/health`는 생존 여부와 마지막 정리 작업을, `/stats`는 collection 크기와 디스크 사용량, 서비스를 켠 뒤의 검색 지연을 돌려줍니다. 질의 원문은 저장하지 않으므로 무엇을 검색했는지는 디스크에 남지 않습니다.
 
