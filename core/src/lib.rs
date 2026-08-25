@@ -3,7 +3,6 @@ pub mod crypto;
 pub mod doctor;
 pub mod embedding;
 pub mod eval;
-pub mod facts;
 pub mod hook;
 pub mod index;
 pub mod lifecycle;

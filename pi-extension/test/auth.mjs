@@ -13,7 +13,7 @@ globalThis.fetch = async (url, init = {}) => {
 	requests.push({ url: String(url), init });
 	const body = String(url).endsWith("/health")
 		? '{"status":"ok","data_dir":"/tmp/memnest"}'
-		: '{"total_chunks":7}';
+		: '{"total_chunks":7,"operations":{"searches_since_start":3,"average_search_ms":137.4,"max_search_ms":171,"failed_jobs":0}}';
 	return new Response(body, { status: 200 });
 };
 
@@ -67,7 +67,14 @@ await command.handler("", {
 });
 assert.match(notices[0], /Memories: 7/);
 assert.match(notices[0], /Data: \/tmp\/memnest/);
-assert.match(notices[0], /Dashboard:/);
+// The HTML dashboard is gone, so status must never advertise that dead link.
+assert.doesNotMatch(
+	notices[0],
+	/dashboard/i,
+	"status must not advertise the removed dashboard",
+);
+// Latency comes from /stats operations and the average is rounded for display.
+assert.match(notices[0], /Searches: 3, avg 137 ms, max 171 ms/);
 assert.ok(
 	requests
 		.filter((request) => /\/(health|stats)$/.test(request.url))

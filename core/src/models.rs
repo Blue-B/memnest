@@ -161,47 +161,6 @@ pub struct SessionSummary {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Fact {
-    pub id: String,
-    pub subject: String,
-    pub predicate: String,
-    pub object: String,
-    pub timestamp: DateTime<Utc>,
-    pub source_session: Option<String>,
-    pub history: Vec<FactHistory>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FactHistory {
-    pub object: String,
-    pub timestamp: DateTime<Utc>,
-    pub source_session: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerInfo {
-    pub name: String,
-    pub host: String,
-    pub user: String,
-    #[serde(skip_serializing)]
-    pub password: String,
-    pub port: u16,
-    pub ssh_cmd: String,
-    pub scp_cmd: String,
-    pub note: String,
-    pub project_path: Option<String>,
-    pub updated: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Note {
-    pub key: String,
-    pub value: String,
-    pub updated: DateTime<Utc>,
-    pub prev: Option<NotePrev>,
-}
-
 /// Encrypted secret entry (PAT, API key, password, etc.).
 /// `value` is always stored AES-GCM encrypted on disk; `get_secret` returns
 /// plaintext after automatic decryption. `kind` is a free-form classifier
@@ -215,12 +174,6 @@ pub struct Secret {
     #[serde(default)]
     pub note: String,
     pub updated: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NotePrev {
-    pub value: String,
-    pub date: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

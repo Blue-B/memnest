@@ -56,10 +56,8 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum CliCommand {
-    /// Show the canonical dashboard URL and whether the local service is reachable.
+    /// Report the running version, whether the local service is reachable, and where it stores data.
     Status,
-    /// Print the canonical dashboard URL. Terminals usually render it as a clickable link.
-    Dashboard,
     /// Answer a host's prompt hook with a context pack, for automatic injection
     /// without a per-host extension. Reads the hook payload on stdin and writes
     /// the reply on stdout; never fails, so it cannot block a prompt.
@@ -161,18 +159,20 @@ async fn main() -> anyhow::Result<()> {
             CliCommand::Status => {
                 let reachable = service_reachable(&config.api_host, config.api_port);
                 println!("memnest v{}", env!("CARGO_PKG_VERSION"));
+                // Report the address that was probed. "not reachable" alone is
+                // ambiguous once --host or --port move the service.
                 println!(
-                    "service: {}",
+                    "service: {} at {}:{}",
                     if reachable {
                         "reachable"
                     } else {
                         "not reachable"
-                    }
+                    },
+                    canonical_display_host(&config.api_host),
+                    config.api_port
                 );
-                println!("dashboard: {}", dashboard_url(&config));
                 println!("data dir: {}", config.data_dir.display());
             }
-            CliCommand::Dashboard => println!("{}", dashboard_url(&config)),
         }
         return Ok(());
     }
@@ -296,14 +296,6 @@ async fn shutdown_signal() {
 #[cfg(not(unix))]
 async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
-}
-
-fn dashboard_url(config: &Config) -> String {
-    format!(
-        "http://{}:{}/",
-        canonical_display_host(&config.api_host),
-        config.api_port
-    )
 }
 
 fn canonical_display_host(host: &str) -> String {
@@ -510,15 +502,6 @@ fn validate_backup_dir(path: &Path) -> anyhow::Result<()> {
         })?;
         encrypted.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
     }
-    if sqlite_table_exists(&connection, "servers")? {
-        let mut stmt = connection.prepare("SELECT name, password FROM servers")?;
-        let rows = stmt.query_map([], |row| {
-            let name: String = row.get(0)?;
-            let value: String = row.get(1)?;
-            Ok((format!("server:{name}"), value))
-        })?;
-        encrypted.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
-    }
     if !encrypted.is_empty() {
         let key = std::env::var("MEMNEST_MASTER_KEY")
             .ok()
@@ -722,7 +705,7 @@ mod tests {
     }
 
     #[test]
-    fn dashboard_hosts_are_safe_for_urls() {
+    fn display_hosts_are_safe_for_addresses() {
         assert_eq!(canonical_display_host("127.0.0.1"), "localhost");
         assert_eq!(canonical_display_host("0.0.0.0"), "localhost");
         assert_eq!(canonical_display_host("192.168.1.20"), "192.168.1.20");

@@ -1,17 +1,20 @@
-//! Pure retrieval-quality metrics for the offline eval harness.
+//! Similarity scoring, plus the retrieval-quality metrics behind the offline
+//! eval harness.
 //!
-//! These functions are intentionally dependency-free so they can be reused by
-//! the in-crate `retrieval_eval` test (see `server::api`) and by benches. They
-//! take a per-query `gold` (relevant) id set and the ranked `retrieved` id list
-//! per query, and compute standard IR metrics.
+//! `cosine` is the only item here that ships: `server::api` scores MMR
+//! re-ranking with it. Everything else is `#[cfg(test)]`, because the metrics
+//! are read exclusively by the in-crate `retrieval_eval` test in `server::api`
+//! and would otherwise be dead weight in the release binary.
 //!
 //! Note: this `recall_at_k` uses the *full* gold set as the denominator ("did
 //! we surface the relevant items?"). That differs from the approximate-NN
-//! recall in `benches/hybrid_search.rs`, which compares the top-k of an exact
-//! brute-force list against the top-k of the ANN list — a different question.
+//! recall in `benches/hybrid_search.rs`, which keeps its own copy and compares
+//! the top-k of an exact brute-force list against the ANN list.
 
+#[cfg(test)]
 use std::collections::HashSet;
 
+#[cfg(test)]
 fn top_k_set(list: &[String], k: usize) -> HashSet<&String> {
     list.iter().take(k).collect()
 }
@@ -19,6 +22,7 @@ fn top_k_set(list: &[String], k: usize) -> HashSet<&String> {
 /// recall@k averaged over queries: for each query, the fraction of its gold ids
 /// that appear in the top-k retrieved list, averaged across all queries.
 /// Queries with an empty gold set are skipped.
+#[cfg(test)]
 pub fn recall_at_k(gold: &[Vec<String>], retrieved: &[Vec<String>], k: usize) -> f64 {
     let mut total = 0.0;
     let mut counted = 0usize;
@@ -40,6 +44,7 @@ pub fn recall_at_k(gold: &[Vec<String>], retrieved: &[Vec<String>], k: usize) ->
 
 /// Mean reciprocal rank over the top-k: average of `1/rank` of the first gold id
 /// found in each query's retrieved list (0 when no gold id is within top-k).
+#[cfg(test)]
 pub fn mrr_at_k(gold: &[Vec<String>], retrieved: &[Vec<String>], k: usize) -> f64 {
     let mut total = 0.0;
     let mut counted = 0usize;
@@ -64,6 +69,7 @@ pub fn mrr_at_k(gold: &[Vec<String>], retrieved: &[Vec<String>], k: usize) -> f6
 }
 
 /// precision@1: fraction of queries whose top-1 retrieved id is in the gold set.
+#[cfg(test)]
 pub fn precision_at_1(gold: &[Vec<String>], retrieved: &[Vec<String>]) -> f64 {
     let mut hits = 0.0;
     let mut counted = 0usize;
@@ -113,6 +119,7 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
 /// means every pair is a near-duplicate. This is the metric MMR is meant to
 /// drive down on auto-logged stores where the same moment is recorded many
 /// times. Lists with fewer than two items have redundancy 0.0 by definition.
+#[cfg(test)]
 pub fn intra_list_redundancy(embeddings: &[Vec<f32>], threshold: f32) -> f64 {
     let n = embeddings.len();
     if n < 2 {

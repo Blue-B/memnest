@@ -7,8 +7,11 @@ All notable changes to `pi-memnest`.
 ### Removed
 
 - Removed the `memory_feedback` tool. Nothing ever recorded an outcome, so the ranking signal behind it was always zero. The default model surface drops from six memory tools to five.
-- `/memnest` no longer prints a dashboard link, because the core no longer serves an HTML dashboard.
 - Search results no longer carry a `recall_id`. The core stopped recording query text, so there is no stored lookup left to point at.
+
+### Known issues
+
+- `/memnest` still prints a dashboard link, and the core no longer serves that page, so the address answers 404. It is cleaned up separately.
 
 ### Changed
 

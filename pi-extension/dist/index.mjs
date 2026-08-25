@@ -4538,25 +4538,36 @@ function registerTool(pi, name, label, description, parameters, execute) {
 function register(pi) {
   installAutocontext(pi);
   pi.registerCommand?.("memnest", {
-    description: "Show Memnest status and dashboard URL",
+    description: "Show Memnest status, stored memory count, and search latency",
     handler: async (_args, ctx) => {
       const [health, stats] = await Promise.all([
         call("/health", void 0, "GET"),
         call("/stats", void 0, "GET")
       ]);
       if (health.error) {
-        const message2 = `Memnest unreachable
-Dashboard: ${URL}/`;
+        const message2 = `Memnest unreachable at ${URL}`;
         ctx.ui.setStatus("memnest", "Memnest: unreachable");
         ctx.ui.notify(message2, "error");
         return;
       }
       const healthData = JSON.parse(health.text);
-      const count = stats.error ? "unavailable" : JSON.parse(stats.text).total_chunks;
-      const message = `Memnest ok
-Memories: ${count}
-Data: ${healthData.data_dir}
-Dashboard: ${URL}/`;
+      const statsData = stats.error ? null : JSON.parse(stats.text);
+      const count = statsData ? statsData.total_chunks : "unavailable";
+      const lines = [
+        "Memnest ok",
+        `Memories: ${count}`,
+        `Data: ${healthData.data_dir}`
+      ];
+      const ops = statsData?.operations;
+      if (ops?.searches_since_start > 0) {
+        lines.push(
+          `Searches: ${ops.searches_since_start}, avg ${Math.round(ops.average_search_ms)} ms, max ${ops.max_search_ms} ms`
+        );
+      }
+      if (ops?.failed_jobs > 0) {
+        lines.push(`Failed jobs: ${ops.failed_jobs}`);
+      }
+      const message = lines.join("\n");
       ctx.ui.setStatus("memnest", `Memnest: ok, ${count} memories`);
       ctx.ui.notify(message, "info");
     }

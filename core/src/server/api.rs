@@ -237,7 +237,6 @@ pub struct LifecycleInfo {
 pub struct HealthResponse {
     status: String,
     version: String,
-    dashboard_url: String,
     data_dir: String,
     embed_model: String,
     lifecycle: LifecycleInfo,
@@ -337,7 +336,6 @@ pub async fn health(State(system): State<Arc<RwLock<MemorySystem>>>) -> Json<Hea
     Json(HealthResponse {
         status: "ok".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        dashboard_url: format!("http://localhost:{}/", sys.config.api_port),
         data_dir: sys.config.data_dir.display().to_string(),
         embed_model: sys.config.embed_model.clone(),
         lifecycle: LifecycleInfo {
@@ -1494,64 +1492,6 @@ pub async fn prune(
     .into_response()
 }
 
-pub async fn list_collections(
-    State(system): State<Arc<RwLock<MemorySystem>>>,
-) -> Json<Vec<CollectionStat>> {
-    let sys = system.read().await;
-    let db = sys.db.read().await;
-    // collection_stats already drops internal buckets; the retain is a second
-    // barrier so a future storage change cannot leak trash into the listing.
-    let mut stats = db.collection_stats(500).unwrap_or_default();
-    stats.retain(|stat| !is_internal_project(&stat.name));
-    Json(stats)
-}
-
-pub async fn collection_detail(
-    State(system): State<Arc<RwLock<MemorySystem>>>,
-    Path(name): Path<String>,
-) -> Response {
-    // `_trash` and `_superseded` hold soft-deleted bodies. They are reachable
-    // by id through /chunk/{id} for restore, never browsable as a collection.
-    if is_internal_project(&name) {
-        return (
-            axum::http::StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"status":"not_found","error":"collection not found"})),
-        )
-            .into_response();
-    }
-    let sys = system.read().await;
-    let db = sys.db.read().await;
-
-    let chunks = db.get_chunks_by_project(&name, 100).unwrap_or_default();
-
-    let items: Vec<SearchResultItem> = chunks
-        .into_iter()
-        .map(|c| {
-            let redacted = redact_text(&c.document);
-            let doc_len = redacted.chars().count();
-            SearchResultItem {
-                id: c.id,
-                project: c.project,
-                document: redacted.chars().take(600).collect(),
-                doc_len,
-                score: 0.0,
-                timestamp: c.created_at.to_rfc3339(),
-                chunk_type: format!("{:?}", c.metadata.chunk_type),
-                importance: format!("{:?}", c.metadata.importance),
-                category: format!("{:?}", c.metadata.category),
-                memory_kind: serde_json::to_value(&c.metadata.memory_kind)
-                    .ok()
-                    .and_then(|value| value.as_str().map(str::to_string))
-                    .unwrap_or_else(|| "record".to_string()),
-                confidence: c.metadata.confidence,
-                adapter: c.metadata.adapter.unwrap_or_default(),
-            }
-        })
-        .collect();
-
-    Json(items).into_response()
-}
-
 #[derive(Deserialize)]
 pub struct SecretSetRequest {
     pub key: String,
@@ -1940,14 +1880,6 @@ mod visibility_tests {
         drop(db);
         drop(sys_guard);
 
-        let collections = list_collections(State(system.clone())).await.0;
-        assert!(
-            collections
-                .iter()
-                .all(|stat| !is_internal_project(&stat.name)),
-            "internal bucket leaked into /collections"
-        );
-
         let stats = stats(State(system.clone())).await.0;
         assert_eq!(stats.total_chunks, 1);
         assert!(
@@ -1959,10 +1891,6 @@ mod visibility_tests {
         );
 
         assert!(!keep.is_empty());
-
-        // The trash bucket is not browsable, even by direct URL.
-        let trash = collection_detail(State(system), Path("_trash".to_string())).await;
-        assert_eq!(trash.status(), axum::http::StatusCode::NOT_FOUND);
     }
 
     /// `/context` feeds a prompt. An unscoped pack would inject another
