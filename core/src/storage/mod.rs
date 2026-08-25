@@ -111,38 +111,6 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_summaries_project ON session_summaries(project);
             CREATE INDEX IF NOT EXISTS idx_summaries_created ON session_summaries(created_at);
 
-            CREATE TABLE IF NOT EXISTS facts (
-                id TEXT PRIMARY KEY,
-                subject TEXT NOT NULL,
-                predicate TEXT NOT NULL,
-                object TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                source_session TEXT,
-                history TEXT NOT NULL DEFAULT '[]'
-            );
-            CREATE INDEX IF NOT EXISTS idx_facts_subject ON facts(subject);
-            CREATE INDEX IF NOT EXISTS idx_facts_predicate ON facts(predicate);
-
-            CREATE TABLE IF NOT EXISTS servers (
-                name TEXT PRIMARY KEY,
-                host TEXT NOT NULL,
-                user TEXT NOT NULL,
-                password TEXT NOT NULL,
-                port INTEGER NOT NULL DEFAULT 22,
-                ssh_cmd TEXT,
-                scp_cmd TEXT,
-                note TEXT,
-                project_path TEXT,
-                updated TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS notes (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                updated TEXT NOT NULL,
-                prev TEXT
-            );
-
             CREATE TABLE IF NOT EXISTS secrets (
                 key TEXT PRIMARY KEY,
                 kind TEXT NOT NULL DEFAULT '',
@@ -207,6 +175,14 @@ impl Database {
             -- store and an upgraded one converge on the same schema.
             DROP TABLE IF EXISTS recall_events;
             DROP TABLE IF EXISTS recall_result_feedback;
+
+            -- The facts, servers, and notes tables never had a production
+            -- write path: no HTTP route, MCP tool, or CLI command inserted a
+            -- row, so every store that exists carries them empty. Dropping
+            -- them keeps a rebuilt store and an upgraded one on one schema.
+            DROP TABLE IF EXISTS facts;
+            DROP TABLE IF EXISTS servers;
+            DROP TABLE IF EXISTS notes;
             "#,
         )?;
         migrate_legacy_schema(&conn)?;
@@ -589,51 +565,6 @@ impl Database {
         Ok((over_30d, over_90d, over_180d))
     }
 
-    /// Upsert collection metadata. Used by `PUT /collection/:name/meta`.
-    pub fn upsert_collection_meta(
-        &self,
-        name: &str,
-        kind: Option<&str>,
-        description: Option<&str>,
-    ) -> Result<()> {
-        let conn = self.pool.get()?;
-        let now = chrono::Utc::now().to_rfc3339();
-        // Read existing row so we can do a partial update.
-        let existing: Option<(String, String)> = conn
-            .query_row(
-                "SELECT kind, description FROM collection_meta WHERE name = ?1",
-                params![name],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-            )
-            .ok();
-        let (cur_kind, cur_desc) =
-            existing.unwrap_or_else(|| ("project".to_string(), String::new()));
-        let new_kind = kind.map(|k| k.to_string()).unwrap_or(cur_kind);
-        let new_desc = description.map(|d| d.to_string()).unwrap_or(cur_desc);
-        conn.execute(
-            "INSERT INTO collection_meta (name, kind, description, updated_at)
-             VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(name) DO UPDATE SET
-                kind        = excluded.kind,
-                description = excluded.description,
-                updated_at  = excluded.updated_at",
-            params![name, new_kind, new_desc, now],
-        )?;
-        Ok(())
-    }
-
-    /// Fetch a single collection's metadata, or None if not yet recorded.
-    pub fn get_collection_meta(&self, name: &str) -> Result<Option<(String, String)>> {
-        let conn = self.pool.get()?;
-        Ok(conn
-            .query_row(
-                "SELECT kind, description FROM collection_meta WHERE name = ?1",
-                params![name],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-            )
-            .ok())
-    }
-
     /// Most recently stored user-visible chunks. Soft-deleted rows are excluded.
     pub fn recent_chunks(&self, limit: usize) -> Result<Vec<RecentChunk>> {
         let conn = self.pool.get()?;
@@ -825,18 +756,6 @@ impl Database {
         Ok(count as usize)
     }
 
-    pub fn vacuum(&self) -> Result<()> {
-        let conn = self.pool.get()?;
-        conn.execute_batch(
-            r#"
-            PRAGMA wal_checkpoint(TRUNCATE);
-            VACUUM;
-            PRAGMA optimize;
-            "#,
-        )?;
-        Ok(())
-    }
-
     fn row_to_chunk(&self, row: &rusqlite::Row) -> Result<MemoryChunk> {
         let embedding_bytes: Vec<u8> = row.get(3)?;
         let embedding = decode_embedding(&embedding_bytes)?;
@@ -865,28 +784,6 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_summaries_by_project(
-        &self,
-        project: &str,
-        limit: usize,
-    ) -> Result<Vec<SessionSummary>> {
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, project, session_id, summary, created_at
-             FROM session_summaries WHERE project = ?1 ORDER BY created_at DESC LIMIT ?2",
-        )?;
-        let rows = stmt.query_map(params![project, limit as i64], |row| {
-            Ok(SessionSummary {
-                id: row.get(0)?,
-                project: row.get(1)?,
-                session_id: row.get(2)?,
-                summary: row.get(3)?,
-                created_at: row.get(4)?,
-            })
-        })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
-    }
-
     pub fn get_summaries(&self, limit: usize) -> Result<Vec<SessionSummary>> {
         let conn = self.pool.get()?;
         let mut stmt = conn.prepare(
@@ -905,299 +802,21 @@ impl Database {
         rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
     }
 
-    pub fn summary_count(&self) -> Result<usize> {
-        let conn = self.pool.get()?;
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM session_summaries", [], |row| {
-            row.get(0)
-        })?;
-        Ok(count as usize)
-    }
-
-    // ── Facts ────────────────────────────────────────────────
-
-    pub fn insert_fact(&self, fact: &Fact) -> Result<()> {
-        let conn = self.pool.get()?;
-        let history = serde_json::to_string(&fact.history)?;
-        conn.execute(
-            "INSERT OR REPLACE INTO facts (id, subject, predicate, object, timestamp, source_session, history)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![
-                fact.id,
-                fact.subject,
-                fact.predicate,
-                fact.object,
-                fact.timestamp.to_rfc3339(),
-                fact.source_session,
-                history,
-            ],
-        )?;
-        Ok(())
-    }
-
-    pub fn get_facts(&self, limit: usize) -> Result<Vec<Fact>> {
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, subject, predicate, object, timestamp, source_session, history
-             FROM facts ORDER BY timestamp DESC LIMIT ?1",
-        )?;
-        let mut rows = stmt.query(params![limit as i64])?;
-        let mut facts = Vec::new();
-        while let Some(row) = rows.next()? {
-            let history: String = row.get(6)?;
-            facts.push(Fact {
-                id: row.get(0)?,
-                subject: row.get(1)?,
-                predicate: row.get(2)?,
-                object: row.get(3)?,
-                timestamp: row.get(4)?,
-                source_session: row.get(5)?,
-                history: serde_json::from_str(&history).unwrap_or_default(),
-            });
-        }
-        Ok(facts)
-    }
-
-    pub fn get_fact(&self, id: &str) -> Result<Option<Fact>> {
-        let conn = self.pool.get()?;
-        conn.query_row(
-            "SELECT id, subject, predicate, object, timestamp, source_session, history
-             FROM facts WHERE id = ?1",
-            params![id],
-            |row| {
-                let history: String = row.get(6)?;
-                Ok(Fact {
-                    id: row.get(0)?,
-                    subject: row.get(1)?,
-                    predicate: row.get(2)?,
-                    object: row.get(3)?,
-                    timestamp: row.get(4)?,
-                    source_session: row.get(5)?,
-                    history: serde_json::from_str(&history).unwrap_or_default(),
-                })
-            },
-        )
-        .optional()
-        .map_err(|e| e.into())
-    }
-
-    pub fn fact_count(&self) -> Result<usize> {
-        let conn = self.pool.get()?;
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM facts", [], |row| row.get(0))?;
-        Ok(count as usize)
-    }
-
-    // ── Servers ──────────────────────────────────────────────
-
-    pub fn insert_server(&self, server: &ServerInfo) -> Result<()> {
-        let encrypted_password =
-            crate::crypto::encrypt_bound(&format!("server:{}", server.name), &server.password)?;
-        let conn = self.pool.get()?;
-        conn.execute(
-            "INSERT OR REPLACE INTO servers (name, host, user, password, port, ssh_cmd, scp_cmd, note, project_path, updated)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![
-                server.name,
-                server.host,
-                server.user,
-                encrypted_password,
-                server.port,
-                server.ssh_cmd,
-                server.scp_cmd,
-                server.note,
-                server.project_path,
-                server.updated.to_rfc3339(),
-            ],
-        )?;
-        Ok(())
-    }
-
-    pub fn get_servers(&self) -> Result<Vec<ServerInfo>> {
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare(
-            "SELECT name, host, user, password, port, ssh_cmd, scp_cmd, note, project_path, updated FROM servers"
-        )?;
-        let mut rows = stmt.query([])?;
-        let mut servers = Vec::new();
-        while let Some(row) = rows.next()? {
-            let name: String = row.get(0)?;
-            let encrypted_password: String = row.get(3)?;
-            let password =
-                crate::crypto::decrypt_bound(&format!("server:{name}"), &encrypted_password)?;
-            servers.push(ServerInfo {
-                name,
-                host: row.get(1)?,
-                user: row.get(2)?,
-                password,
-                port: row.get(4)?,
-                ssh_cmd: row.get(5)?,
-                scp_cmd: row.get(6)?,
-                note: row.get(7)?,
-                project_path: row.get(8)?,
-                updated: row.get(9)?,
-            });
-        }
-        Ok(servers)
-    }
-
-    pub fn get_server(&self, name: &str) -> Result<Option<ServerInfo>> {
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare(
-            "SELECT name, host, user, password, port, ssh_cmd, scp_cmd, note, project_path, updated
-             FROM servers WHERE name = ?1",
-        )?;
-        let result: Option<(
-            String,
-            String,
-            String,
-            String,
-            u16,
-            String,
-            String,
-            String,
-            Option<String>,
-            chrono::DateTime<chrono::Utc>,
-        )> = stmt
-            .query_row(params![name], |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                    row.get(6)?,
-                    row.get(7)?,
-                    row.get(8)?,
-                    row.get(9)?,
-                ))
-            })
-            .optional()?;
-        result
-            .map(
-                |(
-                    name,
-                    host,
-                    user,
-                    password,
-                    port,
-                    ssh_cmd,
-                    scp_cmd,
-                    note,
-                    project_path,
-                    updated,
-                )| {
-                    let password =
-                        crate::crypto::decrypt_bound(&format!("server:{name}"), &password)?;
-                    Ok(ServerInfo {
-                        name,
-                        host,
-                        user,
-                        password,
-                        port,
-                        ssh_cmd,
-                        scp_cmd,
-                        note,
-                        project_path,
-                        updated,
-                    })
-                },
-            )
-            .transpose()
-    }
-
-    pub fn server_count(&self) -> Result<usize> {
-        let conn = self.pool.get()?;
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM servers", [], |row| row.get(0))?;
-        Ok(count as usize)
-    }
-
-    // ── Notes ────────────────────────────────────────────────
-
-    pub fn insert_note(&self, note: &Note) -> Result<()> {
-        let conn = self.pool.get()?;
-        let prev = note
-            .prev
-            .as_ref()
-            .map(|p| serde_json::to_string(p).unwrap());
-        conn.execute(
-            "INSERT OR REPLACE INTO notes (key, value, updated, prev)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![note.key, note.value, note.updated.to_rfc3339(), prev],
-        )?;
-        Ok(())
-    }
-
-    pub fn get_notes(&self) -> Result<Vec<Note>> {
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare("SELECT key, value, updated, prev FROM notes")?;
-        let mut rows = stmt.query([])?;
-        let mut notes = Vec::new();
-        while let Some(row) = rows.next()? {
-            let prev: Option<String> = row.get(3)?;
-            notes.push(Note {
-                key: row.get(0)?,
-                value: row.get(1)?,
-                updated: row.get(2)?,
-                prev: prev.and_then(|s| serde_json::from_str(&s).ok()),
-            });
-        }
-        Ok(notes)
-    }
-
-    pub fn get_note(&self, key: &str) -> Result<Option<Note>> {
-        let conn = self.pool.get()?;
-        let mut stmt =
-            conn.prepare("SELECT key, value, updated, prev FROM notes WHERE key = ?1")?;
-        let result = stmt
-            .query_row(params![key], |row| {
-                let prev: Option<String> = row.get(3)?;
-                Ok(Note {
-                    key: row.get(0)?,
-                    value: row.get(1)?,
-                    updated: row.get(2)?,
-                    prev: prev.and_then(|s| serde_json::from_str(&s).ok()),
-                })
-            })
-            .optional()?;
-        Ok(result)
-    }
-
-    pub fn delete_note(&self, key: &str) -> Result<bool> {
-        let conn = self.pool.get()?;
-        let affected = conn.execute("DELETE FROM notes WHERE key = ?1", params![key])?;
-        Ok(affected > 0)
-    }
-
-    pub fn note_count(&self) -> Result<usize> {
-        let conn = self.pool.get()?;
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM notes", [], |row| row.get(0))?;
-        Ok(count as usize)
-    }
-
     // ── Secrets (encrypted) ──────────────────────────────────
 
+    /// Every ciphertext the vault key must be able to open. The `servers`
+    /// table used to contribute `server:{name}` rows here, but nothing ever
+    /// wrote one, so the vault is exactly the `secrets` table now.
     pub(crate) fn encrypted_vault_values(&self) -> Result<Vec<(String, String)>> {
         let conn = self.pool.get()?;
-        let mut values = Vec::new();
-        {
-            let mut stmt = conn.prepare("SELECT key, value FROM secrets ORDER BY key")?;
-            let rows = stmt.query_map([], |row| {
-                let key: String = row.get(0)?;
-                let value: String = row.get(1)?;
-                Ok((format!("secret:{key}"), value))
-            })?;
-            values.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
-        }
-        {
-            let mut stmt = conn.prepare("SELECT name, password FROM servers ORDER BY name")?;
-            let rows = stmt.query_map([], |row| {
-                let name: String = row.get(0)?;
-                let value: String = row.get(1)?;
-                Ok((format!("server:{name}"), value))
-            })?;
-            values.extend(rows.collect::<rusqlite::Result<Vec<_>>>()?);
-        }
-        Ok(values)
+        let mut stmt = conn.prepare("SELECT key, value FROM secrets ORDER BY key")?;
+        let rows = stmt.query_map([], |row| {
+            let key: String = row.get(0)?;
+            let value: String = row.get(1)?;
+            Ok((format!("secret:{key}"), value))
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn insert_secret(&self, secret: &Secret) -> Result<()> {
@@ -1278,12 +897,6 @@ impl Database {
         Ok(affected > 0)
     }
 
-    pub fn secret_count(&self) -> Result<usize> {
-        let conn = self.pool.get()?;
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM secrets", [], |row| row.get(0))?;
-        Ok(count as usize)
-    }
-
     // ── Operational observability ────────────────────────────
 
     pub fn upsert_processing_job(&self, job: &ProcessingJob) -> Result<()> {
@@ -1311,28 +924,6 @@ impl Database {
             ],
         )?;
         Ok(())
-    }
-
-    pub fn recent_processing_jobs(&self, limit: usize) -> Result<Vec<ProcessingJob>> {
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, operation, target_id, state, canonical_id, adapter, error, created_at, updated_at
-             FROM processing_jobs ORDER BY updated_at DESC LIMIT ?1",
-        )?;
-        let rows = stmt.query_map(params![limit as i64], |row| {
-            Ok(ProcessingJob {
-                id: row.get(0)?,
-                operation: row.get(1)?,
-                target_id: row.get(2)?,
-                state: row.get(3)?,
-                canonical_id: row.get(4)?,
-                adapter: row.get(5)?,
-                error: row.get(6)?,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
-            })
-        })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     /// Job counts come from storage; search latency comes from process-memory
@@ -1409,42 +1000,6 @@ fn migrate_legacy_schema(conn: &Connection) -> Result<()> {
         "chunks",
         "metadata",
         "ALTER TABLE chunks ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'",
-    )?;
-    add_column_if_missing(
-        conn,
-        "servers",
-        "ssh_cmd",
-        "ALTER TABLE servers ADD COLUMN ssh_cmd TEXT",
-    )?;
-    add_column_if_missing(
-        conn,
-        "servers",
-        "scp_cmd",
-        "ALTER TABLE servers ADD COLUMN scp_cmd TEXT",
-    )?;
-    add_column_if_missing(
-        conn,
-        "servers",
-        "note",
-        "ALTER TABLE servers ADD COLUMN note TEXT",
-    )?;
-    add_column_if_missing(
-        conn,
-        "servers",
-        "project_path",
-        "ALTER TABLE servers ADD COLUMN project_path TEXT",
-    )?;
-    add_column_if_missing(
-        conn,
-        "facts",
-        "history",
-        "ALTER TABLE facts ADD COLUMN history TEXT NOT NULL DEFAULT '[]'",
-    )?;
-    add_column_if_missing(
-        conn,
-        "notes",
-        "prev",
-        "ALTER TABLE notes ADD COLUMN prev TEXT",
     )?;
     Ok(())
 }
@@ -1758,19 +1313,23 @@ mod tests {
             Importance::Knowledge,
         ))
         .unwrap();
-        db.insert_note(&Note {
-            key: "legacy-note".to_string(),
-            value: "ok".to_string(),
-            updated: Utc::now(),
-            prev: None,
-        })
-        .unwrap();
 
         assert_eq!(db.chunk_count_by_project("legacy").unwrap(), 1);
-        assert_eq!(
-            db.get_note("legacy-note").unwrap().unwrap().value,
-            "ok".to_string()
-        );
+
+        // facts, servers, and notes never had a production write path, so an
+        // upgraded store drops them instead of migrating their columns. A
+        // rebuilt store and an upgraded one must expose the same table set.
+        let conn = db.pool.get().unwrap();
+        for table in ["facts", "servers", "notes"] {
+            let present: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                    params![table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(present, 0, "legacy table {table} should be dropped on open");
+        }
     }
 
     #[tokio::test]
@@ -1871,12 +1430,24 @@ mod tests {
         })
         .unwrap();
 
-        let jobs = db.recent_processing_jobs(10).unwrap();
+        // `/stats` is the only surface that reads these rows now, and it reads
+        // them as per-state counts, so assert through that summary.
         let summary = db.operations_summary().unwrap();
-        assert_eq!(jobs[0].state, "succeeded");
         assert_eq!(summary.queued_jobs, 0);
         assert_eq!(summary.running_jobs, 0);
         assert_eq!(summary.failed_jobs, 0);
+
+        let state: String = db
+            .pool
+            .get()
+            .unwrap()
+            .query_row(
+                "SELECT state FROM processing_jobs WHERE id = 'job-test'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(state, "succeeded", "job row must survive the write");
     }
 
     /// A store written before this change still carries `recall_events` with
@@ -1945,11 +1516,6 @@ mod tests {
         let conn = db.pool.get().unwrap();
         conn.execute(
             "INSERT INTO secrets (key, kind, value, note, updated) VALUES ('sample', '', ?1, '', ?2)",
-            params![encrypted, Utc::now().to_rfc3339()],
-        )
-        .unwrap();
-        conn.execute(
-            "INSERT INTO servers (name, host, user, password, updated) VALUES ('sample', 'localhost', 'user', ?1, ?2)",
             params![encrypted, Utc::now().to_rfc3339()],
         )
         .unwrap();
@@ -2054,13 +1620,6 @@ mod tests {
             .unwrap();
             assert!(db.get_secret(key).is_err());
         }
-        conn.execute(
-            "INSERT INTO servers (name, host, user, password, updated) VALUES ('plain-server', 'localhost', 'user', 'plaintext-password', ?1)",
-            params![Utc::now().to_rfc3339()],
-        )
-        .unwrap();
-        assert!(db.get_server("plain-server").is_err());
-        assert!(db.get_servers().is_err());
     }
 
     #[tokio::test]
@@ -2083,11 +1642,19 @@ mod tests {
             .unwrap();
         }
         let reopened = Database::new(dir.path()).await.unwrap();
-        let jobs = reopened.recent_processing_jobs(5).unwrap();
-        assert_eq!(jobs[0].state, "failed");
-        assert_eq!(
-            jobs[0].error.as_deref(),
-            Some("interrupted by service restart")
-        );
+        assert_eq!(reopened.operations_summary().unwrap().failed_jobs, 1);
+
+        let (state, error): (String, Option<String>) = reopened
+            .pool
+            .get()
+            .unwrap()
+            .query_row(
+                "SELECT state, error FROM processing_jobs WHERE id = 'interrupted'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(state, "failed");
+        assert_eq!(error.as_deref(), Some("interrupted by service restart"));
     }
 }

@@ -86,8 +86,6 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
         .route("/delete", post(api::delete))
         .route("/restore", post(api::restore))
         .route("/prune", post(api::prune))
-        .route("/collections", get(api::list_collections))
-        .route("/collection/{name}", get(api::collection_detail))
         .route("/secrets", get(api::list_secrets).post(api::set_secret))
         .route(
             "/secrets/{key}",

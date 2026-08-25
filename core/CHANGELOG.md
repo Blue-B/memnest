@@ -6,9 +6,9 @@ All notable changes to `memnest`, the Rust engine.
 
 ### Removed
 
-- Removed the HTML dashboard, its `/` and `/viewer/search` routes, and the
-  `memnest dashboard` subcommand. The machine-readable `/health` and `/stats`
-  endpoints stay, so nothing that reads service state is lost.
+- Removed the HTML dashboard and its `/` and `/viewer/search` routes. The
+  machine-readable `/health` and `/stats` endpoints stay, so nothing that reads
+  service state is lost.
 - Removed the `recall_events` table, the `/operations` endpoint, and the
   `recall_id` field on search responses. The table held the text of every query
   for 90 days, which duplicated what transcript capture already stores and makes
@@ -19,6 +19,12 @@ All notable changes to `memnest`, the Rust engine.
   recorded an outcome, so every stored recall stayed `pending` and the bonus
   evaluated to zero on every query. The canonical model surface is now five
   memory tools.
+
+### Known issues
+
+- The `status` and `dashboard` subcommands and the `dashboard_url` field on
+  `/health` still report the address of the removed page, which now answers 404.
+  They are cleaned up separately.
 
 ### Fixed
 

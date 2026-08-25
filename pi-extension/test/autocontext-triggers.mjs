@@ -182,7 +182,7 @@ assert(
 // --- isSubstantive gate -----------------------------------------------------
 assert(
 	"substantive: slash command is skipped",
-	!isSubstantive("/memnest status and dashboard link"),
+	!isSubstantive("/memnest status and recent search latency"),
 	"slash command passed the gate",
 );
 assert(

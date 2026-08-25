@@ -62,23 +62,39 @@ function registerTool(
 export default function register(pi: ExtensionAPI): void {
 	installAutocontext(pi);
 	pi.registerCommand?.("memnest", {
-		description: "Show Memnest status and dashboard URL",
+		description: "Show Memnest status, stored memory count, and search latency",
 		handler: async (_args: string, ctx: any) => {
 			const [health, stats] = await Promise.all([
 				call("/health", undefined, "GET"),
 				call("/stats", undefined, "GET"),
 			]);
 			if (health.error) {
-				const message = `Memnest unreachable\nDashboard: ${URL}/`;
+				const message = `Memnest unreachable at ${URL}`;
 				ctx.ui.setStatus("memnest", "Memnest: unreachable");
 				ctx.ui.notify(message, "error");
 				return;
 			}
 			const healthData = JSON.parse(health.text);
-			const count = stats.error
-				? "unavailable"
-				: JSON.parse(stats.text).total_chunks;
-			const message = `Memnest ok\nMemories: ${count}\nData: ${healthData.data_dir}\nDashboard: ${URL}/`;
+			const statsData = stats.error ? null : JSON.parse(stats.text);
+			const count = statsData ? statsData.total_chunks : "unavailable";
+			const lines = [
+				"Memnest ok",
+				`Memories: ${count}`,
+				`Data: ${healthData.data_dir}`,
+			];
+			// Latency counters live in process memory and reset on restart, so a
+			// fresh service reports zero searches. Skip the line instead of
+			// printing a 0 ms average that reads like a measurement.
+			const ops = statsData?.operations;
+			if (ops?.searches_since_start > 0) {
+				lines.push(
+					`Searches: ${ops.searches_since_start}, avg ${Math.round(ops.average_search_ms)} ms, max ${ops.max_search_ms} ms`,
+				);
+			}
+			if (ops?.failed_jobs > 0) {
+				lines.push(`Failed jobs: ${ops.failed_jobs}`);
+			}
+			const message = lines.join("\n");
 			ctx.ui.setStatus("memnest", `Memnest: ok, ${count} memories`);
 			ctx.ui.notify(message, "info");
 		},
