@@ -21,7 +21,6 @@ tokio = { version = "1.43", features = ["full"] }
 # router; MCP is a hand-rolled JSON-RPC dispatcher (server::mcp), so no MCP SDK
 # crate is involved.
 axum = { version = "0.8", features = ["macros"] }
-tower-http = { version = "0.6", features = ["fs", "cors"] }
 
 # HTTP client for `memnest hook`, which talks to a running service instead of
 # opening the data directory. Already in the tree via fastembed's hf-hub.

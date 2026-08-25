@@ -36,9 +36,7 @@ if ($service.Status -ne "Running") {
 }
 
 Wait-MemnestHealth -Url $health
-Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:$Port/assets/memory-atlas.png" | Out-Null
 & "$InstallDir\memnest.exe" --data-dir $DataDir --doctor
 Restart-Service -Name $ServiceName -Force
 Wait-MemnestHealth -Url $health
-Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:$Port/assets/memory-atlas.png" | Out-Null
 Write-Host "validate_installed_windows_ok"

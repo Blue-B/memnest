@@ -76,7 +76,6 @@ if (-not $BinPath) {
 
 Check-Ok "memnest.exe is available" { if (-not $BinPath -or -not (Test-Path $BinPath)) { throw "missing binary" } }
 Check-Ok "Windows service template is available" { if (-not (Test-Path "$Root\packaging\windows\memnest-service.xml")) { throw "missing service template" } }
-Check-Ok "dashboard static assets are available" { if (-not (Test-Path "$Root\static\memory-atlas.png")) { throw "missing dashboard static assets" } }
 Check-Ok "install directory or nearest parent is writable" { Test-WritableTarget -Path $InstallDir }
 Check-Ok "data directory or nearest parent is writable" { Test-WritableTarget -Path $DataDir }
 Check-Ok "host is a supported local bind" { if ($LocalHosts -notcontains $HostAddress) { throw "unsupported host bind: $HostAddress" } }

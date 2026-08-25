@@ -64,5 +64,4 @@ else
 fi
 
 wait_for_health
-curl -fsS "http://${HOST}:${PORT}/assets/memory-atlas.png" >/dev/null
 echo "validate_installed_linux_ok"

@@ -100,19 +100,15 @@ wait_for_health() {
 
 if [ "$MODE" = "system" ]; then
   sudo install -m 0755 "$BIN_SRC" /usr/local/bin/memnest
-  sudo mkdir -p /var/lib/memnest /usr/local/share/memnest/static
-  sudo cp -R "$ROOT/static/." /usr/local/share/memnest/static/
-  sudo find /usr/local/share/memnest/static -type f -exec chmod 0644 {} +
+  sudo mkdir -p /var/lib/memnest
   sudo install -m 0644 "$ROOT/packaging/systemd/memnest.service" /etc/systemd/system/memnest.service
   patch_service_env /etc/systemd/system/memnest.service sudo
   sudo systemctl daemon-reload
   sudo systemctl enable --now memnest.service
   sudo systemctl status memnest.service --no-pager -l
 else
-  install -d "$HOME/.local/bin" "$HOME/.config/systemd/user" "$HOME/.memnest" "$HOME/.local/share/memnest/static"
+  install -d "$HOME/.local/bin" "$HOME/.config/systemd/user" "$HOME/.memnest"
   install -m 0755 "$BIN_SRC" "$HOME/.local/bin/memnest"
-  cp -R "$ROOT/static/." "$HOME/.local/share/memnest/static/"
-  find "$HOME/.local/share/memnest/static" -type f -exec chmod 0644 {} +
   install -m 0644 "$ROOT/packaging/systemd/memnest-user.service" "$HOME/.config/systemd/user/memnest.service"
   patch_service_env "$HOME/.config/systemd/user/memnest.service"
   systemctl --user daemon-reload

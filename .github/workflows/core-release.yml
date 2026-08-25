@@ -91,7 +91,6 @@ jobs:
           cp "target/$TARGET/release/memnest" dist/
           cp -r scripts dist/
           cp -r packaging dist/
-          cp -r static dist/
           cp LICENSE THIRD_PARTY_NOTICES.md dist/
           cp ../README.md dist/
           tar -czf "memnest-$VERSION-$TARGET.tar.gz" -C dist .
@@ -110,7 +109,6 @@ jobs:
           unpacked="$(mktemp -d)"
           tar -xzf "$archive" -C "$unpacked"
           test -f "$unpacked/THIRD_PARTY_NOTICES.md"
-          test -f "$unpacked/static/memory-atlas.png"
           test -x "$unpacked/memnest"
           if [ "$TARGET" = "x86_64-unknown-linux-gnu" ]; then
             packaged_version="$("$unpacked/memnest" --version)"
