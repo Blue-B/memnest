@@ -24,6 +24,37 @@ AI 코딩 에이전트는 세션이 끝나면 전부 잊습니다. memnest는 �
 
 도구 호출과 프롬프트 시점 회상, 대화 캡처는 하나의 Rust 서비스가 서로 다른 데이터 경로로 처리합니다. 원본은 SQLite이고 옆에 있는 Tantivy, HNSW 색인은 지워도 다시 만들 수 있습니다. 어느 단계에서도 LLM을 호출하지 않으며 임베딩은 `intfloat/multilingual-e5-base`로 로컬에서 돌아갑니다.
 
+## 기억이 오가는 경로
+
+쓰기와 읽기는 같은 저장소를 쓰지만 경로가 다릅니다. 쓰기는 검색 가능해지기 전에 먼저 durable해지고, 읽기는 서로 독립적인 두 순위를 합쳐서 어느 한쪽만 믿지 않습니다.
+
+```mermaid
+flowchart TD
+    subgraph read["읽기 경로"]
+        direction TB
+        R1["질의와 cwd"] --> R2["범위: 현재 workspace와<br/>playbook"]
+        R2 --> R3["BM25 단어 검색"]
+        R2 --> R4["벡터 유사도 검색"]
+        R3 --> R5["RRF 융합, k=60"]
+        R4 --> R5
+        R5 --> R6["MMR 재정렬,<br/>lambda=0.5"]
+        R6 --> R7["결과"]
+    end
+
+    subgraph write["쓰기 경로"]
+        direction TB
+        W1["memory_remember, hook, watch"] --> W2["자격증명처럼 생긴 문자열 가리기"]
+        W2 --> W3["e5로 로컬 임베딩"]
+        W3 --> W4["SQLite 트랜잭션 하나:<br/>레코드와 색인 작업"]
+        W4 --> W5["Tantivy BM25 색인"]
+        W4 --> W6["HNSW 벡터 색인"]
+        W5 --> W7["색인 작업 행 삭제"]
+        W6 --> W7
+    end
+```
+
+색인 작업 행이 있어서 색인이 사라져도 복구됩니다. 레코드와 같은 트랜잭션에 기록되고 두 색인이 모두 durable해진 뒤에야 지워지므로, 중간에 끊긴 쓰기는 유실되지 않고 시작할 때 다시 반영됩니다.
+
 ## 설치
 
 ```bash
