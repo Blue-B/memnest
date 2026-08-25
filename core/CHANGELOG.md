@@ -19,12 +19,16 @@ All notable changes to `memnest`, the Rust engine.
   recorded an outcome, so every stored recall stayed `pending` and the bonus
   evaluated to zero on every query. The canonical model surface is now five
   memory tools.
-
-### Known issues
-
-- The `status` and `dashboard` subcommands and the `dashboard_url` field on
-  `/health` still report the address of the removed page, which now answers 404.
-  They are cleaned up separately.
+- Removed the `dashboard` subcommand and the `dashboard_url` field on `/health`,
+  and dropped the address of the removed page from `status`. All three still
+  advertised a path that now answers 404.
+- Removed the `facts`, `notes`, and `servers` tables and the `facts` module.
+  Their read paths outlived the writers, so no store could gain a row: the vault
+  key validator and backup validation both queried `servers` for ciphertext that
+  could only ever be an empty set. Structured memory is unaffected because it
+  travels as `memory_kind` on a chunk, not as a row in `facts`.
+- Removed the `/collections` and `/collection/{name}` endpoints, which had no
+  caller left once the dashboard was gone.
 
 ### Fixed
 
@@ -50,9 +54,10 @@ All notable changes to `memnest`, the Rust engine.
 
 - Dropped the `/facts`, `/notes`, `/notes/{key}`, `/servers`, `/summary`,
   `/sessions`, `/collection/{name}/meta` mutation, `/reproject`, and `/compact`
-  endpoints, along with the `--import-facts-json` flag. Their SQLite tables are
-  left in place and untouched, so existing rows remain readable and are
-  preserved for a future migration.
+  endpoints, along with the `--import-facts-json` flag. Their SQLite tables were
+  left in place at the time; the `facts`, `notes`, and `servers` tables are
+  dropped on open as of this release, after the only note holding real content
+  was migrated to a regular searchable memory.
 - Removed the unsupported `learn/` package, in-memory graph runtime,
   session-fork mutation endpoint, and learning-only neighbors endpoint. Existing
   memory rows, lineage metadata, and the legacy `graph_edges` table remain

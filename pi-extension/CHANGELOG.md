@@ -9,11 +9,9 @@ All notable changes to `pi-memnest`.
 - Removed the `memory_feedback` tool. Nothing ever recorded an outcome, so the ranking signal behind it was always zero. The default model surface drops from six memory tools to five.
 - Search results no longer carry a `recall_id`. The core stopped recording query text, so there is no stored lookup left to point at.
 
-### Known issues
-
-- `/memnest` still prints a dashboard link, and the core no longer serves that page, so the address answers 404. It is cleaned up separately.
-
 ### Changed
+
+- `/memnest` no longer prints a dashboard link, because the core no longer serves that page. It reports search latency instead.
 
 - Default model surface is now five memory tools. The four vault tools require `MEMNEST_EXPOSE_SECRET_TOOLS=1`.
 - Omitted projects send pi's absolute `cwd`, letting the core isolate same-basename workspaces and include `playbook` safely.
