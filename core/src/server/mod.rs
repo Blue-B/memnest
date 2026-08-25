@@ -15,7 +15,6 @@ use axum::{
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tower_http::services::ServeDir;
 
 use crate::MemorySystem;
 
@@ -95,10 +94,6 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
         // MCP over Streamable HTTP: same auth and security layers as every other
         // route, so one service covers the API and MCP clients.
         .route("/mcp", post(mcp::http_endpoint))
-        // No page is served from this process anymore, but the mount stays:
-        // the install scripts and preflight checks ship `static/` and assume
-        // it is reachable.
-        .nest_service("/assets", ServeDir::new("static"))
         .layer(middleware::from_fn(security_headers_middleware))
         .layer(middleware::from_fn(auth_middleware))
         .with_state(system)

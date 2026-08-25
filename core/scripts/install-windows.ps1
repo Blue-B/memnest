@@ -80,13 +80,6 @@ if (-not $WinSWSha256) {
 $LogDir = "$env:ProgramData\Memnest\logs"
 New-Item -ItemType Directory -Force -Path $InstallDir, $DataDir, $LogDir | Out-Null
 Copy-Item $BinPath "$InstallDir\memnest.exe" -Force
-if (Test-Path "$Root\static") {
-  New-Item -ItemType Directory -Force -Path "$InstallDir\static" | Out-Null
-  Copy-Item "$Root\static\*" -Destination "$InstallDir\static" -Recurse -Force
-}
-else {
-  throw "dashboard static assets not found: $Root\static"
-}
 
 $winsw = "$InstallDir\memnest-service.exe"
 $escapedDataDir = [System.Security.SecurityElement]::Escape($DataDir)

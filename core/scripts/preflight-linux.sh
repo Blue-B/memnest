@@ -78,7 +78,6 @@ check_writable_target() {
 }
 
 check "data directory or nearest parent is writable" check_writable_target "$DATA_DIR"
-check "dashboard static assets are present" test -f "$ROOT/static/memory-atlas.png"
 
 is_local_host() {
   case "$1" in
