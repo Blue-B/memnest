@@ -18,6 +18,10 @@ pub fn rrf_fusion(
     }
 
     let mut results: Vec<(String, f32)> = scores.into_iter().collect();
-    results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    // total_cmp rather than partial_cmp().unwrap(): the caller can absorb an
+    // Err through unwrap_or_default, but a panic inside the comparator takes
+    // the process down instead. Today every score is 1.0/(60.0 + rank) and
+    // cannot be NaN, so this only costs a different comparator.
+    results.sort_by(|a, b| b.1.total_cmp(&a.1));
     Ok(results)
 }
