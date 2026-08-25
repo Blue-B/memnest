@@ -236,17 +236,6 @@ pub struct SearchResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RecallEvent {
-    pub id: String,
-    pub query: String,
-    pub project: String,
-    pub result_ids: Vec<String>,
-    pub duration_ms: i64,
-    pub adapter: String,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessingJob {
     pub id: String,
     pub operation: String,
@@ -261,11 +250,14 @@ pub struct ProcessingJob {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OperationsSummary {
-    pub recalls_24h: usize,
+    /// Search counters come from process memory, not from storage, so they
+    /// reset on restart and never imply that query text was kept on disk.
+    pub searches_since_start: usize,
+    pub average_search_ms: f64,
+    pub max_search_ms: u64,
     pub queued_jobs: usize,
     pub running_jobs: usize,
     pub failed_jobs: usize,
-    pub average_recall_ms_24h: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

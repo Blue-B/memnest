@@ -10,6 +10,7 @@ pub mod lifecycle;
 pub mod models;
 pub mod redaction;
 pub mod search;
+pub mod search_metrics;
 pub mod server;
 pub mod storage;
 pub mod watch;

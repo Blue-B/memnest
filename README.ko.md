@@ -107,7 +107,7 @@ secret_list
 secret_delete
 ```
 
-검색은 workspace 범위로 동작합니다. 클라이언트는 절대 경로인 `cwd`, 명시적인 `project`, 또는 의도적인 전체 검색인 `project=all`을 보냅니다. 모든 검색은 그 조회를 `/operations`에서 식별하는 `recall_id`를 반환합니다. 삭제한 기억은 바로 지우지 않고 휴지통으로 이동합니다.
+검색은 workspace 범위로 동작합니다. 클라이언트는 절대 경로인 `cwd`, 명시적인 `project`, 또는 의도적인 전체 검색인 `project=all`을 보냅니다. 삭제한 기억은 바로 지우지 않고 휴지통으로 이동합니다.
 
 ### workspace를 식별하는 방식
 
@@ -167,7 +167,7 @@ archive/        완전 삭제된 기억의 평문 JSONL
 watch-state.json
 ```
 
-서비스 상태는 JSON으로 읽을 수 있습니다. `/health`는 생존 여부와 마지막 정리 작업을, `/stats`는 collection 크기와 디스크 사용량을, `/operations`는 최근 검색과 처리 작업을 돌려줍니다.
+서비스 상태는 JSON으로 읽을 수 있습니다. `/health`는 생존 여부와 마지막 정리 작업을, `/stats`는 collection 크기와 디스크 사용량, 서비스를 켠 뒤의 검색 지연을 돌려줍니다. 질의 원문은 저장하지 않으므로 무엇을 검색했는지는 디스크에 남지 않습니다.
 
 ## 보안
 

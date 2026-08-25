@@ -1,5 +1,5 @@
 use crate::MemorySystem;
-use crate::models::{Metadata, RecallEvent, is_internal_project};
+use crate::models::{Metadata, is_internal_project};
 use crate::redaction::redact_text;
 use crate::workspace::{SearchScope, identity as workspace_identity};
 use serde::Serialize;
@@ -199,7 +199,6 @@ pub struct SearchOutput {
     pub project: String,
     pub total: usize,
     pub elapsed_ms: u128,
-    pub recall_id: String,
 }
 
 pub(crate) async fn resolve_search_scope(
@@ -253,27 +252,14 @@ pub async fn search(
     )
     .await;
     let elapsed_ms = started.elapsed().as_millis();
-    let event = RecallEvent {
-        id: format!("recall_{}", uuid::Uuid::new_v4().simple()),
-        query: redact_text(&input.query),
-        project: project.clone(),
-        result_ids: items.iter().map(|item| item.id.clone()).collect(),
-        duration_ms: elapsed_ms.min(i64::MAX as u128) as i64,
-        adapter: input.adapter,
-        created_at: chrono::Utc::now(),
-    };
-    let sys = system.read().await;
-    sys.db
-        .write()
-        .await
-        .insert_recall_event(&event)
-        .map_err(|e| OperationError::internal(e.to_string()))?;
+    // Timing only, held in process memory. The query itself is not recorded:
+    // transcript AutoLog already keeps searchable conversation text.
+    crate::search_metrics::record_search(elapsed_ms.min(u64::MAX as u128) as u64);
     Ok(SearchOutput {
         total: items.len(),
         results: items,
         project,
         elapsed_ms,
-        recall_id: event.id,
     })
 }
 

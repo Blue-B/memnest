@@ -68,7 +68,7 @@ memory_remember text="Project X now deploys on port 8420" memory_kind="fact" sup
 memory_delete id="manual_..."
 ```
 
-When `project` is omitted, the extension sends pi's absolute `cwd`; the core derives a private workspace ID and includes `playbook` in recall. The core records each save in `/operations`, durably queues its index work in SQLite, and acknowledges the write only after Tantivy and HNSW are synchronized. Plain duplicate records may reuse an existing id. Structured facts, rules, provenance, and corrections do not use semantic content deduplication. The first operation that needs an embedding takes longer because that is when the core downloads its embedding model.
+When `project` is omitted, the extension sends pi's absolute `cwd`; the core derives a private workspace ID and includes `playbook` in recall. The core durably queues its index work in SQLite and acknowledges the write only after Tantivy and HNSW are synchronized. Plain duplicate records may reuse an existing id. Structured facts, rules, provenance, and corrections do not use semantic content deduplication. The first operation that needs an embedding takes longer because that is when the core downloads its embedding model.
 
 ## Structured memory
 

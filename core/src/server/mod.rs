@@ -94,7 +94,6 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
             get(api::get_secret).delete(api::delete_secret),
         )
         .route("/stats", get(api::stats))
-        .route("/operations", get(api::operations))
         // MCP over Streamable HTTP: same auth and security layers as every other
         // route, so one service covers the API and MCP clients.
         .route("/mcp", post(mcp::http_endpoint))

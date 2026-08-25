@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, State},
     response::{IntoResponse, Json, Response},
 };
 use serde::{Deserialize, Serialize};
@@ -150,13 +150,6 @@ pub struct MetadataPatch {
     pub supersedes: Option<String>,
     #[serde(default)]
     pub verified_at: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct OperationsResponse {
-    summary: OperationsSummary,
-    recalls: Vec<RecallEvent>,
-    jobs: Vec<ProcessingJob>,
 }
 
 #[derive(Deserialize)]
@@ -1681,24 +1674,6 @@ pub async fn delete_secret(
         )
             .into_response(),
     }
-}
-
-pub async fn operations(
-    State(system): State<Arc<RwLock<MemorySystem>>>,
-    Query(params): Query<HashMap<String, String>>,
-) -> Json<OperationsResponse> {
-    let limit = params
-        .get("limit")
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(20)
-        .clamp(1, 100);
-    let sys = system.read().await;
-    let db = sys.db.read().await;
-    Json(OperationsResponse {
-        summary: db.operations_summary().unwrap_or_default(),
-        recalls: db.recent_recall_events(limit).unwrap_or_default(),
-        jobs: db.recent_processing_jobs(limit).unwrap_or_default(),
-    })
 }
 
 pub async fn stats(State(system): State<Arc<RwLock<MemorySystem>>>) -> Json<StatsResponse> {
