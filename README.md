@@ -47,6 +47,17 @@ Service setup for Linux, WSL, and Windows, plus backup, restore, and retention, 
 
 ## Connect an agent
 
+Each harness exposes different extension points, so the wiring differs while the service, the data, and the tool contract stay the same:
+
+| Harness | Prompt-time recall | Memory tools | Transcript capture |
+| --- | --- | --- | --- |
+| pi | Autocontext, from the extension | Registered by the extension | `memnest watch` |
+| Claude Code | `memnest hook` on `UserPromptSubmit` | MCP | `memnest watch` |
+| Codex | `memnest hook` on `UserPromptSubmit` | MCP | `memnest watch` |
+| Other MCP clients | Depends on the client | MCP | Not applicable |
+
+The sections below show how to set up each path.
+
 ### MCP
 
 Point an MCP client at the running service:
@@ -125,7 +136,7 @@ Structured facts, rules, provenance, and corrections skip semantic content dedup
 
 `memnest hook` reads a host prompt event from stdin and prints a small workspace-scoped context block. If the working directory is unknown or the service is unavailable, it prints nothing and does not block the prompt. Retrieved text is marked as untrusted reference data. Transcript results are labeled as conversation evidence, and embedded markup is escaped before injection.
 
-Claude Code hook example:
+Claude Code and Codex share the same hook shape, so one configuration serves both. Claude Code reads `~/.claude/settings.json`, while Codex reads `~/.codex/hooks.json` or an inline `[hooks]` table in `config.toml`.
 
 ```json
 {
@@ -140,6 +151,8 @@ Claude Code hook example:
   }
 }
 ```
+
+Codex skips a new or edited hook until you review and trust it with `/hooks`.
 
 `memnest watch` is the single transcript capture path for pi, Claude Code, and Codex:
 
@@ -158,14 +171,17 @@ The watcher follows the known transcript directories and stores offsets in `<dat
 Memnest keeps its state under the selected data directory, normally `~/.memnest`:
 
 ```text
-memory.db       SQLite records, workspace registry, and pending index work
-text_index/     rebuildable Tantivy BM25 index
-vectors/        rebuildable HNSW vector index
+memory.db       SQLite source of truth: memories, workspace registry, the
+                encrypted secrets table, and pending index work
+text_index/     Tantivy BM25 keyword index, derived from memory.db
+vectors/        HNSW similarity index over e5 embeddings, derived from memory.db
 models/         local embedding model
-master.key      vault key
+master.key      key that decrypts the secrets table
 archive/        plaintext JSONL of hard-deleted memories
 watch-state.json
 ```
+
+`memory.db` is the only original. The two indexes are caches: every write lands in SQLite first, and pending index jobs then update `text_index/` and `vectors/`. Deleting either directory is safe, and the service rebuilds it from the database. `memory.db` is not rebuildable, so back it up together with `master.key`; without the key the secrets table cannot be decrypted.
 
 Service state is readable as JSON. `/health` reports liveness and the last lifecycle run, and `/stats` reports collection sizes, disk use, and search latency since startup. Query text is never stored, so nothing you searched for is kept on disk.
 
