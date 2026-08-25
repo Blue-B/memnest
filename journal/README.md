@@ -17,15 +17,13 @@ A journal has this layout:
 ├── README.md
 ├── .gitignore
 ├── chunks/<project>/<id>.md
-├── facts/<hash>.md
-├── notes/<key>.md
 ├── secrets/<key>.enc.md    (only with --include-secrets)
 └── sessions/<project>/<id>.md
 ```
 
-Each record is rendered as Markdown with frontmatter. Memory chunks are grouped by project, facts use stable hashed filenames, notes use their key, and sessions are grouped by project.
+Each record is rendered as Markdown with frontmatter. Memory chunks and sessions are grouped by project.
 
-The core no longer writes facts, notes, or session summaries, so those three directories stay empty on a fresh install. They are still exported so that older stores keep their existing rows visible.
+The core dropped the `facts` and `notes` tables, which never had a write path, so the journal no longer exports those directories. An older journal repository keeps whatever it already wrote there; sync leaves those files alone rather than pruning them.
 
 The exporter reads the SQLite database directly in read-only mode. It does not export vector index files, the text index, the database, or `master.key`.
 
@@ -35,12 +33,11 @@ The public npm registry does not currently provide `memnest-journal`. Install it
 
 Version 0.1.0 is an audit-oriented exporter with a limited import path:
 
-- export supports chunks, facts, notes, and session summaries; stored secret records require `--include-secrets`
+- export supports chunks and session summaries; stored secret records require `--include-secrets`
 - sync exports, stages, and commits the journal, with an optional push
 - import applies modified chunk files by adding a new memory with a provenance marker
 - import does not replace or delete the original memory
-- facts, sessions, and secrets are read-only in the journal
-- modified note files are detected but are not written back to memnest in this version
+- sessions and secrets are read-only in the journal
 
 ## Requirements
 

@@ -32,6 +32,11 @@ All notable changes to `memnest`, the Rust engine.
 
 ### Fixed
 
+- Internal errors are logged with their real cause again. `OperationError::
+  internal` took a message and threw it away, so a SQLite or index failure left
+  nothing behind on any path. The cause now goes to the log while clients keep
+  seeing one fixed string, redacted through a shared constant so the HTTP and
+  MCP paths cannot drift apart.
 - Restored the resolved `project` on the `/search` response. Canonicalizing the
   memory tool contract dropped it, and clients that scope retrieved rows against
   it (pi Autocontext) treated every search as a failure and silently returned

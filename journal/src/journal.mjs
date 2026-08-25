@@ -5,7 +5,6 @@
 import { mkdir, readFile, writeFile, rm, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { createHash } from "node:crypto";
 import { openDB } from "./db.mjs";
 import { stringifyFrontmatter, parseFrontmatter } from "./yaml.mjs";
 
@@ -22,17 +21,6 @@ function chunkRelPath(chunk) {
   const proj = safeName(chunk.project);
   const id = safeName(chunk.id);
   return `chunks/${proj}/${id}.md`;
-}
-function factRelPath(fact) {
-  // facts table has no project; subject can be huge — hash for filename
-  const h = createHash("sha256")
-    .update(fact.id || fact.subject)
-    .digest("hex")
-    .slice(0, 16);
-  return `facts/${h}.md`;
-}
-function noteRelPath(note) {
-  return `notes/${safeName(note.key)}.md`;
 }
 function secretRelPath(secret) {
   return `secrets/${safeName(secret.key)}.enc.md`;
@@ -65,22 +53,6 @@ function chunkToMd(chunk) {
     updated_at: chunk.updated_at,
   };
   return stringifyFrontmatter(fm) + (chunk.document ?? "") + "\n";
-}
-
-function factToMd(fact) {
-  const fm = {
-    id: fact.id,
-    subject: fact.subject,
-    predicate: fact.predicate,
-    timestamp: fact.timestamp,
-    source_session: fact.source_session,
-  };
-  return stringifyFrontmatter(fm) + (fact.object ?? "") + "\n";
-}
-
-function noteToMd(note) {
-  const fm = { key: note.key, updated: note.updated };
-  return stringifyFrontmatter(fm) + (note.value ?? "") + "\n";
 }
 
 // memnest encrypts secret values as `$enc2$` (row-bound) or legacy `$enc$`,
@@ -160,13 +132,11 @@ export async function exportAll({
   includeSecrets = false,
 }) {
   const db = await openDB(dbPath, { readonly: true });
-  const written = { chunks: 0, facts: 0, notes: 0, secrets: 0, sessions: 0 };
+  const written = { chunks: 0, secrets: 0, sessions: 0 };
   // A null `seen` bucket means "this export did not cover that subtree", so
   // prune must leave it alone.
   const seen = {
     chunks: new Set(),
-    facts: new Set(),
-    notes: new Set(),
     secrets: null,
     sessions: new Set(),
   };
@@ -207,23 +177,9 @@ export async function exportAll({
         written.chunks++;
     }
 
-    // facts
-    for (const f of db.all(
-      "SELECT id, subject, predicate, object, timestamp, source_session FROM facts",
-    )) {
-      const rel = factRelPath(f);
-      seen.facts.add(rel);
-      if (await writeIfChanged(join(repoDir, rel), factToMd(f)))
-        written.facts++;
-    }
-
-    // notes
-    for (const n of db.all("SELECT key, value, updated FROM notes")) {
-      const rel = noteRelPath(n);
-      seen.notes.add(rel);
-      if (await writeIfChanged(join(repoDir, rel), noteToMd(n)))
-        written.notes++;
-    }
+    // The core dropped the facts and notes tables, which never had a write
+    // path. Querying them here raised "no such table" and aborted the whole
+    // export, taking chunks down with it.
 
     // secrets (validated ciphertext only, and only when opted in)
     for (const s of secrets) {
@@ -252,7 +208,7 @@ export async function exportAll({
 export async function pruneRemovedFiles({ repoDir, seen }) {
   // Delete files in repoDir under known subtrees that the export didn't
   // touch this run. Caller decides scope by passing populated `seen`.
-  const subtrees = ["chunks", "facts", "notes", "secrets", "sessions"];
+  const subtrees = ["chunks", "secrets", "sessions"];
   let removed = 0;
   for (const sub of subtrees) {
     const root = join(repoDir, sub);
@@ -317,13 +273,10 @@ export async function importChangedFiles({
   // Apply user edits back into memnest. Strategy:
   //   chunks/*: POST /add as a new memory with a provenance marker; the
   //             original chunk is left intact (see below).
-  //   notes/*:  counted as pending only. The server exposes no notes write
-  //             API, so edited note files are reported and left alone.
-  //   secrets/*: refuse — secrets must be set via API, not file edits.
+  //   secrets/*: refuse, secrets must be set via API, not file edits.
   const stats = {
     chunks_applied: 0,
     chunks_skipped: 0,
-    notes_pending: 0,
     errors: [],
   };
   for (const f of files) {
@@ -354,9 +307,6 @@ export async function importChangedFiles({
           },
         });
         stats.chunks_applied++;
-      } else if (f.startsWith("notes/")) {
-        // Reported only; note write-back is not implemented in this release.
-        stats.notes_pending++;
       } else if (f.startsWith("secrets/")) {
         stats.chunks_skipped++; // explicit no-op
       }

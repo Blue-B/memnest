@@ -89,7 +89,7 @@ async function cmdInit(args) {
   await mkdir(dir, { recursive: true });
   if (!git.isRepo(dir)) git.init(dir);
   // README + .gitignore (master.key must never be committed)
-  const readme = `# memnest-journal\n\nThis repo is the human-readable, version-controlled view of your\nmemnest AI memory. The canonical store is sqlite at \`~/.memnest/\`;\nthis tree is generated from it and can be edited then synced back.\n\n- \`chunks/\` — memory chunks grouped by project\n- \`facts/\`  — structured (subject, predicate, object) facts\n- \`notes/\`  — key-value notes\n- \`secrets/\` — empty unless you pass \`--include-secrets\`. With that flag every\n  row must be AES-256-GCM ciphertext (\`$enc2$...\` or legacy \`$enc$...\`) or\n  the export aborts, so plaintext is never written here. Review before push.\n- \`sessions/\` — session summaries\n\nWorkflow:\n\n  pjournal sync           # export DB -> commit\n  vim chunks/root/foo.md  # edit a memory by hand\n  pjournal import         # apply edits back to memnest\n  pjournal sync --push    # publish to your remote\n`;
+  const readme = `# memnest-journal\n\nThis repo is the human-readable, version-controlled view of your\nmemnest AI memory. The canonical store is sqlite at \`~/.memnest/\`;\nthis tree is generated from it and can be edited then synced back.\n\n- \`chunks/\` — memory chunks grouped by project\n- \`secrets/\` — empty unless you pass \`--include-secrets\`. With that flag every\n  row must be AES-256-GCM ciphertext (\`$enc2$...\` or legacy \`$enc$...\`) or\n  the export aborts, so plaintext is never written here. Review before push.\n- \`sessions/\` — session summaries\n\nWorkflow:\n\n  pjournal sync           # export DB -> commit\n  vim chunks/root/foo.md  # edit a memory by hand\n  pjournal import         # apply edits back to memnest\n  pjournal sync --push    # publish to your remote\n`;
   await writeFile(join(dir, "README.md"), readme);
   await writeFile(
     join(dir, ".gitignore"),
@@ -106,7 +106,7 @@ async function cmdInit(args) {
     ].join("\n"),
   );
   await Promise.all(
-    ["chunks", "facts", "notes", "secrets", "sessions"].map((sub) =>
+    ["chunks", "secrets", "sessions"].map((sub) =>
       mkdir(join(dir, sub), { recursive: true }),
     ),
   );
@@ -174,7 +174,7 @@ async function cmdImport(args) {
   // Files the user changed since the last commit are candidates.
   const files = git
     .changedFilesSinceHead(c.dir)
-    .filter((f) => f.startsWith("chunks/") || f.startsWith("notes/"));
+    .filter((f) => f.startsWith("chunks/"));
   if (!files.length) {
     console.log(JSON.stringify({ message: "no changes to import" }));
     return;
