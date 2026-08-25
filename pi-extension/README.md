@@ -105,9 +105,15 @@ Common controls:
 | `MEMNEST_AUTOCONTEXT_TOP` | `2` | Maximum results included in one card. |
 | `MEMNEST_AUTOCONTEXT_MAX_INJECTIONS` | `4` | Maximum cards in one session. |
 | `MEMNEST_AUTOCONTEXT_MIN_SCORE` | `0.25` | Minimum score for the general lane. |
+| `MEMNEST_AUTOCONTEXT_TOPIC_OVERLAP` | `0.35` | Word overlap below which a prompt counts as a topic shift. |
 | `MEMNEST_AUTOCONTEXT_RISK_MIN_SCORE` | `0.25` | Minimum score for a risk-triggered card. |
 | `MEMNEST_AUTOCONTEXT_EXCLUDE` | `_superseded,default,root,global` | Collections excluded from automatic retrieval. |
 | `MEMNEST_AUTOCONTEXT_GENERAL` | unset | Set to `1` to add the general lane without leaving `balanced` mode. |
+| `MEMNEST_AUTOCONTEXT_DISABLE` | unset | Set to `1` to turn retrieval off, same effect as `MODE=off`. |
+| `MEMNEST_AUTOCONTEXT_N` | `20` | Candidates requested from the service before ranking. |
+| `MEMNEST_AUTOCONTEXT_MIN_LEN` | `16` | Prompts shorter than this are ignored. |
+| `MEMNEST_AUTOCONTEXT_DOC_CHARS` | `240` | Characters kept per result in the card. |
+| `MEMNEST_AUTOCONTEXT_TIMEOUT_MS` | `1500` | Retrieval budget before the prompt proceeds without a card. |
 
 ## Automatic conversation capture
 
@@ -120,7 +126,7 @@ MCP does not describe host session events. The core provides host-neutral automa
 - `memnest hook` reads a host's hook payload on stdin and answers with a context pack, in the shape that host expects.
 - `memnest watch` follows Claude Code, pi, and Codex transcripts and stores visible conversation text, with no host extension hooks.
 
-See [automatic context and conversation capture](../README.md#automatic-context-and-conversation-capture) in the root README. Inside pi the extension exposes the same six-tool memory contract, optionally adds four vault tools, and provides the `/memnest` command.
+See [automatic context and conversation capture](../README.md#automatic-context-and-conversation-capture) in the root README. Inside pi the extension exposes the same five-tool memory contract, optionally adds four vault tools, and provides the `/memnest` command.
 
 ## Development
 

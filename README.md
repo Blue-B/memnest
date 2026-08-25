@@ -24,6 +24,37 @@ Your AI coding agent forgets everything when the session ends. Memnest keeps tha
 
 One Rust service handles tool calls, prompt-time recall, and transcript capture on separate data paths. SQLite is the source of truth; the Tantivy and HNSW indexes beside it are derived and rebuildable. Nothing here calls an LLM, and embeddings run locally with `intfloat/multilingual-e5-base`.
 
+## How a memory moves
+
+Writing and reading are separate paths over the same store. A write is durable before it is searchable, and a read merges two independent rankings rather than trusting either one.
+
+```mermaid
+flowchart TD
+    subgraph read["Read path"]
+        direction TB
+        R1["query plus cwd"] --> R2["scope: this workspace<br/>and playbook"]
+        R2 --> R3["BM25 keyword hits"]
+        R2 --> R4["vector similarity hits"]
+        R3 --> R5["RRF fusion, k=60"]
+        R4 --> R5
+        R5 --> R6["MMR reranking,<br/>lambda=0.5"]
+        R6 --> R7["results"]
+    end
+
+    subgraph write["Write path"]
+        direction TB
+        W1["memory_remember, hook, or watch"] --> W2["redact credential-shaped text"]
+        W2 --> W3["embed locally with e5"]
+        W3 --> W4["one SQLite transaction:<br/>record plus index job"]
+        W4 --> W5["Tantivy BM25 index"]
+        W4 --> W6["HNSW vector index"]
+        W5 --> W7["clear the index job"]
+        W6 --> W7
+    end
+```
+
+The index job is what makes a missing index recoverable: it is written in the same transaction as the record and cleared only after both indexes are durable, so an interrupted write is replayed at startup rather than lost.
+
 ## Install
 
 ```bash
