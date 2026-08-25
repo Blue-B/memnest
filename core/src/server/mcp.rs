@@ -445,10 +445,7 @@ pub(crate) async fn memory_search(
         },
     )
     .await?;
-    let mut lines = vec![
-        format!("=== memory search results ({query}) ==="),
-        format!("recall_id={}", out.recall_id),
-    ];
+    let mut lines = vec![format!("=== memory search results ({query}) ===")];
     if out.results.is_empty() {
         lines.push("no results".to_string());
     }

@@ -7,8 +7,13 @@ All notable changes to `memnest`, the Rust engine.
 ### Removed
 
 - Removed the HTML dashboard, its `/` and `/viewer/search` routes, and the
-  `memnest dashboard` subcommand. The machine-readable `/health`, `/stats`, and
-  `/operations` endpoints stay, so nothing that reads service state is lost.
+  `memnest dashboard` subcommand. The machine-readable `/health` and `/stats`
+  endpoints stay, so nothing that reads service state is lost.
+- Removed the `recall_events` table, the `/operations` endpoint, and the
+  `recall_id` field on search responses. The table held the text of every query
+  for 90 days, which duplicated what transcript capture already stores and makes
+  searchable through `memory_search`. Search latency now lives in process memory
+  and is read from `/stats`, so query text is no longer written to disk at all.
 - Removed the `memory_feedback` tool, the `/feedback` endpoint, and the
   helpful and harmful counters that fed a search ranking bonus. No caller ever
   recorded an outcome, so every stored recall stayed `pending` and the bonus

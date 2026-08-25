@@ -107,7 +107,7 @@ secret_list
 secret_delete
 ```
 
-Search is workspace-scoped. A client passes an absolute `cwd`, an explicit `project`, or `project=all` for a deliberate cross-project search. Every search returns a `recall_id` that identifies that lookup in `/operations`. Delete moves a memory to trash instead of erasing it immediately.
+Search is workspace-scoped. A client passes an absolute `cwd`, an explicit `project`, or `project=all` for a deliberate cross-project search. Delete moves a memory to trash instead of erasing it immediately.
 
 ### How a workspace is identified
 
@@ -167,7 +167,7 @@ archive/        plaintext JSONL of hard-deleted memories
 watch-state.json
 ```
 
-Service state is readable as JSON. `/health` reports liveness and the last lifecycle run, `/stats` reports collection sizes and disk use, and `/operations` returns recent searches and processing jobs.
+Service state is readable as JSON. `/health` reports liveness and the last lifecycle run, and `/stats` reports collection sizes, disk use, and search latency since startup. Query text is never stored, so nothing you searched for is kept on disk.
 
 ## Security
 

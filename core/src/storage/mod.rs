@@ -199,21 +199,13 @@ impl Database {
                 value TEXT NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS recall_events (
-                id TEXT PRIMARY KEY,
-                query TEXT NOT NULL,
-                project TEXT NOT NULL,
-                result_ids TEXT NOT NULL DEFAULT '[]',
-                duration_ms INTEGER NOT NULL DEFAULT 0,
-                adapter TEXT NOT NULL DEFAULT 'http',
-                created_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_recall_events_created
-                ON recall_events(created_at DESC);
-            -- Recall feedback is gone. Older stores still carry the table and
-            -- the outcome index; drop them so a rebuilt store and an upgraded
-            -- one converge on the same schema.
-            DROP INDEX IF EXISTS idx_recall_events_outcome;
+            -- Recall history and its feedback table are gone. recall_events
+            -- kept the redacted query text of every search for 90 days, which
+            -- duplicated the transcript AutoLog that is already searchable.
+            -- Dropping the table takes its indexes with it and removes the
+            -- last copy of user query text memnest held on disk, so a rebuilt
+            -- store and an upgraded one converge on the same schema.
+            DROP TABLE IF EXISTS recall_events;
             DROP TABLE IF EXISTS recall_result_feedback;
             "#,
         )?;
@@ -254,12 +246,8 @@ impl Database {
             params![Utc::now().to_rfc3339()],
         )?;
 
-        // Operational history is intentionally bounded. It contains redacted
-        // queries and safe status metadata, never memory bodies or secrets.
-        conn.execute(
-            "DELETE FROM recall_events WHERE datetime(created_at) < datetime('now', '-90 days')",
-            [],
-        )?;
+        // Operational history is intentionally bounded. It holds safe status
+        // metadata only, never queries, memory bodies, or secrets.
         conn.execute(
             "DELETE FROM processing_jobs WHERE datetime(updated_at) < datetime('now', '-90 days')",
             [],
@@ -1347,57 +1335,11 @@ impl Database {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    pub fn insert_recall_event(&self, event: &RecallEvent) -> Result<()> {
-        let conn = self.pool.get()?;
-        conn.execute(
-            "INSERT INTO recall_events
-             (id, query, project, result_ids, duration_ms, adapter, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![
-                event.id,
-                event.query,
-                event.project,
-                serde_json::to_string(&event.result_ids)?,
-                event.duration_ms,
-                event.adapter,
-                event.created_at.to_rfc3339(),
-            ],
-        )?;
-        Ok(())
-    }
-
-    pub fn recent_recall_events(&self, limit: usize) -> Result<Vec<RecallEvent>> {
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, query, project, result_ids, duration_ms, adapter, created_at
-             FROM recall_events ORDER BY created_at DESC LIMIT ?1",
-        )?;
-        let rows = stmt.query_map(params![limit as i64], |row| {
-            let ids: String = row.get(3)?;
-            Ok(RecallEvent {
-                id: row.get(0)?,
-                query: row.get(1)?,
-                project: row.get(2)?,
-                result_ids: serde_json::from_str(&ids).unwrap_or_default(),
-                duration_ms: row.get(4)?,
-                adapter: row.get(5)?,
-                created_at: row.get(6)?,
-            })
-        })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-    }
-
+    /// Job counts come from storage; search latency comes from process-memory
+    /// counters, because no per-search row is written to disk any more.
     pub fn operations_summary(&self) -> Result<OperationsSummary> {
         let conn = self.pool.get()?;
-        let (recalls, average): (i64, f64) = conn.query_row(
-            "SELECT
-               COUNT(*),
-               COALESCE(AVG(duration_ms), 0)
-             FROM recall_events
-             WHERE datetime(created_at) >= datetime('now', '-24 hours')",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
+        let latency = crate::search_metrics::snapshot();
         let count_state = |state: &str| -> Result<usize> {
             Ok(conn.query_row(
                 "SELECT COUNT(*) FROM processing_jobs WHERE state = ?1",
@@ -1406,11 +1348,12 @@ impl Database {
             )? as usize)
         };
         Ok(OperationsSummary {
-            recalls_24h: recalls as usize,
+            searches_since_start: latency.searches as usize,
+            average_search_ms: latency.average_ms,
+            max_search_ms: latency.max_ms,
             queued_jobs: count_state("queued")?,
             running_jobs: count_state("running")?,
             failed_jobs: count_state("failed")?,
-            average_recall_ms_24h: average,
         })
     }
 }
@@ -1908,23 +1851,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn operational_events_and_jobs_round_trip() {
+    async fn operational_jobs_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let db = Database::new(dir.path()).await.unwrap();
         let chunk = sample_chunk("proj", "useful memory", Importance::Knowledge);
         let chunk_id = chunk.id.clone();
         db.insert_chunk(&chunk).unwrap();
         let now = Utc::now();
-        db.insert_recall_event(&RecallEvent {
-            id: "recall-test".to_string(),
-            query: "safe query".to_string(),
-            project: "proj".to_string(),
-            result_ids: vec![chunk_id.clone()],
-            duration_ms: 12,
-            adapter: "test".to_string(),
-            created_at: now,
-        })
-        .unwrap();
         db.upsert_processing_job(&ProcessingJob {
             id: "job-test".to_string(),
             operation: "embed_and_store".to_string(),
@@ -1938,15 +1871,59 @@ mod tests {
         })
         .unwrap();
 
-        let recalls = db.recent_recall_events(10).unwrap();
         let jobs = db.recent_processing_jobs(10).unwrap();
         let summary = db.operations_summary().unwrap();
-        assert_eq!(recalls[0].id, "recall-test");
-        assert_eq!(recalls[0].result_ids, vec![chunk_id.clone()]);
-        assert_eq!(recalls[0].adapter, "test");
         assert_eq!(jobs[0].state, "succeeded");
-        assert_eq!(summary.recalls_24h, 1);
-        assert_eq!(summary.average_recall_ms_24h, 12.0);
+        assert_eq!(summary.queued_jobs, 0);
+        assert_eq!(summary.running_jobs, 0);
+        assert_eq!(summary.failed_jobs, 0);
+    }
+
+    /// A store written before this change still carries `recall_events` with
+    /// user query text in it. Opening it must succeed and must leave no copy
+    /// of that text behind.
+    #[tokio::test]
+    async fn legacy_recall_events_table_is_dropped_on_open() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let db = Database::new(dir.path()).await.unwrap();
+            let conn = db.pool.get().unwrap();
+            conn.execute_batch(
+                r#"
+                CREATE TABLE recall_events (
+                    id TEXT PRIMARY KEY,
+                    query TEXT NOT NULL,
+                    project TEXT NOT NULL,
+                    result_ids TEXT NOT NULL DEFAULT '[]',
+                    duration_ms INTEGER NOT NULL DEFAULT 0,
+                    adapter TEXT NOT NULL DEFAULT 'http',
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX idx_recall_events_created
+                    ON recall_events(created_at DESC);
+                INSERT INTO recall_events
+                    (id, query, project, result_ids, duration_ms, adapter, created_at)
+                VALUES
+                    ('legacy-1', 'a prompt the user typed', 'proj', '[]', 5, 'http', '2026-01-01T00:00:00Z');
+                "#,
+            )
+            .unwrap();
+        }
+
+        let reopened = Database::new(dir.path()).await.unwrap();
+        let conn = reopened.pool.get().unwrap();
+        let remaining: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master
+                 WHERE type = 'table' AND name = 'recall_events'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining, 0, "legacy recall_events must be dropped");
+
+        // Reopening must still work after the drop.
+        assert!(reopened.operations_summary().is_ok());
     }
 
     #[tokio::test]

@@ -89,9 +89,9 @@ Real prune and lifecycle operations append records to `<data-dir>/audit.log`. `/
 
 ## Monitoring
 
-`/operations` returns recent recall events and processing jobs as JSON: query scope, result count, latency, adapter, and job state.
+`/stats` reports search latency from counters kept in process memory: how many searches ran since startup, the average, and the slowest one. Restarting the service resets them.
 
-Operational history is capped at 90 days and holds redacted queries and status metadata, never memory bodies or secret values.
+No query text is recorded. A slow search shows up as a number without leaving a copy of what was asked, and past conversation stays searchable through `memnest watch` transcripts instead.
 
 Processing jobs that were queued or running when the service stopped are marked failed on the next startup, so interrupted work is visible instead of appearing active forever.
 

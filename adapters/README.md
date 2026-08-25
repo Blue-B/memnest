@@ -19,7 +19,7 @@ An adapter should provide these operations:
 
 - `health`: check the local service
 - `remember`: write a durable record, fact, rule, or procedure
-- `search`: retrieve memory and receive a `recall_id`; pass an absolute `cwd`, an explicit `project`, or `project=all` for deliberate cross-project search
+- `search`: retrieve memory; pass an absolute `cwd`, an explicit `project`, or `project=all` for deliberate cross-project search
 
 Conversation capture is deliberately not on that list. `memnest watch` is the single transcript path for every host, so an adapter that also posted messages or session summaries would store the same turn twice. The reference adapter rejects `message` and `summary` events with a pointer to `watch`.
 
