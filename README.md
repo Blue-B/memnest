@@ -235,6 +235,63 @@ Do not expose port 3111 directly to the internet. The rest is in [`SECURITY.md`]
 | [`adapters/`](adapters) | Integration contract and generic HTTP adapter |
 | [`journal/`](journal) | Optional Markdown and git audit mirror, not a database backup |
 
+Only `core/` holds the engine. Everything above it is a transport translator, and everything below it is a file on your disk.
+
+```mermaid
+flowchart TB
+    subgraph hosts["Hosts"]
+        H1["pi"]
+        H2["Claude Code"]
+        H3["Codex"]
+        H4["other MCP clients"]
+    end
+
+    subgraph bridges["Transport translators"]
+        B1["pi-extension/<br/>tools and Autocontext"]
+        B2["memnest hook<br/>prompt-time recall"]
+        B3["memnest watch<br/>transcript capture"]
+        B4["adapters/generic-http"]
+    end
+
+    subgraph engine["core/ (the only engine)"]
+        C1["server: HTTP and MCP"]
+        C2["redaction and crypto vault"]
+        C3["search: BM25, vectors, RRF, MMR"]
+        C4["storage: SQLite and index queue"]
+    end
+
+    subgraph disk["Your disk"]
+        D1["memory.db"]
+        D2["text_index/"]
+        D3["vectors/"]
+        D4["master.key"]
+    end
+
+    H1 --> B1
+    H2 --> B2
+    H3 --> B2
+    H4 --> B4
+    H1 --> B3
+    H2 --> B3
+    H3 --> B3
+
+    B1 --> C1
+    B2 --> C1
+    B3 --> C1
+    B4 --> C1
+
+    C1 --> C2
+    C2 --> C4
+    C1 --> C3
+    C3 --> C4
+    C4 --> D1
+    C4 --> D2
+    C4 --> D3
+    C2 --> D4
+```
+
+`journal/` is not in that path. It reads the store and mirrors it to Markdown and git for audit, and nothing depends on it.
+
 Development checks:
 
 ```bash

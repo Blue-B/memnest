@@ -235,6 +235,63 @@ watch-state.json
 | [`adapters/`](adapters) | 연동 계약과 일반 HTTP 어댑터 |
 | [`journal/`](journal) | 선택 기능인 Markdown 및 git 감사 미러, 데이터베이스 백업은 아님 |
 
+엔진은 `core/` 하나뿐입니다. 그 위는 전부 전송 번역기고, 그 아래는 내 디스크의 파일입니다.
+
+```mermaid
+flowchart TB
+    subgraph hosts["호스트"]
+        H1["pi"]
+        H2["Claude Code"]
+        H3["Codex"]
+        H4["다른 MCP 클라이언트"]
+    end
+
+    subgraph bridges["전송 번역기"]
+        B1["pi-extension/<br/>툴과 Autocontext"]
+        B2["memnest hook<br/>프롬프트 시점 회상"]
+        B3["memnest watch<br/>대화 저장"]
+        B4["adapters/generic-http"]
+    end
+
+    subgraph engine["core/ (유일한 엔진)"]
+        C1["server: HTTP와 MCP"]
+        C2["리댑션과 암호 금고"]
+        C3["search: BM25, 벡터, RRF, MMR"]
+        C4["storage: SQLite와 색인 큐"]
+    end
+
+    subgraph disk["내 디스크"]
+        D1["memory.db"]
+        D2["text_index/"]
+        D3["vectors/"]
+        D4["master.key"]
+    end
+
+    H1 --> B1
+    H2 --> B2
+    H3 --> B2
+    H4 --> B4
+    H1 --> B3
+    H2 --> B3
+    H3 --> B3
+
+    B1 --> C1
+    B2 --> C1
+    B3 --> C1
+    B4 --> C1
+
+    C1 --> C2
+    C2 --> C4
+    C1 --> C3
+    C3 --> C4
+    C4 --> D1
+    C4 --> D2
+    C4 --> D3
+    C2 --> D4
+```
+
+`journal/`은 이 경로에 없습니다. 저장소를 읽어 Markdown과 git으로 감사 미러링할 뿐이고, 어느 것도 여기에 의존하지 않습니다.
+
 개발 검사 명령입니다.
 
 ```bash
