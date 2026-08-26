@@ -4550,8 +4550,24 @@ function register(pi) {
         ctx.ui.notify(message2, "error");
         return;
       }
-      const healthData = JSON.parse(health.text);
-      const statsData = stats.error ? null : JSON.parse(stats.text);
+      const parsed = (() => {
+        try {
+          return {
+            health: JSON.parse(health.text),
+            stats: stats.error ? null : JSON.parse(stats.text)
+          };
+        } catch {
+          return null;
+        }
+      })();
+      if (!parsed) {
+        const message2 = `Memnest returned an unreadable reply from ${URL}`;
+        ctx.ui.setStatus("memnest", "Memnest: unreadable reply");
+        ctx.ui.notify(message2, "error");
+        return;
+      }
+      const healthData = parsed.health;
+      const statsData = parsed.stats;
       const count = statsData ? statsData.total_chunks : "unavailable";
       const lines = [
         "Memnest ok",
@@ -4576,7 +4592,7 @@ function register(pi) {
     pi,
     "memory_remember",
     "Memory: remember",
-    "Save durable memory. Sensitive values must use secret_set.",
+    "Save something the next session should still know. Call it without being asked when the user corrects you, states a preference or a decision, or when you learn a config value, port, path, or a fix that took real effort to find. Skip whatever the next session can re-derive by reading the repo. Set importance to preference for a correction or a stated preference, decision for a chosen approach, knowledge for a stable fact, log for routine detail. Pass supersedes=<id> when this replaces an existing memory instead of adding to it. Credentials, tokens and passwords go to secret_set, never here.",
     typebox_exports.Object({
       text: typebox_exports.String(),
       project: typebox_exports.Optional(typebox_exports.String()),
@@ -4588,7 +4604,10 @@ function register(pi) {
             typebox_exports.Literal("decision"),
             typebox_exports.Literal("preference")
           ],
-          { default: "knowledge" }
+          {
+            default: "knowledge",
+            description: "preference when the user corrects you or states how they want things done, decision for an approach chosen among alternatives, knowledge for a stable fact, log for routine detail. Pick deliberately; the default is only for when none of the others fit."
+          }
         )
       ),
       memory_kind: typebox_exports.Optional(
@@ -4599,7 +4618,10 @@ function register(pi) {
             typebox_exports.Literal("rule"),
             typebox_exports.Literal("procedure")
           ],
-          { default: "record" }
+          {
+            default: "record",
+            description: "fact for stable project or environment knowledge, rule for a preference or guardrail, procedure for a reusable workflow, record for a one-off outcome."
+          }
         )
       ),
       confidence: typebox_exports.Optional(typebox_exports.Number({ minimum: 0, maximum: 1 })),
@@ -4639,7 +4661,7 @@ function register(pi) {
     pi,
     "memory_search",
     "Memory: search",
-    "Hybrid memory search. Omit project to use the current workspace; project=all explicitly searches across projects.",
+    "Hybrid memory search. Search before guessing at a port, path, config value, or an earlier decision: a stored answer beats a plausible one. Omit project to use the current workspace; project=all explicitly searches across projects.",
     typebox_exports.Object({
       query: typebox_exports.String(),
       project: typebox_exports.Optional(typebox_exports.String()),
@@ -4706,7 +4728,7 @@ ${c.document}`
     pi,
     "memory_update",
     "Memory: update",
-    "Update one memory and refresh indexes.",
+    "Update one memory in place and refresh its indexes. Use this to fix wording or metadata on a memory that is still correct. When the underlying fact actually changed, prefer memory_remember with supersedes so the earlier version stays auditable.",
     typebox_exports.Object({
       id: typebox_exports.String(),
       text: typebox_exports.Optional(typebox_exports.String()),
@@ -4741,7 +4763,7 @@ ${c.document}`
     pi,
     "memory_delete",
     "Memory: delete",
-    "Soft-delete one memory.",
+    "Soft-delete one memory, moving it to trash. Use it for something saved in error. When information merely went stale, prefer memory_remember with supersedes instead of deleting.",
     typebox_exports.Object({ id: typebox_exports.String() }),
     async (_id, p) => {
       const r = await call("/delete", { ids: [p.id] });
