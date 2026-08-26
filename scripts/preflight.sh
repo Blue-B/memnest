@@ -55,11 +55,12 @@ run "pi-extension e2e"   bash -c "cd '$R/pi-extension' && npm run e2e"
 run "adapters"           bash -c "cd '$R/adapters/generic-http' && node test.mjs"
 
 step "Documentation contract"
-# verify-contract asserts on a /search response body, and a search against an
-# empty store returns nothing at all. The journal smoke test used to leave rows
-# here as a side effect; seed one explicitly now that it does not.
-curl -s -m 30 -X POST "http://127.0.0.1:$PORT/add" -H 'content-type: application/json' \
-  -d "{\"text\":\"preflight verification probe\",\"cwd\":\"$HOME\",\"metadata\":{\"chunk_type\":\"manual\"}}" >/dev/null
+# The scratch data directory starts without the embedding model, so the first
+# request that needs one downloads it (~1.1GB) before answering. verify-contract
+# gives its /search probe 15 seconds and reads a timed-out empty body as a
+# missing field, so pay that cost here instead, with a budget that fits it.
+curl -s -m 600 -X POST "http://127.0.0.1:$PORT/add" -H 'content-type: application/json' \
+  -d "{\"text\":\"preflight embedding warmup\",\"cwd\":\"$HOME\",\"metadata\":{\"chunk_type\":\"manual\"}}" >/dev/null
 run "verify-contract (scratch)" bash "$R/scripts/verify-contract.sh" "http://127.0.0.1:$PORT" "$BIN" "$SCRATCH"
 
 printf "\n"
