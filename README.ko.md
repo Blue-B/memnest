@@ -33,8 +33,8 @@ flowchart TD
     subgraph read["읽기 경로"]
         direction TB
         R1["질의와 cwd"] --> R2["범위: 현재 workspace와<br/>playbook"]
-        R2 --> R3["BM25 단어 검색"]
-        R2 --> R4["벡터 유사도 검색"]
+        R2 -->|"정확한 단어"| R3["BM25 단어 검색"]
+        R2 -->|"뜻"| R4["벡터 유사도 검색"]
         R3 --> R5["RRF 융합, k=60"]
         R4 --> R5
         R5 --> R6["MMR 재정렬,<br/>lambda=0.5"]
@@ -46,12 +46,14 @@ flowchart TD
         W1["memory_remember, hook, watch"] --> W2["자격증명처럼 생긴 문자열 가리기"]
         W2 --> W3["e5로 로컬 임베딩"]
         W3 --> W4["SQLite 트랜잭션 하나:<br/>레코드와 색인 작업"]
-        W4 --> W5["Tantivy BM25 색인"]
-        W4 --> W6["HNSW 벡터 색인"]
+        W4 -->|"정확한 단어용"| W5["Tantivy BM25 색인"]
+        W4 -->|"뜻용"| W6["HNSW 벡터 색인"]
         W5 --> W7["색인 작업 행 삭제"]
         W6 --> W7
     end
 ```
+
+색인을 둘 다 만드는 것은 약점이 서로 다르기 때문입니다. BM25는 포트 번호나 패키지 이름 같은 정확한 문자열을 잡지만 달리 표현한 문장은 못 찾습니다. 벡터 검색은 표현이 달라도 찾아내지만 정작 입력한 그 단어를 빗나가기도 합니다. 어느 쪽이 필요할지는 검색해봐야 알 수 있어서 저장할 때 둘 다 만들어둡니다.
 
 색인 작업 행이 있어서 색인이 사라져도 복구됩니다. 레코드와 같은 트랜잭션에 기록되고 두 색인이 모두 durable해진 뒤에야 지워지므로, 중간에 끊긴 쓰기는 유실되지 않고 시작할 때 다시 반영됩니다.
 
@@ -233,7 +235,6 @@ watch-state.json
 | [`core/`](core) | Rust 서버, CLI, 색인, MCP, 금고, watcher |
 | [`pi-extension/`](pi-extension) | 얇은 pi 어댑터와 workspace 범위 Autocontext |
 | [`adapters/`](adapters) | 연동 계약과 일반 HTTP 어댑터 |
-| [`journal/`](journal) | 선택 기능인 Markdown 및 git 감사 미러, 데이터베이스 백업은 아님 |
 
 엔진은 `core/` 하나뿐입니다. 그 위는 전부 전송 번역기고, 그 아래는 내 디스크의 파일입니다.
 
@@ -290,8 +291,6 @@ flowchart TB
     C2 --> D4
 ```
 
-`journal/`은 이 경로에 없습니다. 저장소를 읽어 Markdown과 git으로 감사 미러링할 뿐이고, 어느 것도 여기에 의존하지 않습니다.
-
 개발 검사 명령입니다.
 
 ```bash
@@ -300,7 +299,7 @@ flowchart TB
 (cd adapters/generic-http && node test.mjs)
 ```
 
-엔진 의존성 고지는 [`core/THIRD_PARTY_NOTICES.md`](core/THIRD_PARTY_NOTICES.md)에 있습니다. 기여 방법은 [`CONTRIBUTING.md`](CONTRIBUTING.md)를 따릅니다.
+엔진을 왜 이렇게 만들었는지, 무엇을 버렸는지는 [`docs/design-decisions.md`](docs/design-decisions.md)에 있습니다. 엔진 의존성 고지는 [`core/THIRD_PARTY_NOTICES.md`](core/THIRD_PARTY_NOTICES.md)에 있습니다. 기여 방법은 [`CONTRIBUTING.md`](CONTRIBUTING.md)를 따릅니다.
 
 ## 라이선스
 

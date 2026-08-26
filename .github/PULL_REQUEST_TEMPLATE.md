@@ -9,7 +9,7 @@
 ## Checks you ran
 
 <!-- Paste the commands and their results. If a check did not run, write that
-down rather than leaving it out; "did not run the journal smoke test, no server
+down rather than leaving it out; "did not run the smoke test, no server
 available" is more useful than silence. -->
 
 ```text

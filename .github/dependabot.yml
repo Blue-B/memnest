@@ -26,15 +26,3 @@ updates:
         patterns:
           - "*"
 
-  - package-ecosystem: npm
-    directory: /journal
-    schedule:
-      interval: monthly
-    cooldown:
-      default-days: 7
-    open-pull-requests-limit: 1
-    groups:
-      journal-updates:
-        applies-to: version-updates
-        patterns:
-          - "*"

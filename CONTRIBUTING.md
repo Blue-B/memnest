@@ -22,7 +22,6 @@ Only `core/` is required to run memnest. The rest are optional pieces around it.
 | --- | --- | --- |
 | `core/` | Rust | The engine: HTTP API, MCP server, indexes |
 | `pi-extension/` | TypeScript | pi integration |
-| `journal/` | JavaScript | Markdown and git audit mirror |
 | `adapters/generic-http/` | JavaScript | Reference JSONL adapter |
 | `docs/` | Markdown | Operations guide and screenshots |
 
@@ -35,7 +34,6 @@ left you:
 ```bash
 (cd core                   && cargo test --locked -- --test-threads=1)
 (cd pi-extension           && npm install && npm run build && npm run smoke)
-(cd journal                && npm install && npm run smoke)   # see the warning below
 (cd adapters/generic-http  && node test.mjs)
 ```
 
@@ -59,11 +57,8 @@ so commit the rebuilt bundle with any `src/` change.
 
 This one costs people real data, so it is worth stating plainly.
 
-`journal`'s smoke test creates collections and writes chunks into whichever
-store answers the URL it is given, so it must never be pointed at your day to
-day memnest. It has no defaults for that reason: with `MEMNEST_URL` or
-`MEMNEST_DB` unset it prints the throwaway-instance recipe and exits 2 without
-touching anything. Give it a scratch instance:
+A smoke test writes into whichever store answers the URL it is given, so it
+must never be pointed at your day to day memnest. Give it a scratch instance:
 
 ```bash
 memnest --data-dir /tmp/memnest-dev --port 3150 &
@@ -86,8 +81,6 @@ under `core/` does not run the pi-extension job:
   committed `dist/index.mjs` against that build, loads it, and runs the MCP
   end-to-end test against a freshly built core binary
 - `adapters-ci.yml` runs the generic HTTP contract test
-- `journal-ci.yml` builds the core binary, starts and seeds a server, then runs
-  the smoke test against that server rather than your own
 - `core-release.yml` refuses a tag that does not match the version in
   `core/Cargo.toml`, tests, builds, then unpacks the archive and runs the
   packaged binary before anything is published
@@ -104,7 +97,7 @@ docs: rewrite the README around what a stranger needs
 chore: clean up the repository for a public release
 ```
 
-Scopes in use are `core`, `pi-extension`, `journal`, and `adapters`.
+Scopes in use are `core`, `pi-extension`, and `adapters`.
 `docs` and `chore` changes that span the repository are written without a scope.
 Bodies explain why the change was needed, wrapped at roughly 80 columns.
 
@@ -112,7 +105,7 @@ Bodies explain why the change was needed, wrapped at roughly 80 columns.
 
 Say what you changed, why, and which checks you actually ran. If a check did not
 run, write that down instead of leaving it implied. A reviewer would rather read
-"did not run the journal smoke test, no memnest server available" than guess.
+"did not run the pi-extension smoke test, no memnest server available" than guess.
 
 Keep a pull request to one concern. Two unrelated fixes are easier to review as
 two pull requests.
