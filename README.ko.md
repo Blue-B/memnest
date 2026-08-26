@@ -59,6 +59,8 @@ flowchart TD
 
 ## 설치
 
+엔진을 빌드하려면 Git과 2024 edition을 지원하는 Rust 툴체인이 필요합니다. 실행에는 둘 다 필요하지 않습니다.
+
 ```bash
 git clone https://github.com/Blue-B/memnest.git
 cd memnest/core
@@ -66,6 +68,14 @@ cargo build --release
 install -m755 target/release/memnest ~/.local/bin/memnest
 memnest --data-dir ~/.memnest
 ```
+
+마지막 줄은 서비스를 포그라운드로 띄웁니다. 백그라운드 서비스로 등록하려면 방금 빌드한 바이너리를 설치 스크립트에 넘깁니다.
+
+```bash
+cd .. && core/scripts/install-linux.sh --user --bin core/target/release/memnest
+```
+
+Windows와 WSL은 같은 디렉터리의 `install-windows.ps1`, `install-wsl.ps1`을 사용합니다.
 
 HTTP API와 Streamable HTTP MCP 엔드포인트가 주소 하나를 공유합니다.
 

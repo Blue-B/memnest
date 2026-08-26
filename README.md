@@ -59,6 +59,8 @@ The index job is what makes a missing index recoverable: it is written in the sa
 
 ## Install
 
+Building the engine needs Git and a Rust toolchain with 2024 edition support. Running it needs neither.
+
 ```bash
 git clone https://github.com/Blue-B/memnest.git
 cd memnest/core
@@ -66,6 +68,14 @@ cargo build --release
 install -m755 target/release/memnest ~/.local/bin/memnest
 memnest --data-dir ~/.memnest
 ```
+
+That last line runs the service in the foreground. To register it as a background service instead, hand the installer the binary you just built:
+
+```bash
+cd .. && core/scripts/install-linux.sh --user --bin core/target/release/memnest
+```
+
+Windows and WSL use `install-windows.ps1` and `install-wsl.ps1` in the same directory.
 
 One address serves the HTTP API and the Streamable HTTP MCP endpoint:
 
