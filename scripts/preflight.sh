@@ -53,11 +53,13 @@ step "Package suites"
 run "pi-extension smoke" bash -c "cd '$R/pi-extension' && npm run smoke"
 run "pi-extension e2e"   bash -c "cd '$R/pi-extension' && npm run e2e"
 run "adapters"           bash -c "cd '$R/adapters/generic-http' && node test.mjs"
-# journal refuses to run without an explicit scratch target, which is why it
-# silently went unrun during the cleanup that broke it.
-run "journal smoke" bash -c "cd '$R/journal' && MEMNEST_URL=http://127.0.0.1:$PORT MEMNEST_DB='$SCRATCH/memory.db' node test/smoke.mjs"
 
 step "Documentation contract"
+# verify-contract asserts on a /search response body, and a search against an
+# empty store returns nothing at all. The journal smoke test used to leave rows
+# here as a side effect; seed one explicitly now that it does not.
+curl -s -m 30 -X POST "http://127.0.0.1:$PORT/add" -H 'content-type: application/json' \
+  -d "{\"text\":\"preflight verification probe\",\"cwd\":\"$HOME\",\"metadata\":{\"chunk_type\":\"manual\"}}" >/dev/null
 run "verify-contract (scratch)" bash "$R/scripts/verify-contract.sh" "http://127.0.0.1:$PORT" "$BIN" "$SCRATCH"
 
 printf "\n"

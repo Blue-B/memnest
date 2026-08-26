@@ -33,8 +33,8 @@ flowchart TD
     subgraph read["Read path"]
         direction TB
         R1["query plus cwd"] --> R2["scope: this workspace<br/>and playbook"]
-        R2 --> R3["BM25 keyword hits"]
-        R2 --> R4["vector similarity hits"]
+        R2 -->|"exact words"| R3["BM25 keyword hits"]
+        R2 -->|"meaning"| R4["vector similarity hits"]
         R3 --> R5["RRF fusion, k=60"]
         R4 --> R5
         R5 --> R6["MMR reranking,<br/>lambda=0.5"]
@@ -46,12 +46,14 @@ flowchart TD
         W1["memory_remember, hook, or watch"] --> W2["redact credential-shaped text"]
         W2 --> W3["embed locally with e5"]
         W3 --> W4["one SQLite transaction:<br/>record plus index job"]
-        W4 --> W5["Tantivy BM25 index"]
-        W4 --> W6["HNSW vector index"]
+        W4 -->|"exact words"| W5["Tantivy BM25 index"]
+        W4 -->|"meaning"| W6["HNSW vector index"]
         W5 --> W7["clear the index job"]
         W6 --> W7
     end
 ```
+
+Both indexes exist because they fail differently. BM25 finds an exact token like a port number or a crate name but misses a paraphrase; vector similarity finds the paraphrase but can drift past the literal string you actually typed. Which one you need is only known at query time, so a write pays for both.
 
 The index job is what makes a missing index recoverable: it is written in the same transaction as the record and cleared only after both indexes are durable, so an interrupted write is replayed at startup rather than lost.
 
@@ -233,7 +235,6 @@ Do not expose port 3111 directly to the internet. The rest is in [`SECURITY.md`]
 | [`core/`](core) | Rust server, CLI, indexes, MCP, vault, and watcher |
 | [`pi-extension/`](pi-extension) | Thin pi adapter and workspace-scoped Autocontext |
 | [`adapters/`](adapters) | Integration contract and generic HTTP adapter |
-| [`journal/`](journal) | Optional Markdown and git audit mirror, not a database backup |
 
 Only `core/` holds the engine. Everything above it is a transport translator, and everything below it is a file on your disk.
 
@@ -290,8 +291,6 @@ flowchart TB
     C2 --> D4
 ```
 
-`journal/` is not in that path. It reads the store and mirrors it to Markdown and git for audit, and nothing depends on it.
-
 Development checks:
 
 ```bash
@@ -300,7 +299,7 @@ Development checks:
 (cd adapters/generic-http && node test.mjs)
 ```
 
-Engine attributions are in [`core/THIRD_PARTY_NOTICES.md`](core/THIRD_PARTY_NOTICES.md). Contributions follow [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Why the engine is built this way, including what was rejected, is in [`docs/design-decisions.md`](docs/design-decisions.md). Engine attributions are in [`core/THIRD_PARTY_NOTICES.md`](core/THIRD_PARTY_NOTICES.md). Contributions follow [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## License
 

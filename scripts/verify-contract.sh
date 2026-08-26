@@ -50,7 +50,7 @@ echo "== 6. 문서가 없다고 한 것이 정말 응답에 없는가 =="
 h=$(curl -s -m 8 "$BASE/health")
 echo "$h" | grep -q dashboard_url && no "/health에 dashboard_url 잔존" "제거했어야 함" || ok "/health에 dashboard_url 없음"
 s=$(curl -s -m 15 -X POST "$BASE/search" -H 'content-type: application/json' \
-    -d '{"query":"verification probe","project":"","cwd":"/home/shell","n_results":1}')
+    -d "{\"query\":\"verification probe\",\"project\":\"\",\"cwd\":\"$HOME\",\"n_results\":1}")
 echo "$s" | grep -q recall_id && no "/search에 recall_id 잔존" "제거했어야 함" || ok "/search에 recall_id 없음"
 echo "$s" | grep -q '"project"' && ok "/search에 project 존재" || no "/search project 누락" "autocontext가 의존"
 echo "$s" | grep -q helpful_count && no "helpful_count 잔존" "피드백 제거했어야 함" || ok "helpful_count 없음"

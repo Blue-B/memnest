@@ -10,7 +10,7 @@ For what memnest is and how to connect an agent, start at the [README](../README
 
 The engine needs Git, a Rust toolchain with Rust 2024 edition support, and internet access on the first embedding operation so fastembed can download the configured model. Core CI builds and tests on Linux and Windows.
 
-The optional packages under `pi-extension/` and `journal/` list their own runtime requirements in their package README files.
+The optional package under `pi-extension/` lists its own runtime requirements in its package README.
 
 ## Run as a service
 
@@ -115,7 +115,7 @@ Stop the service before restore. Restore rejects source and target paths that ov
 memnest --data-dir ~/.memnest --restore-dir ~/memnest-backup --force
 ```
 
-The backup includes `master.key`, but keep a second protected copy of that key. `memnest-journal` is a readable audit mirror, not a replacement for this backup. A git revert in the journal changes the journal files only.
+The backup includes `master.key`, but keep a second protected copy of that key.
 
 New vault rows use `$enc2$` ciphertext whose AES-GCM associated data includes the secret key or server name. Moving ciphertext to another row therefore fails decryption. Existing `$enc$` rows use the compatibility decrypt path and remain readable until rewritten. Model-facing secret tools are hidden unless `MEMNEST_EXPOSE_SECRET_TOOLS=1`; the localhost HTTP vault API remains available.
 
@@ -159,15 +159,13 @@ Run everything with one command. It builds, runs each package suite against a sc
 scripts/preflight.sh
 ```
 
-Prefer it over the individual commands, because `journal` refuses to run without an explicit scratch target and quietly goes untested otherwise. That is how a change in `core/` once dropped two tables the journal exporter still queried, breaking every export while each package suite stayed green.
+Prefer it over the individual commands: it runs every suite against one scratch instance, so a change in `core/` cannot break a dependent package while each suite separately stays green.
 
 The underlying commands, if you want one at a time. Each block is a subshell, so every line starts from the repository root:
 
 ```bash
 (cd core                  && cargo check && cargo test --locked -- --test-threads=1)
 (cd pi-extension          && npm install && npm run build && npm run smoke)
-(cd journal               && npm install && MEMNEST_URL=http://127.0.0.1:3150 \
-                             MEMNEST_DB=/tmp/memnest-scratch/memory.db npm run smoke)
 (cd adapters/generic-http && node test.mjs)
 ```
 
@@ -180,4 +178,4 @@ scripts/verify-contract.sh http://127.0.0.1:3150 ./target/release/memnest /tmp/m
 
 Core tests run serially because environment-variable and vault lifecycle tests share process-global state and interfere with one another under the default parallel Rust test runner. CI uses the same flag.
 
-`journal`'s smoke test has no default target and exits 2 until `MEMNEST_URL` and `MEMNEST_DB` point at a scratch instance. Never point it at the store you actually use; see [CONTRIBUTING.md](../CONTRIBUTING.md).
+A smoke test writes into whichever store answers the URL it is given. Never point one at the store you actually use; see [CONTRIBUTING.md](../CONTRIBUTING.md).

@@ -22,4 +22,4 @@ did not cover it. Say so if you have not tried anything yet. -->
 
 ## Which part this touches
 
-<!-- core, pi-extension, journal, adapters, docs, or not sure. -->
+<!-- core, pi-extension, adapters, docs, or not sure. -->

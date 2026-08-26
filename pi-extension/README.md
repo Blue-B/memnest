@@ -149,7 +149,6 @@ npm run e2e
 - [memnest root README](../README.md) for engine setup, lifecycle, service installation, backup, and security
 - [CHANGELOG.md](./CHANGELOG.md) for extension changes
 - [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for what the bundle carries
-- [memnest-journal](../journal/README.md) for the optional Markdown audit mirror
 
 ## License
 
