@@ -38,18 +38,20 @@ run=$(curl -s -X POST "$BASE/mcp" -H 'content-type: application/json' -H 'accept
 # core (every non-pi host reads this) and the pi extension bundle. They drift
 # the moment someone edits one, and the symptom is silent: pi keeps saving
 # proactively while Codex and Claude Code quietly stop.
-marker="without being asked"
 mcp_desc=$(curl -s -X POST "$BASE/mcp" -H 'content-type: application/json' \
   -H 'accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' 2>/dev/null | tr -d '\0')
 case "$mcp_desc" in
-  *"$marker"*) ok "MCP memory_remember에 저장 시점 안내 있음" ;;
-  *) no "MCP 저장 시점 안내 누락" "pi 밖 하네스가 안내를 못 받음" ;;
+  *"without being asked"*"backup path"*) ok "MCP memory_remember에 저장 시점·복구 안내 있음" ;;
+  *) no "MCP 저장 시점·복구 안내 누락" "pi 밖 하네스가 안내를 못 받음" ;;
 esac
 ext="$R/pi-extension/dist/index.mjs"
 if [ -f "$ext" ]; then
-  grep -q "$marker" "$ext" && ok "pi 확장에 저장 시점 안내 있음" \
-    || no "pi 확장 저장 시점 안내 누락" "MCP와 갈라짐"
+  if grep -q "without being asked" "$ext" && grep -q "backup path" "$ext"; then
+    ok "pi 확장에 저장 시점·복구 안내 있음"
+  else
+    no "pi 확장 저장 시점·복구 안내 누락" "MCP와 갈라짐"
+  fi
 else
   ok "pi 확장 번들 없음, 검사 생략"
 fi
