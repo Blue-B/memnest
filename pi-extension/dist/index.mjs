@@ -23,12 +23,7 @@ var MAX_INJECTIONS = Math.max(
   1,
   parseInt(env.MEMNEST_AUTOCONTEXT_MAX_INJECTIONS || "4", 10) || 4
 );
-var TOPIC_OVERLAP = Math.max(
-  0,
-  Math.min(1, Number(env.MEMNEST_AUTOCONTEXT_TOPIC_OVERLAP ?? "0.35"))
-);
 var MIN_SCORE = Number(env.MEMNEST_AUTOCONTEXT_MIN_SCORE ?? "0.25");
-var RISK_MIN_SCORE = Number(env.MEMNEST_AUTOCONTEXT_RISK_MIN_SCORE ?? "0.25");
 var MIN_LEN = Math.max(
   1,
   parseInt(env.MEMNEST_AUTOCONTEXT_MIN_LEN || "16", 10) || 16
@@ -86,28 +81,6 @@ var TRIVIAL = /* @__PURE__ */ new Set([
   "keep going",
   "thank you"
 ]);
-var RISK_RULES = [
-  {
-    label: "memory",
-    re: /전에|이전|기억|까먹|잊어|잊었|했었|시도|말했잖|또\s*(말|까먹)|맥락|찾아봤|\b(remember(ed|s)?|recall(ed|s)?|forget(s)?|forgot(ten)?|previous(ly)?|earlier|before|again)\b|\blast\s+(time|session|conversation|chat|week|month)\b|\b(we|you|i)\s+(said|told|discussed|talked|agreed|decided|mentioned|tried)\b|\bas\s+(i|we)\s+(said|mentioned)\b|\bcontext\b/i
-  },
-  {
-    label: "credential",
-    re: /계정|로그인|비밀키|시크릿|api\s*key|토큰|인증|구독|플랜|\b(secrets?|tokens?|oauth|plans?|planning|accounts?|logins?|passwords?|passphrase|credentials?|auth|authn|authz|authentication|authorization|subscriptions?|bearer|2fa|mfa|sso)\b|\blog\s*in\b|\bsign\s*(in|up)\b|\bapi[_\s-]*keys?\b|\b(ssh|private|access|secret)\s+keys?\b/i
-  },
-  {
-    label: "absence",
-    re: /없다|없어|없음|없는|없나요|안\s*되|안됨|불가능|못\s*하|지원\s*안|처음|모르겠|\b(cannot|cant|missing|broken|unavailable|unsupported|impossible|fails?|failed|failing|deprecated)\b|\bcan['’]t\b|\b(does|do|did|doesn['’]t|don['’]t|didn['’]t|isn['’]t|wasn['’]t|won['’]t)\s+(not\s+)?(work|working|exist|support|supported)\b|\bnot\s+(work|working|supported|available|possible|found|exist)\b|\bno\s+longer\b|\bnever\s+work(s|ed)?\b/i
-  },
-  {
-    label: "money",
-    re: /돈|수익|크몽|외주|토스|홍보|광고|매출|과금|프로모션|유료|결제|\b(iap|promotions?|monetiz(e|ed|ing|ation)|revenue|profits?|pricing|prices?|billing|payments?|paid|subscriptions?|marketing|ads?|advertising|churn|conversion|freemium|paywall|refunds?|costs?)\b|\buser\s+(acquisition|growth|retention)\b|유저\s*(획득|유입)|사용자\s*(확보|유입)/i
-  },
-  {
-    label: "config",
-    re: /설정|세팅|셋업|환경\s*변수|옵션|프로필|임계값|기본값|\b(re)?config(s|ure|ured|uring|uration)?\b|\b(settings?|setup|profiles?|thresholds?|defaults?|options?|flags?|parameters?|preferences?|toggles?|ports?|timeouts?)\b|\bset\s+up\b|\benv(ironment)?\s*(vars?|variables?)\b|\.env\b/i
-  }
-];
 function isSubstantive(prompt) {
   const t = (prompt || "").trim();
   if (t.length < MIN_LEN) return false;
@@ -117,40 +90,6 @@ function isSubstantive(prompt) {
 }
 function normQuery(prompt) {
   return prompt.trim().replace(/\s+/g, " ").toLowerCase().slice(0, 240);
-}
-function topicTokens(prompt) {
-  const raw = prompt.toLowerCase().match(/[\p{L}\p{N}_]{2,}/gu) ?? [];
-  const stop = /* @__PURE__ */ new Set([
-    "the",
-    "and",
-    "for",
-    "with",
-    "this",
-    "that",
-    "\uADF8\uAC70",
-    "\uC774\uAC70",
-    "\uC880",
-    "\uD574\uC918",
-    "\uD558\uBA74",
-    "\uADF8\uB9AC\uACE0",
-    "\uADFC\uB370"
-  ]);
-  return new Set(raw.filter((t) => !stop.has(t)).slice(0, 80));
-}
-function overlap(a, b) {
-  if (a.size === 0 || b.size === 0) return 0;
-  let inter = 0;
-  for (const t of a) if (b.has(t)) inter++;
-  return inter / Math.min(a.size, b.size);
-}
-function riskLabels(prompt) {
-  const labels = [];
-  for (const rule of RISK_RULES)
-    if (rule.re.test(prompt)) labels.push(rule.label);
-  return labels;
-}
-function shouldRunGeneralLane() {
-  return MODE === "aggressive" || env.MEMNEST_AUTOCONTEXT_GENERAL === "1";
 }
 function isMemResult(value) {
   if (!value || typeof value !== "object") return false;
@@ -192,8 +131,8 @@ async function searchMemnest(query, cwd) {
     clearTimeout(timer);
   }
 }
-function formatBlock(results, reason, options) {
-  const threshold = options.strong ? RISK_MIN_SCORE : MIN_SCORE;
+function formatBlock(results, reason) {
+  const threshold = MIN_SCORE;
   const kept = results.filter((r) => typeof r.document === "string" && r.document.trim().length > 0).filter((r) => !(r.project && EXCLUDE_PROJECTS.has(r.project))).filter((r) => (typeof r.score === "number" ? r.score : 1) >= threshold).slice(0, TOP_INJECT);
   if (kept.length === 0) return null;
   const escape = (value) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -212,31 +151,15 @@ function formatBlock(results, reason, options) {
 ` + lines.join("\n") + `
 </system-reminder>`;
 }
-function riskSearchQuery(prompt, labels) {
-  const hints = [
-    "prior decisions",
-    "user preferences",
-    "corrections",
-    "previous attempts"
-  ];
-  if (labels.includes("credential"))
-    hints.push("accounts", "credentials", "secret keys");
-  if (labels.includes("money"))
-    hints.push("profit", "promotion", "failed launches", "monetization");
-  return `${prompt}
-${hints.join(" ")}`;
-}
 function installAutocontext(pi) {
   const disabled = env[DISABLE_ENV] === "1" || MODE === "off" || MODE === "none";
   let lastSeenQuery = null;
-  let lastInjectedTokens = null;
   let injections = 0;
   let currentCwd;
   pi.on("session_start", (_event, context) => {
     const cwd = context?.cwd;
     currentCwd = typeof cwd === "string" && cwd.trim() ? cwd.trim() : void 0;
     lastSeenQuery = null;
-    lastInjectedTokens = null;
     injections = 0;
   });
   if (!disabled) {
@@ -248,32 +171,9 @@ function installAutocontext(pi) {
       if (q === lastSeenQuery) return;
       lastSeenQuery = q;
       if (injections >= MAX_INJECTIONS) return;
-      const labels = riskLabels(prompt);
-      let reason = "";
-      let query = prompt;
-      let strong = false;
-      let tokensForSuccess = null;
-      if (labels.length > 0) {
-        reason = `risk:${labels.join(",")}`;
-        query = riskSearchQuery(prompt, labels);
-        strong = true;
-        tokensForSuccess = topicTokens(prompt);
-      } else if (shouldRunGeneralLane()) {
-        const tokens = topicTokens(prompt);
-        reason = "first-substantive-turn";
-        if (lastInjectedTokens) {
-          const sim = overlap(tokens, lastInjectedTokens);
-          if (sim >= TOPIC_OVERLAP) return;
-          reason = `topic-shift overlap=${sim.toFixed(2)}`;
-        }
-        tokensForSuccess = tokens;
-      } else {
-        return;
-      }
-      const results = await searchMemnest(query, currentCwd);
-      const block = formatBlock(results, reason, { strong });
+      const results = await searchMemnest(prompt, currentCwd);
+      const block = formatBlock(results, "semantic-score-gate");
       if (!block) return;
-      if (tokensForSuccess) lastInjectedTokens = tokensForSuccess;
       injections++;
       return {
         message: { customType: CUSTOM_TYPE, content: block, display: false }

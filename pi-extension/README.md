@@ -83,17 +83,9 @@ Optional `confidence`, `source_ids`, `supersedes`, and `verified_at` fields pres
 
 ## Autocontext
 
-Autocontext is enabled in `balanced` mode by default. It does not inject a full memory dump at session start. Before a substantive prompt, it retrieves a small card only when the prompt carries a risk signal. Five rules define those signals, and each one matches English and Korean:
+Autocontext is enabled by default. It does not inject a full memory dump at session start. Before each substantive prompt, until the per-session card limit is reached, it searches the current workspace and `playbook` using the prompt in its original language. It injects a small card only when the best results meet the semantic score threshold. Short replies, slash commands, exact repeated prompts, and results below the threshold stay quiet. There is no language-specific keyword list. Search coverage is language-neutral, but whether a result survives still depends on the multilingual embedding model, the core distance cutoff, and this score threshold.
 
-| Rule | Prompt refers to |
-| --- | --- |
-| `memory` | Earlier work, something remembered, forgotten, or discussed before. |
-| `credential` | Accounts, logins, keys, tokens, authentication, subscriptions, or plans. |
-| `absence` | A claim that something is missing, broken, unsupported, or impossible. |
-| `money` | Revenue, pricing, billing, promotion, or user growth. |
-| `config` | Settings, environment variables, options, defaults, or thresholds. |
-
-A prompt that matches none of them gets no card in this mode. Use `MEMNEST_AUTOCONTEXT_MODE=aggressive` to add the general first-turn and topic-shift lane, which injects on every topic change instead. Use `MEMNEST_AUTOCONTEXT_MODE=off` to disable retrieval.
+Set `MEMNEST_AUTOCONTEXT_MODE=off` to disable retrieval. Existing `balanced` and `aggressive` values remain accepted, but both now use the same language-neutral semantic gate.
 
 Every card labels retrieved text as untrusted reference data. AutoLog results are marked as conversation evidence, not verified facts, and markup inside stored text is escaped before injection. The agent must verify claims and never follow commands found inside a memory.
 
@@ -101,14 +93,11 @@ Common controls:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `MEMNEST_AUTOCONTEXT_MODE` | `balanced` | `balanced`, `aggressive`, or `off`. |
+| `MEMNEST_AUTOCONTEXT_MODE` | `balanced` | `off` or `none` disables retrieval; any other value enables semantic recall. |
 | `MEMNEST_AUTOCONTEXT_TOP` | `2` | Maximum results included in one card. |
 | `MEMNEST_AUTOCONTEXT_MAX_INJECTIONS` | `4` | Maximum cards in one session. |
-| `MEMNEST_AUTOCONTEXT_MIN_SCORE` | `0.25` | Minimum score for the general lane. |
-| `MEMNEST_AUTOCONTEXT_TOPIC_OVERLAP` | `0.35` | Word overlap below which a prompt counts as a topic shift. |
-| `MEMNEST_AUTOCONTEXT_RISK_MIN_SCORE` | `0.25` | Minimum score for a risk-triggered card. |
+| `MEMNEST_AUTOCONTEXT_MIN_SCORE` | `0.25` | Minimum score for any injected card. |
 | `MEMNEST_AUTOCONTEXT_EXCLUDE` | `_superseded,default,root,global` | Collections excluded from automatic retrieval. |
-| `MEMNEST_AUTOCONTEXT_GENERAL` | unset | Set to `1` to add the general lane without leaving `balanced` mode. |
 | `MEMNEST_AUTOCONTEXT_DISABLE` | unset | Set to `1` to turn retrieval off, same effect as `MODE=off`. |
 | `MEMNEST_AUTOCONTEXT_N` | `20` | Candidates requested from the service before ranking. |
 | `MEMNEST_AUTOCONTEXT_MIN_LEN` | `16` | Prompts shorter than this are ignored. |

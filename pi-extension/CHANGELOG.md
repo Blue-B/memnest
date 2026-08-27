@@ -16,6 +16,7 @@ All notable changes to `pi-memnest`.
 - Default model surface is now five memory tools. The four vault tools require `MEMNEST_EXPOSE_SECRET_TOOLS=1`.
 - Omitted projects send pi's absolute `cwd`, letting the core isolate same-basename workspaces and include `playbook` safely.
 - Autocontext labels all results as untrusted reference data, marks AutoLog as conversation evidence, and escapes stored markup before injection.
+- Autocontext now searches every substantive prompt in its original language and lets the semantic score gate decide whether to inject. The English/Korean keyword rules, risk lane, topic-overlap lane, and their three environment variables are removed.
 
 ## [0.7.0] - 2026-08-20
 
