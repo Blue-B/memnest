@@ -101,4 +101,4 @@ else
   echo "Start it with: $INSTALL_DIR/memnest --host 127.0.0.1 --port 3111"
 fi
 
-echo "Dashboard: http://127.0.0.1:3111/"
+echo "Memnest API and MCP: http://127.0.0.1:3111/"
