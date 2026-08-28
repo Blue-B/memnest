@@ -1936,7 +1936,6 @@ mod visibility_tests {
             "expected an empty memory list: {scoped}"
         );
     }
-
 }
 
 #[cfg(test)]

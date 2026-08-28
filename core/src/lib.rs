@@ -50,7 +50,14 @@ impl MemorySystem {
             return Err(error).context("vault key validation failed");
         }
         let db = Arc::new(RwLock::new(database));
+        #[cfg(not(test))]
         let model_cache = config.data_dir.join("models");
+        // Unit tests use many isolated data directories. A process-wide cache
+        // avoids downloading the same model once per test, including on Windows
+        // where creating directory symlinks requires elevated privileges.
+        #[cfg(test)]
+        let model_cache =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/test-model-cache");
         std::fs::create_dir_all(&model_cache)?;
         let embedder = Arc::new(embedding::Embedder::new(
             &config.embed_model,
@@ -227,6 +234,7 @@ pub fn acquire_writer_lock(data_dir: &Path) -> Result<std::fs::File> {
     let lock_path = parent.join(format!(".{name}.writer.lock"));
     let lock = std::fs::OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(lock_path)?;
@@ -263,13 +271,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn startup_repairs_queued_sqlite_write_without_vector_duplication() {
-        let temp = tempfile::tempdir().unwrap();
+    async fn startup_repairs_queued_sqlite_write_without_vector_duplication() -> Result<()> {
+        let temp = tempfile::tempdir()?;
         let mut config = config::Config::default();
         config.data_dir = temp.path().to_path_buf();
 
         {
-            let system = MemorySystem::new(config.clone()).await.unwrap();
+            let system = MemorySystem::new(config.clone()).await?;
             let chunk = MemoryChunk {
                 id: "chunk-alpha".to_string(),
                 project: "product".to_string(),
@@ -283,38 +291,30 @@ mod tests {
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             };
-            system
-                .db
-                .write()
-                .await
-                .insert_chunk(&chunk)
-                .expect("insert chunk");
-            assert_eq!(system.db.read().await.pending_index_ops().unwrap().len(), 1);
+            system.db.write().await.insert_chunk(&chunk)?;
+            assert_eq!(system.db.read().await.pending_index_ops()?.len(), 1);
         }
 
-        let first_restart = MemorySystem::new(config.clone()).await.unwrap();
+        let first_restart = MemorySystem::new(config.clone()).await?;
         assert!(first_restart.text_index.read().await.is_none());
         assert_eq!(first_restart.vector_index.read().await.len(), 1);
-        let text_results = first_restart
-            .text_search("restart", 3)
-            .await
-            .expect("search text");
+        let text_results = first_restart.text_search("restart", 3).await?;
         assert_eq!(
             text_results.first().map(|(id, _)| id.as_str()),
             Some("chunk-alpha")
         );
         drop(first_restart);
 
-        let second_restart = MemorySystem::new(config).await.unwrap();
+        let second_restart = MemorySystem::new(config).await?;
         assert_eq!(second_restart.vector_index.read().await.len(), 1);
         assert!(
             second_restart
                 .db
                 .read()
                 .await
-                .pending_index_ops()
-                .unwrap()
+                .pending_index_ops()?
                 .is_empty()
         );
+        Ok(())
     }
 }
