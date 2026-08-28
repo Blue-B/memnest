@@ -160,7 +160,13 @@ impl VectorIndex {
             let index_path = staging.join("index.hnsw");
             persist::save(&self.index, &index_path)
                 .map_err(|e| anyhow::anyhow!("failed to save HNSW index: {}", e))?;
-            std::fs::File::open(index_path)?.sync_all()?;
+            // Windows rejects FlushFileBuffers on the read-only handle returned
+            // by File::open, even though Unix accepts it.
+            std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(index_path)?
+                .sync_all()?;
             write_json_synced(&staging.join("ids.json"), &self.ids)?;
             write_json_synced(&staging.join("deleted.json"), &self.deleted)?;
             replace_directory(&staging, &self.data_dir)
