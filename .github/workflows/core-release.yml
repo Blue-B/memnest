@@ -140,7 +140,10 @@ jobs:
           merge-multiple: true
 
       - name: Create Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
-        with:
-          files: artifacts/*
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" artifacts/* \
+            --generate-notes \
+            --title "memnest $GITHUB_REF_NAME" \
+            --verify-tag
