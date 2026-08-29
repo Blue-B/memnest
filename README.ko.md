@@ -138,12 +138,10 @@ http://127.0.0.1:3111/mcp    MCP 엔드포인트
 ### pi
 
 ```bash
-cd memnest/pi-extension
-npm install
-pi install .
+pi install npm:pi-memnest
 ```
 
-pi 확장은 메모리 툴 5개와 workspace 범위 Autocontext, 상태 확인용 `/memnest`를 추가합니다. 금고 툴은 선택해서 켭니다. 자세한 내용은 [`pi-extension/README.md`](pi-extension/README.md)에 있습니다.
+npm 패키지에는 pi 어댑터만 있고 메모리 엔진은 없으므로 core 서비스를 먼저 실행해야 합니다. pi 확장은 메모리 툴 5개와 workspace 범위 Autocontext, 상태 확인용 `/memnest`를 추가합니다. 금고 툴은 선택해서 켭니다. 자세한 내용은 [`pi-extension/README.md`](pi-extension/README.md)에 있습니다.
 
 ### HTTP와 직접 연동
 

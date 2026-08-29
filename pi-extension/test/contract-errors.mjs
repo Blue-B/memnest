@@ -8,6 +8,8 @@ process.env.MEMNEST_EXPOSE_SECRET_TOOLS = "1";
 const requests = [];
 globalThis.fetch = async (url, init = {}) => {
 	requests.push({ url: String(url), init });
+	if (String(url).endsWith("/search"))
+		return new Response('{"results":[]}');
 	return new Response('{"status":"not_found"}', { status: 404 });
 };
 const tools = new Map();
@@ -31,7 +33,7 @@ const unscoped = await tools
 	.execute("id", { query: "unsafe" }, undefined, undefined, {});
 assert.match(unscoped.content[0].text, /current workspace is unavailable/);
 const beforeExplicit = requests.length;
-await tools
+const explicit = await tools
 	.get("memory_search")
 	.execute(
 		"id",
@@ -41,6 +43,8 @@ await tools
 		{},
 	);
 assert.equal(requests.length, beforeExplicit + 1);
+assert.doesNotMatch(explicit.content[0].text, /recall_id/);
+assert.match(explicit.content[0].text, /no results/);
 assert.deepEqual(JSON.parse(requests.at(-1).init.body), {
 	query: "explicit",
 	project: "all",

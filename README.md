@@ -138,12 +138,10 @@ Streamable HTTP is recommended because every client shares one server and one da
 ### pi
 
 ```bash
-cd memnest/pi-extension
-npm install
-pi install .
+pi install npm:pi-memnest
 ```
 
-The extension registers the five memory tools, adds workspace-scoped Autocontext, and provides `/memnest` for status. Vault tools are opt-in. See [`pi-extension/README.md`](pi-extension/README.md).
+The npm package contains the pi adapter, not the memory engine, so start the core service first. The extension registers the five memory tools, adds workspace-scoped Autocontext, and provides `/memnest` for status. Vault tools are opt-in. See [`pi-extension/README.md`](pi-extension/README.md).
 
 ### HTTP and custom hosts
 

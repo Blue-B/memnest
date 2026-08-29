@@ -1,6 +1,6 @@
 {
   "name": "pi-memnest",
-  "version": "0.7.0",
+  "version": "0.1.0",
   "description": "Memnest memory bridge for pi — exposes the canonical memory_* and secret_* tools backed by a local memnest server",
   "type": "module",
   "main": "./dist/index.mjs",
@@ -53,7 +53,11 @@
   "author": "Blue-B",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Blue-B/memnest.git"
+    "url": "git+https://github.com/Blue-B/memnest.git",
+    "directory": "pi-extension"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "bugs": {
     "url": "https://github.com/Blue-B/memnest/issues"

@@ -4588,10 +4588,7 @@ function register(pi) {
       if (r.error) return result(r.text, true);
       try {
         const data = JSON.parse(r.text);
-        const lines = [
-          `=== memory search results (${p.query}) ===`,
-          `recall_id=${data.recall_id}`
-        ];
+        const lines = [`=== memory search results (${p.query}) ===`];
         for (const [i, item] of (data.results ?? []).entries())
           lines.push(
             `[${i + 1}] project=${item.project} score=${Number(item.score).toFixed(4)} id=${item.id}
