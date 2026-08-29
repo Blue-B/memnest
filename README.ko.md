@@ -2,7 +2,7 @@
 
 <!-- markdownlint-disable MD013 -->
 
-[English README](README.md)
+[English README](./README.md)
 
 AI 코딩 에이전트는 세션이 끝나면 전부 잊습니다. memnest는 그 기억을 내 컴퓨터에 남겨 다음 세션에 돌려주고, pi와 Claude Code, Codex, 다른 MCP 클라이언트가 모두 같은 툴 계약으로 꺼내 쓰게 합니다.
 
@@ -59,7 +59,17 @@ flowchart TD
 
 ## 설치
 
-엔진을 빌드하려면 Git과 2024 edition을 지원하는 Rust 툴체인이 필요합니다. 실행에는 둘 다 필요하지 않습니다.
+Linux x86_64와 aarch64에서는 Rust 없이 최신 릴리스를 설치할 수 있습니다. 스크립트가 아카이브 checksum을 확인하고 바이너리와 사용자 systemd 서비스를 설치한 뒤 상태를 검사합니다.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh \
+  -o /tmp/memnest-install.sh
+bash /tmp/memnest-install.sh --user
+```
+
+실행하기 전에 내려받은 스크립트를 확인하세요. `sudo`를 사용하는 시스템 서비스가 필요하면 `--system`을 사용합니다.
+
+소스에서 빌드하려면 Git과 2024 edition을 지원하는 Rust 툴체인이 필요합니다. 빌드된 바이너리를 실행할 때는 둘 다 필요하지 않습니다.
 
 ```bash
 git clone https://github.com/Blue-B/memnest.git
@@ -86,7 +96,6 @@ http://127.0.0.1:3111/mcp    MCP 엔드포인트
 
 서비스를 켜는 것만으로는 아무것도 내려받지 않습니다. 임베딩 모델은 실제로 필요한 첫 요청, 그러니까 처음 저장하거나 처음 검색할 때 내려받아서 그 요청만 유독 오래 걸립니다. `memnest --warmup-embedding`으로 미리 받아 둘 수 있습니다.
 
-Linux, WSL, Windows 서비스 설정과 백업, 복구, 보존 정책은 [`docs/operations.md`](docs/operations.md)에 있습니다.
 
 ## 에이전트 연결
 

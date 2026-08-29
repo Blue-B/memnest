@@ -59,7 +59,17 @@ The index job is what makes a missing index recoverable: it is written in the sa
 
 ## Install
 
-Building the engine needs Git and a Rust toolchain with 2024 edition support. Running it needs neither.
+Linux x86_64 and aarch64 users can install the latest release without Rust. The script verifies the archive checksum, installs the binary, registers a user systemd service, and checks its health.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh \
+  -o /tmp/memnest-install.sh
+bash /tmp/memnest-install.sh --user
+```
+
+Review the downloaded script before running it. A system-wide service is available with `--system` and requires `sudo`.
+
+Building from source needs Git and a Rust toolchain with 2024 edition support. Running the resulting binary needs neither.
 
 ```bash
 git clone https://github.com/Blue-B/memnest.git
@@ -86,7 +96,6 @@ http://127.0.0.1:3111/mcp    MCP endpoint
 
 Starting the service downloads nothing. The embedding model arrives on the first operation that needs it, meaning the first write or the first search runs slower than the rest. Run `memnest --warmup-embedding` to pay that cost up front.
 
-Service setup for Linux, WSL, and Windows, plus backup, restore, and retention, is in [`docs/operations.md`](docs/operations.md).
 
 ## Connect an agent
 

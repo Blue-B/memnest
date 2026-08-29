@@ -4,7 +4,6 @@ set -euo pipefail
 REPO="${REPO:-https://github.com/Blue-B/memnest}"
 VERSION="${VERSION:-latest}"
 MODE="${MODE:-user}"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 usage() {
   cat <<'EOF'
@@ -88,17 +87,9 @@ fi
 
 tar -xzf "$TMP_DIR/$ARCHIVE" -C "$TMP_DIR"
 
-mkdir -p "$INSTALL_DIR"
-install -m 0755 "$TMP_DIR/memnest" "$INSTALL_DIR/memnest"
-
-if [ "$OS" = "linux" ]; then
-  (
-    cd "$TMP_DIR"
-    BIN_SRC="$INSTALL_DIR/memnest" scripts/install-linux.sh "--${MODE}" --bin "$INSTALL_DIR/memnest"
-  )
-else
-  echo "Binary installed to $INSTALL_DIR/memnest"
-  echo "Start it with: $INSTALL_DIR/memnest --host 127.0.0.1 --port 3111"
-fi
+(
+  cd "$TMP_DIR"
+  scripts/install-linux.sh "--${MODE}" --bin "$TMP_DIR/memnest"
+)
 
 echo "Memnest API and MCP: http://127.0.0.1:3111/"
