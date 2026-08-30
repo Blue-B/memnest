@@ -273,7 +273,7 @@ flowchart TB
 
     subgraph engine["core/ (유일한 엔진)"]
         C1["server: HTTP와 MCP"]
-        C2["리댑션과 암호 금고"]
+        C2["민감정보 가림과 암호 금고"]
         C3["search: BM25, 벡터, RRF, MMR"]
         C4["storage: SQLite와 색인 큐"]
     end
