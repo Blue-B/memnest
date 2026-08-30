@@ -9,6 +9,7 @@ AI 코딩 에이전트는 세션이 끝나면 전부 잊습니다. memnest는 �
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 ![Rust](https://img.shields.io/badge/core-Rust-orange.svg)
 ![Protocol](https://img.shields.io/badge/interface-MCP%20%2B%20HTTP-blue.svg)
+[![npm: pi-memnest](https://img.shields.io/npm/v/pi-memnest?label=npm%20pi-memnest&color=cb3837)](https://www.npmjs.com/package/pi-memnest)
 
 ![memnest 로컬 우선 아키텍처](docs/architecture.ko.png)
 
@@ -86,6 +87,8 @@ cd .. && core/scripts/install-linux.sh --user --bin core/target/release/memnest
 ```
 
 Windows와 WSL은 같은 디렉터리의 `install-windows.ps1`, `install-wsl.ps1`을 사용합니다.
+
+서비스 자체를 npm으로 설치하지는 않습니다. npm 패키지 `pi-memnest`는 이 서비스에 붙는 pi 확장이라서 서비스가 먼저 떠 있어야 합니다. 아래 [pi](#pi) 항목을 참고하세요.
 
 HTTP API와 Streamable HTTP MCP 엔드포인트가 주소 하나를 공유합니다.
 

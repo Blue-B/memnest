@@ -9,6 +9,7 @@ Your AI coding agent forgets everything when the session ends. Memnest keeps tha
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 ![Rust](https://img.shields.io/badge/core-Rust-orange.svg)
 ![Protocol](https://img.shields.io/badge/interface-MCP%20%2B%20HTTP-blue.svg)
+[![npm: pi-memnest](https://img.shields.io/npm/v/pi-memnest?label=npm%20pi-memnest&color=cb3837)](https://www.npmjs.com/package/pi-memnest)
 
 ![memnest local-first architecture](docs/architecture.png)
 
@@ -86,6 +87,8 @@ cd .. && core/scripts/install-linux.sh --user --bin core/target/release/memnest
 ```
 
 Windows and WSL use `install-windows.ps1` and `install-wsl.ps1` in the same directory.
+
+There is no npm install for the service itself. The npm package `pi-memnest` is the pi extension that talks to it, and it needs this service running first. See [pi](#pi) below.
 
 One address serves the HTTP API and the Streamable HTTP MCP endpoint:
 
