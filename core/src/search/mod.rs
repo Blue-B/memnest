@@ -75,7 +75,10 @@ mod decay_tests {
         );
         // At 90 days an unaccessed log should be stale; knowledge should survive.
         assert!(log < 0.5, "old log should be stale: {log}");
-        assert!(knowledge >= 0.5, "old knowledge should persist: {knowledge}");
+        assert!(
+            knowledge >= 0.5,
+            "old knowledge should persist: {knowledge}"
+        );
     }
 
     #[test]
@@ -92,9 +95,22 @@ pub fn extract_keywords(query: &str, min_len: usize) -> Vec<String> {
     tokens
         .into_iter()
         .map(|t| t.trim())
-        .filter(|t| t.len() >= min_len)
+        .filter(|t| t.chars().count() >= min_len)
         .map(strip_korean_particles)
-        .filter(|t| t.len() >= min_len)
+        .filter(|t| t.chars().count() >= min_len)
         .map(|t| t.to_string())
         .collect()
+}
+
+#[cfg(test)]
+mod keyword_tests {
+    use super::extract_keywords;
+
+    #[test]
+    fn minimum_length_counts_characters_not_utf8_bytes() {
+        assert_eq!(
+            extract_keywords("끝난 다음 처리할 일", 2),
+            ["끝난", "다음", "처리할"]
+        );
+    }
 }
