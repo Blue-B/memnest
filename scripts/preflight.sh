@@ -19,6 +19,8 @@ run(){ # run <label> <cmd...>
   fi
   return 0
 }
+# Invoked by the EXIT trap below.
+# shellcheck disable=SC2329
 cleanup(){
   # Stop the server before removing its data directory, otherwise it keeps
   # writing index files into the tree being deleted and rmdir loses the race.

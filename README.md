@@ -4,8 +4,9 @@
 
 [한국어 README](README.ko.md)
 
-Your AI coding agent forgets everything when the session ends. Memnest keeps that memory on your machine and hands it back to the next session, through one small tool contract that pi, Claude Code, Codex, and other MCP clients all speak.
+Your coding agent forgets the last session. Memnest keeps selected memories and conversation history on your machine, then makes them available to pi, Claude Code, Codex, and other MCP clients.
 
+[![Latest release](https://img.shields.io/github/v/release/Blue-B/memnest?label=release)](https://github.com/Blue-B/memnest/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 ![Rust](https://img.shields.io/badge/core-Rust-orange.svg)
 ![Protocol](https://img.shields.io/badge/interface-MCP%20%2B%20HTTP-blue.svg)
@@ -13,134 +14,49 @@ Your AI coding agent forgets everything when the session ends. Memnest keeps tha
 
 ![memnest local-first architecture](docs/architecture.png)
 
-## What you get
+## What it does
 
-| Capability | What it means |
+| Capability | Behavior |
 | --- | --- |
-| Durable memory | Decisions, preferences, and corrections you save on purpose, not a chat log dump. |
-| Conversation history | Redacted user and assistant text, kept verbatim and searchable, with no LLM summarization. |
-| Hybrid search | Local BM25 keyword matching and vector similarity over both kinds of memory. A workspace- or project-scoped search compares the query against every memory in scope exactly; a cross-project search (`project=all`) goes through the HNSW index. |
-| Project isolation | One directory's memory stays in its own workspace. `playbook` carries rules shared everywhere. |
-| Secret vault | Credentials live in an AES-256-GCM store, separate from anything searchable. |
+| Durable memory | Saves decisions, preferences, corrections, facts, and rules across sessions. |
+| Conversation capture | Stores visible user and assistant text after credential redaction, without LLM summarization. |
+| Local search | Combines BM25 keyword matching with multilingual vector similarity. |
+| Workspace scope | Keeps each directory separate, with `playbook` for rules shared everywhere. |
+| Secret vault | Stores credentials in AES-256-GCM ciphertext outside searchable memory. |
 
-A markdown notes file like `CLAUDE.md` or `AGENTS.md` already covers the part of this that is a short list of rules the agent reads every time. It stops covering the rest once the file grows: a file is read whole or not at all, so there is no retrieval at query time; one file per repository gives you no workspace isolation; conversations are only in it if you paste them there; nothing strips an API key you wrote down; and a corrected line overwrites the old one, leaving no record that the fact changed.
+A small `CLAUDE.md` or `AGENTS.md` is still the simplest place for rules that should load every time. Memnest is for material that grows across projects and sessions and should be retrieved only when it matches the current query.
 
-One Rust service handles tool calls, prompt-time recall, and transcript capture on separate data paths. SQLite is the source of truth; the Tantivy and HNSW indexes beside it are derived and rebuildable. Nothing here calls an LLM, and embeddings run locally with `intfloat/multilingual-e5-base`.
+The Rust service is the only engine. SQLite is the source of truth, the search indexes are rebuildable, embeddings run locally, and no LLM is called.
 
-## How a memory moves
+## Quick start
 
-Writing and reading are separate paths over the same store. A write is durable before it is searchable, and a read merges two independent rankings rather than trusting either one.
-
-```mermaid
-flowchart TD
-    subgraph read["Read path"]
-        direction TB
-        R1["query plus cwd"] --> R2["scope: this workspace<br/>and playbook"]
-        R2 -->|"exact words"| R3["BM25 keyword hits"]
-        R2 -->|"meaning"| R4["vector similarity hits"]
-        R3 --> R5["RRF fusion, k=60"]
-        R4 --> R5
-        R5 --> R6["MMR reranking,<br/>lambda=0.5"]
-        R6 --> R7["results"]
-    end
-
-    subgraph write["Write path"]
-        direction TB
-        W1["memory_remember, HTTP /add, or watch"] --> W2["redact credential-shaped text"]
-        W2 --> W3["embed locally with e5"]
-        W3 --> W4["one SQLite transaction:<br/>record plus index job"]
-        W4 -->|"exact words"| W5["Tantivy BM25 index"]
-        W4 -->|"meaning"| W6["HNSW vector index"]
-        W5 --> W7["clear the index job"]
-        W6 --> W7
-    end
-```
-
-Both indexes exist because they fail differently. BM25 finds an exact token like a port number or a crate name but misses a paraphrase; vector similarity finds the paraphrase but can drift past the literal string you actually typed. Which one you need is only known at query time, so a write pays for both. The fusion is not symmetric, though: when the keyword index matches anything in scope, candidates found only by meaning are dropped, so a result that shares no keyword with the query surfaces only when keyword search comes up empty.
-
-The index job is what makes a missing index recoverable: it is written in the same transaction as the record and cleared only after both indexes are durable, so an interrupted write is replayed at startup rather than lost.
-
-Neither index can tell whether the store actually contains an answer. A query whose answer was never saved can still return the nearest memories, so treat search results as candidates to verify rather than proof that an answer exists.
-
-## Install
-
-Linux x86_64 and aarch64 users can install the latest release without Rust. The script verifies the archive checksum, installs the binary, registers a user systemd service, and checks its health.
+Linux x86_64 and aarch64 can install the latest release without a Rust toolchain:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh \
   -o /tmp/memnest-install.sh
+# Review the script before running it.
 bash /tmp/memnest-install.sh --user
+curl -fsS http://127.0.0.1:3111/health
 ```
 
-Review the downloaded script before running it. A system-wide service is available with `--system` and requires `sudo`.
+Windows, WSL, source builds, uninstall, backup, restore, and configuration are in the [operations guide](docs/operations.md).
 
-Building from source needs Git and a Rust toolchain with 2024 edition support. Running the resulting binary needs neither.
+The first write or search downloads the local embedding model. The default model uses about 1.1 GB on disk and can approach 1.9 GB of memory while embedding.
+
+### pi
+
+Start the core service first, then install the adapter:
 
 ```bash
-git clone https://github.com/Blue-B/memnest.git
-cd memnest/core
-cargo build --release
-install -m755 target/release/memnest ~/.local/bin/memnest
-memnest --data-dir ~/.memnest
+pi install npm:pi-memnest
 ```
 
-That last line runs the service in the foreground. To register it as a background service instead, hand the installer the binary you just built:
-
-```bash
-cd .. && core/scripts/install-linux.sh --user --bin core/target/release/memnest
-```
-
-Windows and WSL use `install-windows.ps1` and `install-wsl.ps1` in the same directory.
-
-Uninstalling uses the matching script beside them. It stops the service and removes the binary, and it leaves your data directory alone unless you ask for it to go:
-
-```bash
-core/scripts/uninstall-linux.sh --user
-core/scripts/uninstall-linux.sh --user --remove-data
-```
-
-`--remove-data` deletes the data directory entirely, `~/.memnest` for a `--user` install and `/var/lib/memnest` for a `--system` install. That directory holds `memory.db`, `master.key`, the two indexes, the model cache, and the archive JSONL. Nothing survives that except a backup you made yourself. `uninstall-windows.ps1` and `uninstall-wsl.ps1` take `-RemoveData` for the same effect.
-
-There is no npm install for the service itself. The npm package `pi-memnest` is the pi extension that talks to it, and it needs this service running first. See [pi](#pi) below.
-
-One address serves the HTTP API and the Streamable HTTP MCP endpoint:
-
-```text
-http://127.0.0.1:3111        HTTP API
-http://127.0.0.1:3111/mcp    MCP endpoint
-```
-
-Starting the service downloads nothing. The embedding model arrives on the first operation that needs it, meaning the first write or the first search runs slower than the rest. Run `memnest --warmup-embedding` to pay that cost up front. It takes the same exclusive data-dir writer lock the service takes, so run it before the service starts or with the service stopped.
-
-That model is not small. The default `intfloat/multilingual-e5-base` writes about 1.1 GB into `models/`, and the service peaks near 1.9 GB resident while it embeds. On a machine where that is too much, choose the smaller model before the first write:
-
-```bash
-MEMNEST_EMBED_MODEL=intfloat/multilingual-e5-small
-MEMNEST_EMBED_DIM=384
-```
-
-That uses about 465 MB of cache and roughly 1.1 GB peak memory, with lower retrieval quality than the default model. Existing vectors were written at the old dimension, so changing this after the store has rows means a full index rebuild.
-
-Service setup for Linux, WSL, and Windows, plus backup, restore, and retention, is in [`docs/operations.md`](docs/operations.md).
-
-The version is `0.1.0`. The tested compatibility surface covers the storage format, the five tool names, and the HTTP routes, and an upgrade will work hardest to keep them. Response field names, environment defaults, and ranking weights are not in that set and can change in a patch release. Back up `memory.db` and `master.key` before you upgrade.
-
-## Connect an agent
-
-Each harness exposes different extension points, so the wiring differs while the service, the data, and the tool contract stay the same:
-
-| Harness | Prompt-time recall | Memory tools | Transcript capture |
-| --- | --- | --- | --- |
-| pi | Autocontext, from the extension | Registered by the extension | `memnest watch` |
-| Claude Code | `memnest hook` on `UserPromptSubmit` | MCP | `memnest watch` |
-| Codex | `memnest hook` on `UserPromptSubmit` | MCP | `memnest watch` |
-| Other MCP clients | Depends on the client | MCP | Not applicable |
-
-The sections below show how to set up each path.
+The adapter registers the memory tools, adds workspace-scoped Autocontext, and provides `/memnest` status. See the [pi extension guide](pi-extension/README.md).
 
 ### MCP
 
-Point an MCP client at the running service:
+Point a Streamable HTTP MCP client at the running service:
 
 ```json
 {
@@ -150,70 +66,11 @@ Point an MCP client at the running service:
 }
 ```
 
-Streamable HTTP is recommended because every client shares one server and one data directory. Use stdio only when that process owns the store. A second writer for the same data directory is rejected instead of racing the indexes:
+The same service also exposes a JSON HTTP API at `http://127.0.0.1:3111`. Stdio MCP and custom-host examples are in the [adapter guide](adapters/README.md).
 
-```json
-{
-  "mcpServers": {
-    "memnest": {
-      "command": "/absolute/path/to/memnest",
-      "args": ["--mcp", "--data-dir", "/home/you/.memnest"]
-    }
-  }
-}
-```
+## Use it
 
-### pi
-
-```bash
-pi install npm:pi-memnest
-```
-
-The npm package contains the pi adapter, not the memory engine, so start the core service first. The extension registers the five memory tools, adds workspace-scoped Autocontext, and provides `/memnest` for status. Vault tools are opt-in. See [`pi-extension/README.md`](pi-extension/README.md).
-
-### HTTP and custom hosts
-
-The HTTP API is available without MCP. [`adapters/generic-http`](adapters/generic-http) contains a dependency-free JSONL reference adapter.
-
-One memory, saved and then found again. Save it with the working directory it belongs to:
-
-```bash
-curl -s -X POST http://127.0.0.1:3111/add \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "text": "The staging database listens on port 5433, not 5432.",
-    "cwd": "/home/you/projects/api",
-    "metadata": { "chunk_type": "manual", "importance": "knowledge" }
-  }'
-```
-
-```json
-{"status":"succeeded","id":"manual_dad95c8fe81d4ea0a952a92be92bc396","project":"ws_api_66be38887e291f20c873e9a0954b4e0b","job_id":"job_f9869554c08f457582df0a658f889187","adapter":"http"}
-```
-
-Sending the same text again returns `"status":"deduplicated"` with the existing `id` instead of a new one.
-
-The `project` you get back is the hashed workspace ID derived from `cwd`, not a name you chose. Search with the same `cwd` and the query does not have to repeat the stored wording:
-
-```bash
-curl -s -X POST http://127.0.0.1:3111/search \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "query": "which port does staging postgres use",
-    "cwd": "/home/you/projects/api",
-    "n_results": 3
-  }'
-```
-
-```json
-{"results":[{"id":"manual_dad95c8fe81d4ea0a952a92be92bc396","project":"ws_api_66be38887e291f20c873e9a0954b4e0b","document":"The staging database listens on port 5433, not 5432.","doc_len":52,"score":0.28333306,"timestamp":"2026-08-30T12:40:23.796400433+00:00","chunk_type":"Manual","importance":"Knowledge","category":"General","memory_kind":"record","confidence":null,"adapter":"http"}],"project":"ws_api_66be38887e291f20c873e9a0954b4e0b","total":1,"elapsed_ms":21}
-```
-
-`score` is a ranking composite, not a probability that the memory is relevant, and `doc_len` above the returned `document` length means the excerpt was clipped: fetch the rest with `GET /chunk/{id}`.
-
-## Tool contract
-
-All hosts use five memory tools:
+Every host uses the same five memory tools:
 
 ```text
 memory_remember
@@ -223,176 +80,81 @@ memory_update
 memory_delete
 ```
 
-The vault API is initialized locally, but model-facing secret tools are hidden by default. Set `MEMNEST_EXPOSE_SECRET_TOOLS=1` for a trusted agent process to add four tools:
+For example, an agent can save a shared rule and find it in a later session:
 
 ```text
-secret_set
-secret_get
-secret_list
-secret_delete
+memory_remember(text="Use port 5433 for staging.", project="playbook")
+memory_search(query="staging database port", project="playbook")
 ```
 
-Search is workspace-scoped. A client passes an absolute `cwd`, an explicit `project`, or `project=all` for a deliberate cross-project search. Delete moves a memory to trash instead of erasing it immediately.
+Omit `project` when the host supplies the current working directory. That searches the current workspace plus `playbook`. Use `project=all` only for a deliberate cross-project search. Delete moves a memory to trash rather than erasing it immediately.
 
-### How a workspace is identified
+Vault tools are hidden from model-facing clients by default. A trusted process can opt in with `MEMNEST_EXPOSE_SECRET_TOOLS=1`.
 
-An inferred workspace ID is a stable hash of the normalized absolute working directory, so the path never becomes the public collection name and `/work/client-a/api` cannot mix with `/personal/api`. An inferred search covers that workspace plus `playbook`.
+## Automatic recall and capture
 
-Collections named after a directory basename stay readable as a legacy alias, but only while a single registered workspace owns that name. The moment a second `api` workspace appears, the ambiguous alias is disabled for both rather than guessing where the old rows belong. Pass an explicit `project` when you mean a named legacy collection.
-
-### Replacing a memory
-
-Saving with `supersedes=<id>` must replace an active memory in the same scope. Both changes land in one SQLite transaction and the old row moves to the hidden `_superseded` collection.
-
-Semantic content deduplication applies only to the plainest write: a manual knowledge record in the general category with no confidence, source, role, tool, `source_ids`, `supersedes`, or `verified_at` field. Anything carrying structure, which is every fact, rule, provenance mark, and correction, skips dedup so its metadata survives. The `confidence` and `verified_at` fields stay client assertions and earn no automatic ranking bonus.
-
-Nothing here notices that a stored memory went stale. Save that staging runs on port 5433, change the port next week, and memnest keeps returning 5433. Ranking applies a recency penalty by age and a bonus by importance and memory type; none of it checks whether the text is still true, because the service reads no code and calls no model. Replacement is the caller's job: whoever notices the change saves the new fact with `supersedes=<id>`. Until someone does, the outdated row stays searchable and looks exactly as trustworthy as a correct one.
-
-## Automatic context and conversation capture
-
-`memnest hook` reads a host prompt event from stdin and prints a small workspace-scoped context block. If the working directory is unknown or the service is unavailable, it prints nothing and does not block the prompt. Retrieved text is marked as untrusted reference data. Transcript results are labeled as conversation evidence, and embedded markup is escaped before injection.
-
-Claude Code and Codex share the same hook shape, so one configuration serves both. Claude Code reads `~/.claude/settings.json`, while Codex reads `~/.codex/hooks.json` or an inline `[hooks]` table in `config.toml`.
+`memnest hook` gives Claude Code and Codex a small context block before a prompt. It prints nothing if the service or workspace is unavailable, so it never blocks the prompt.
 
 ```json
 {
   "hooks": {
     "UserPromptSubmit": [
-      {
-        "hooks": [
-          { "type": "command", "command": "memnest hook" }
-        ]
-      }
+      { "hooks": [{ "type": "command", "command": "memnest hook" }] }
     ]
   }
 }
 ```
 
-Codex skips a new or edited hook until you review and trust it with `/hooks`.
-
-`memnest watch` is the single transcript capture path for pi, Claude Code, and Codex:
+`memnest watch` follows pi, Claude Code, and Codex transcripts and stores visible conversation text:
 
 ```bash
 memnest watch
-memnest watch --once
 memnest watch --backfill
 ```
 
-It stores visible user and assistant text after credential redaction. It skips system and developer prompts, reasoning, reminders, tool calls and results, images, and subagent sidechains. Long turns are split into ordered searchable chunks. Repeated utterances stay distinct, while retries of the same transcript event remain idempotent.
+It skips system and developer prompts, reasoning, tool traffic, images, and subagent sidechains. Captured transcripts are retained unless deleted. Retention and recovery details are in the [operations guide](docs/operations.md).
 
-The watcher follows the known transcript directories and stores offsets in `<data-dir>/watch-state.json`. A file offset advances only after all chunks were stored or repaired. `--backfill` imports earlier history; the default starts from new transcript data.
-
-How long any of it lives depends on what wrote it. Transcript records captured this way are permanent, and so are manual and consolidated memories and anything marked knowledge, decision, or preference. Legacy AutoLog rows, the ones written before transcript event identity existed, expire after 30 days (`MEMNEST_TTL_AUTOLOG_DAYS`), and filtered rows after 7. Pinned memories are exempt from both. This cleanup runs only in the HTTP service, so a stdio `--mcp` process never expires anything. Expiry is a move to `_trash`, where a row is restorable by id for 30 days before the hard delete, which appends the record to the archive JSONL. The restore and prune commands are in [`docs/operations.md`](docs/operations.md).
-
-## Storage
-
-Memnest keeps its state under the selected data directory, normally `~/.memnest`:
-
-```text
-memory.db       SQLite source of truth: memories, workspace registry, the
-                encrypted secrets table, and pending index work
-                (-wal and -shm sit beside it while the service runs)
-text_index/     Tantivy BM25 keyword index, derived from memory.db
-vectors/        HNSW index over e5 embeddings, used by cross-project search,
-                derived from memory.db
-models/         local embedding model
-master.key      key that decrypts the secrets table
-archive/        plaintext JSONL of hard-deleted memories
-audit.log       JSON lines appended on TTL passes, trash cleanup, and /prune
-watch-state.json
-```
-
-If `~/.memnest` does not exist but `~/.factory/memories` does, that legacy directory is used as the default instead.
-
-`memory.db` is the only original. The two indexes are caches: every write lands in SQLite first, and pending index jobs then update `text_index/` and `vectors/`. Deleting either directory is safe, and the service rebuilds it from the database. `memory.db` is not rebuildable, so back it up together with `master.key`; without the key the secrets table cannot be decrypted.
-
-Service state is readable as JSON. `/health` reports liveness and the last lifecycle run, and `/stats` reports collection sizes, disk use, and search latency since startup. Query text is never stored, so nothing you searched for is kept on disk.
-
-## Security
-
-The server binds to `127.0.0.1` by default. A non-local bind is refused unless `MEMNEST_TOKEN` is non-empty, and clients must then send `Authorization: Bearer <token>`.
-
-Regular memory text is local but not encrypted at rest. Redaction runs before storage against a fixed set of known token shapes: OpenAI keys, Slack tokens, GitHub tokens, AWS access key IDs, PEM blocks, Google API keys, and one `key: value` pattern. A connection string with an inline password, a JWT, and an arbitrary high-entropy string all pass through unredacted, so secrets belong in the vault and not in searchable memory. The legacy `raw_chunk` field is not writable through public memory operations. New stores create `<data-dir>/master.key` with private permissions and use AES-256-GCM. New ciphertext is bound to its secret key or server name, while legacy `$enc$` rows remain readable. Startup fails closed when stored ciphertext does not match the available key. Back up `master.key` separately.
-
-Deletion is not erasure. A deleted memory sits in trash for 30 days, and when trash is finally hard-deleted the full record is appended in plaintext to `<data-dir>/archive/YYYY-MM.jsonl`. Set `MEMNEST_ARCHIVE=0` to stop writing those files, and remove the existing `archive/` directory yourself if the text must be gone.
-
-Do not expose port 3111 directly to the internet. The rest is in [`SECURITY.md`](SECURITY.md).
-
-## Repository
-
-| Directory | Role |
-| --- | --- |
-| [`core/`](core) | Rust server, CLI, indexes, MCP, vault, and watcher |
-| [`pi-extension/`](pi-extension) | Thin pi adapter and workspace-scoped Autocontext |
-| [`adapters/`](adapters) | Integration contract and generic HTTP adapter |
-
-Only `core/` holds the engine. Everything above it is a transport translator, and everything below it is a file on your disk.
+## How search and storage work
 
 ```mermaid
-flowchart TB
-    subgraph hosts["Hosts"]
-        H1["pi"]
-        H2["Claude Code"]
-        H3["Codex"]
-        H4["other MCP or HTTP clients"]
-    end
+flowchart LR
+    W1["remember, HTTP /add, or watch"] --> W2["redact known credential shapes"]
+    W2 --> W3["SQLite transaction"]
+    W3 --> W4["BM25 index"]
+    W3 --> W5["vector index"]
 
-    subgraph bridges["Transport translators"]
-        B1["pi-extension/<br/>tools and Autocontext"]
-        B2["memnest hook<br/>prompt-time recall"]
-        B3["memnest watch<br/>transcript capture"]
-        B4["adapters/generic-http<br/>plain-HTTP hosts, no MCP"]
-    end
-
-    subgraph engine["core/ (the only engine)"]
-        C1["server: HTTP and MCP"]
-        C2["redaction and crypto vault"]
-        C3["search: BM25, vectors, RRF, MMR"]
-        C4["storage: SQLite and index queue"]
-    end
-
-    subgraph disk["Your disk"]
-        D1["memory.db"]
-        D2["text_index/"]
-        D3["vectors/"]
-        D4["master.key"]
-    end
-
-    H1 --> B1
-    H2 --> B2
-    H3 --> B2
-    H4 --> B4
-    H1 --> B3
-    H2 --> B3
-    H3 --> B3
-    H2 --> C1
-    H3 --> C1
-    H4 --> C1
-
-    B1 --> C1
-    B2 --> C1
-    B3 --> C1
-    B4 --> C1
-
-    C1 --> C2
-    C2 --> C4
-    C1 --> C3
-    C3 --> C4
-    C4 --> D1
-    C4 --> D2
-    C4 --> D3
-    C2 --> D4
+    R1["query and workspace"] --> R2["BM25 candidates"]
+    R1 --> R3["vector candidates"]
+    R2 --> R4["merge and rerank"]
+    R3 --> R4
+    R4 --> R5["results"]
 ```
 
-Development checks:
+Every write reaches SQLite before the derived indexes. Interrupted index work is replayed at startup, and missing indexes can be rebuilt from `memory.db`.
 
-```bash
-(cd core && cargo test --locked -- --test-threads=1)
-(cd pi-extension && npm install && npm run build && npm run smoke)
-(cd adapters/generic-http && node test.mjs)
-```
+Two behaviors matter when using the results:
 
-Why the engine is built this way, including what was rejected, is in [`docs/design-decisions.md`](docs/design-decisions.md). Engine attributions are in [`core/THIRD_PARTY_NOTICES.md`](core/THIRD_PARTY_NOTICES.md). Contributions follow [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- Memnest does not read your code, so it cannot detect that a saved fact became outdated. Save the replacement with `supersedes=<id>` when the fact changes.
+- Search ranks the nearest memories. It cannot prove that the store contains an answer, so verify a result before acting on it.
+
+## Data and security
+
+The server binds to `127.0.0.1` by default. Do not expose port 3111 directly to the internet.
+
+Regular memories are local but are not encrypted at rest. Redaction catches known credential shapes, not every possible secret, so credentials belong in the vault. Deleted records remain recoverable in trash for 30 days and may also exist in archive JSONL. Read [SECURITY.md](SECURITY.md) before storing sensitive material.
+
+Back up `memory.db` together with `master.key`. The database cannot be rebuilt, while the text and vector indexes can.
+
+## Documentation
+
+- [Operations](docs/operations.md): install, configuration, retention, backup, restore, and CLI reference
+- [Security](SECURITY.md): threat model, vault, redaction, deletion, and network binding
+- [Design decisions](docs/design-decisions.md): reasons behind the shipped architecture
+- [pi extension](pi-extension/README.md): pi setup and Autocontext behavior
+- [Adapters](adapters/README.md): MCP, HTTP, and custom-host integration
+- [Contributing](CONTRIBUTING.md): development setup and checks
+
+Memnest is in the `0.1.x` series. Back up the database before upgrading and check the [release notes](https://github.com/Blue-B/memnest/releases) for compatibility changes.
 
 ## License
 

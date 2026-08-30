@@ -153,7 +153,7 @@ Common options: `--host`, `--port`, `--data-dir`, `--backup-dir`, `--restore-dir
 
 ## Development checks
 
-Run everything with one command. It builds, runs each package suite against a scratch instance on its own port, checks the documentation contract, and prints the latest CI conclusions first:
+Run everything with one command. It builds, runs each package suite against a scratch instance on its own port, and checks the documentation contract:
 
 ```bash
 scripts/preflight.sh
@@ -168,7 +168,6 @@ The underlying commands, if you want one at a time. Each block is a subshell, so
 (cd pi-extension          && npm install && npm run build && npm run smoke)
 (cd adapters/generic-http && node test.mjs)
 ```
-
 
 Against a running service, `scripts/verify-contract.sh` checks the claims in this documentation instead of the code behind them. It calls every endpoint the docs advertise, compares the tool list in the README against what `tools/list` returns, confirms the removed surfaces answer 404, and asserts that the files and CLI subcommands described here exist. Point it at a scratch instance rather than your own store:
 

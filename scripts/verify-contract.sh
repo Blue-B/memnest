@@ -28,7 +28,7 @@ for p in / /viewer/search /feedback /operations /collections; do
 done
 
 echo "== 3. 문서가 약속한 툴 목록과 런타임이 일치하는가 =="
-doc=$(sed -n '/^## Tool contract/,/^### /p' "$R/README.md" | grep -oE '^memory_[a-z]+' | sort | paste -sd,)
+doc=$(awk '/^## Use it$/{inside=1; next} inside && /^## /{exit} inside' "$R/README.md" | grep -oE '^memory_[a-z]+' | sort -u | paste -sd,)
 run=$(curl -s -X POST "$BASE/mcp" -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
       -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' 2>/dev/null | tr -d '\0' \
       | grep -oE '"name":"memory_[a-z]+"' | sed 's/"name":"//;s/"//' | sort | paste -sd,)

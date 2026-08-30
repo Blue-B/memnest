@@ -1,4 +1,4 @@
-//! Similarity scoring used by search ranking.
+//! Similarity helpers used by search ranking.
 
 /// Cosine similarity between two equal-length vectors. Returns 0.0 for empty,
 /// mismatched, or zero-norm inputs (so missing embeddings are treated as

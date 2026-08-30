@@ -462,7 +462,6 @@ pub(crate) async fn memory_search(
     Ok(lines.join("\n"))
 }
 
-
 #[cfg(test)]
 mod tests {
     //! Transport-independent checks on `dispatch`, the shared entry point behind
