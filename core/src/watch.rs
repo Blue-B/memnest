@@ -21,6 +21,7 @@
 use crate::models::{ChunkType, Importance, Metadata};
 use crate::redaction::redact_text;
 use anyhow::{Context, Result, anyhow};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -121,6 +122,16 @@ struct WatchState {
     version: u32,
     #[serde(default)]
     files: BTreeMap<String, FileState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    heartbeat_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_stored_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    interval_secs: u64,
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 /// A parsed line and the offset that reading it reaches. `event` is `None` for
@@ -628,6 +639,42 @@ fn save_state(path: &Path, state: &WatchState) -> Result<()> {
     Ok(())
 }
 
+/// One portable status line for `memnest status`. The state heartbeat works
+/// for systemd, launchd, and manually started watchers alike.
+pub fn status_message(state_dir: &Path, now: DateTime<Utc>) -> String {
+    let path = state_dir.join(STATE_FILE);
+    if !path.exists() {
+        return "capture: not started (run `memnest watch`)".to_string();
+    }
+    let state = match load_state(&path) {
+        Ok(state) => state,
+        Err(error) => return format!("capture: WARNING unreadable state ({error:#})"),
+    };
+    let heartbeat = state.heartbeat_at.or_else(|| {
+        std::fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .map(DateTime::<Utc>::from)
+    });
+    let Some(heartbeat) = heartbeat else {
+        return "capture: WARNING no heartbeat (run `memnest watch`)".to_string();
+    };
+    let grace = i64::try_from(state.interval_secs.saturating_mul(3))
+        .unwrap_or(i64::MAX)
+        .max(300);
+    let active = now.signed_duration_since(heartbeat).num_seconds() <= grace;
+    let last_stored = state
+        .last_stored_at
+        .map(|at| at.to_rfc3339())
+        .unwrap_or_else(|| "unknown".to_string());
+    format!(
+        "capture: {} (heartbeat {}; last stored {})",
+        if active { "active" } else { "WARNING stale" },
+        heartbeat.to_rfc3339(),
+        last_stored
+    )
+}
+
 enum Sent {
     Stored(usize),
 }
@@ -768,7 +815,9 @@ pub async fn run(
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(120))
         .build()?;
-    let interval = Duration::from_secs(interval_secs.max(1));
+    let interval_secs = interval_secs.max(1);
+    let interval = Duration::from_secs(interval_secs);
+    state.interval_secs = interval_secs;
 
     tracing::info!(
         "watch: {} -> {base_url} (state {})",
@@ -781,8 +830,15 @@ pub async fn run(
     );
 
     loop {
+        state.heartbeat_at = Some(Utc::now());
+        if let Err(e) = save_state(&state_path, &state) {
+            tracing::warn!("watch: could not save heartbeat ({e:#})");
+        }
         let stored = sweep(&client, &base_url, &roots, &mut state, backfill).await;
+        let now = Utc::now();
+        state.heartbeat_at = Some(now);
         if stored > 0 {
+            state.last_stored_at = Some(now);
             tracing::info!("watch: stored {stored} transcript chunk(s)");
         }
         if let Err(e) = save_state(&state_path, &state) {
@@ -1267,6 +1323,33 @@ mod tests {
         let unreadable = dir.path().join("state-directory");
         std::fs::create_dir(&unreadable).unwrap();
         assert!(load_state(&unreadable).is_err());
+    }
+
+    #[test]
+    fn status_reports_active_stale_and_missing_watchers() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = Utc::now();
+        assert!(status_message(dir.path(), now).contains("not started"));
+
+        let state_path = dir.path().join(STATE_FILE);
+        let active = WatchState {
+            version: STATE_VERSION,
+            heartbeat_at: Some(now - chrono::Duration::seconds(10)),
+            last_stored_at: Some(now - chrono::Duration::seconds(20)),
+            interval_secs: 5,
+            ..Default::default()
+        };
+        save_state(&state_path, &active).unwrap();
+        let message = status_message(dir.path(), now);
+        assert!(message.contains("capture: active"));
+        assert!(message.contains("last stored"));
+
+        let stale = WatchState {
+            heartbeat_at: Some(now - chrono::Duration::minutes(6)),
+            ..active
+        };
+        save_state(&state_path, &stale).unwrap();
+        assert!(status_message(dir.path(), now).contains("WARNING stale"));
     }
 
     #[test]

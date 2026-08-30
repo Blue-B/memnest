@@ -113,9 +113,11 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
 
-    let mut config = Config::default();
-    config.api_port = cli.port;
-    config.api_host = cli.host.clone();
+    let mut config = Config {
+        api_port: cli.port,
+        api_host: cli.host.clone(),
+        ..Default::default()
+    };
     if cli.viewer_port.is_some() {
         eprintln!(
             "warning: --viewer-port is a deprecated no-op; every endpoint is served on --port ({})",
@@ -170,6 +172,10 @@ async fn main() -> anyhow::Result<()> {
                     },
                     canonical_display_host(&config.api_host),
                     config.api_port
+                );
+                println!(
+                    "{}",
+                    memnest::watch::status_message(&config.data_dir, chrono::Utc::now())
                 );
                 println!("data dir: {}", config.data_dir.display());
             }
@@ -282,9 +288,13 @@ async fn main() -> anyhow::Result<()> {
 async fn shutdown_signal() {
     let ctrl_c = tokio::signal::ctrl_c();
     let terminate = async {
-        let mut signal = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler");
-        signal.recv().await;
+        if let Ok(mut signal) =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
+            signal.recv().await;
+        } else {
+            std::future::pending::<()>().await;
+        }
     };
 
     tokio::select! {

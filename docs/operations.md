@@ -89,6 +89,8 @@ Real prune and lifecycle operations append records to `<data-dir>/audit.log`. `/
 
 ## Monitoring
 
+`memnest status` reports the server address, the conversation watcher's heartbeat, and the last successful transcript write. A missing or stale heartbeat is printed as a warning even when the memory server itself is reachable.
+
 `/stats` reports search latency from counters kept in process memory: how many searches ran since startup, the average, and the slowest one. Restarting the service resets them.
 
 No query text is recorded. A slow search shows up as a number without leaving a copy of what was asked, and past conversation stays searchable through `memnest watch` transcripts instead.
