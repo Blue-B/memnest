@@ -60,6 +60,7 @@ Both indexes exist because they fail differently. BM25 finds an exact token like
 
 The index job is what makes a missing index recoverable: it is written in the same transaction as the record and cleared only after both indexes are durable, so an interrupted write is replayed at startup rather than lost.
 
+Neither index can tell whether the store actually contains an answer. A query whose answer was never saved can still return the nearest memories, so treat search results as candidates to verify rather than proof that an answer exists.
 
 ## Install
 
@@ -118,9 +119,11 @@ MEMNEST_EMBED_MODEL=intfloat/multilingual-e5-small
 MEMNEST_EMBED_DIM=384
 ```
 
+That uses about 465 MB of cache and roughly 1.1 GB peak memory, with lower retrieval quality than the default model. Existing vectors were written at the old dimension, so changing this after the store has rows means a full index rebuild.
 
+Service setup for Linux, WSL, and Windows, plus backup, restore, and retention, is in [`docs/operations.md`](docs/operations.md).
 
-The version is `0.1.0`. The parts covered by tests and by those benchmarks are the storage format, the five tool names, and the HTTP routes, and an upgrade will work hardest to keep them. Response field names, environment defaults, and ranking weights are not in that set and can change in a patch release. Back up `memory.db` and `master.key` before you upgrade.
+The version is `0.1.0`. The tested compatibility surface covers the storage format, the five tool names, and the HTTP routes, and an upgrade will work hardest to keep them. Response field names, environment defaults, and ranking weights are not in that set and can change in a patch release. Back up `memory.db` and `master.key` before you upgrade.
 
 ## Connect an agent
 
