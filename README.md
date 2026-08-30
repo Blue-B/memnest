@@ -19,9 +19,11 @@ Your AI coding agent forgets everything when the session ends. Memnest keeps tha
 | --- | --- |
 | Durable memory | Decisions, preferences, and corrections you save on purpose, not a chat log dump. |
 | Conversation history | Redacted user and assistant text, kept verbatim and searchable, with no LLM summarization. |
-| Hybrid search | Local BM25 keyword matching and HNSW vector similarity over both kinds of memory. |
+| Hybrid search | Local BM25 keyword matching and vector similarity over both kinds of memory. A workspace- or project-scoped search compares the query against every memory in scope exactly; a cross-project search (`project=all`) goes through the HNSW index. |
 | Project isolation | One directory's memory stays in its own workspace. `playbook` carries rules shared everywhere. |
 | Secret vault | Credentials live in an AES-256-GCM store, separate from anything searchable. |
+
+A markdown notes file like `CLAUDE.md` or `AGENTS.md` already covers the part of this that is a short list of rules the agent reads every time. It stops covering the rest once the file grows: a file is read whole or not at all, so there is no retrieval at query time; one file per repository gives you no workspace isolation; conversations are only in it if you paste them there; nothing strips an API key you wrote down; and a corrected line overwrites the old one, leaving no record that the fact changed.
 
 One Rust service handles tool calls, prompt-time recall, and transcript capture on separate data paths. SQLite is the source of truth; the Tantivy and HNSW indexes beside it are derived and rebuildable. Nothing here calls an LLM, and embeddings run locally with `intfloat/multilingual-e5-base`.
 
@@ -44,7 +46,7 @@ flowchart TD
 
     subgraph write["Write path"]
         direction TB
-        W1["memory_remember, hook, or watch"] --> W2["redact credential-shaped text"]
+        W1["memory_remember, HTTP /add, or watch"] --> W2["redact credential-shaped text"]
         W2 --> W3["embed locally with e5"]
         W3 --> W4["one SQLite transaction:<br/>record plus index job"]
         W4 -->|"exact words"| W5["Tantivy BM25 index"]
@@ -54,9 +56,10 @@ flowchart TD
     end
 ```
 
-Both indexes exist because they fail differently. BM25 finds an exact token like a port number or a crate name but misses a paraphrase; vector similarity finds the paraphrase but can drift past the literal string you actually typed. Which one you need is only known at query time, so a write pays for both.
+Both indexes exist because they fail differently. BM25 finds an exact token like a port number or a crate name but misses a paraphrase; vector similarity finds the paraphrase but can drift past the literal string you actually typed. Which one you need is only known at query time, so a write pays for both. The fusion is not symmetric, though: when the keyword index matches anything in scope, candidates found only by meaning are dropped, so a result that shares no keyword with the query surfaces only when keyword search comes up empty.
 
 The index job is what makes a missing index recoverable: it is written in the same transaction as the record and cleared only after both indexes are durable, so an interrupted write is replayed at startup rather than lost.
+
 
 ## Install
 
@@ -88,6 +91,15 @@ cd .. && core/scripts/install-linux.sh --user --bin core/target/release/memnest
 
 Windows and WSL use `install-windows.ps1` and `install-wsl.ps1` in the same directory.
 
+Uninstalling uses the matching script beside them. It stops the service and removes the binary, and it leaves your data directory alone unless you ask for it to go:
+
+```bash
+core/scripts/uninstall-linux.sh --user
+core/scripts/uninstall-linux.sh --user --remove-data
+```
+
+`--remove-data` deletes the data directory entirely, `~/.memnest` for a `--user` install and `/var/lib/memnest` for a `--system` install. That directory holds `memory.db`, `master.key`, the two indexes, the model cache, and the archive JSONL. Nothing survives that except a backup you made yourself. `uninstall-windows.ps1` and `uninstall-wsl.ps1` take `-RemoveData` for the same effect.
+
 There is no npm install for the service itself. The npm package `pi-memnest` is the pi extension that talks to it, and it needs this service running first. See [pi](#pi) below.
 
 One address serves the HTTP API and the Streamable HTTP MCP endpoint:
@@ -97,8 +109,18 @@ http://127.0.0.1:3111        HTTP API
 http://127.0.0.1:3111/mcp    MCP endpoint
 ```
 
-Starting the service downloads nothing. The embedding model arrives on the first operation that needs it, meaning the first write or the first search runs slower than the rest. Run `memnest --warmup-embedding` to pay that cost up front.
+Starting the service downloads nothing. The embedding model arrives on the first operation that needs it, meaning the first write or the first search runs slower than the rest. Run `memnest --warmup-embedding` to pay that cost up front. It takes the same exclusive data-dir writer lock the service takes, so run it before the service starts or with the service stopped.
 
+That model is not small. The default `intfloat/multilingual-e5-base` writes about 1.1 GB into `models/`, and the service peaks near 1.9 GB resident while it embeds. On a machine where that is too much, choose the smaller model before the first write:
+
+```bash
+MEMNEST_EMBED_MODEL=intfloat/multilingual-e5-small
+MEMNEST_EMBED_DIM=384
+```
+
+
+
+The version is `0.1.0`. The parts covered by tests and by those benchmarks are the storage format, the five tool names, and the HTTP routes, and an upgrade will work hardest to keep them. Response field names, environment defaults, and ranking weights are not in that set and can change in a patch release. Back up `memory.db` and `master.key` before you upgrade.
 
 ## Connect an agent
 
@@ -150,6 +172,42 @@ The npm package contains the pi adapter, not the memory engine, so start the cor
 
 The HTTP API is available without MCP. [`adapters/generic-http`](adapters/generic-http) contains a dependency-free JSONL reference adapter.
 
+One memory, saved and then found again. Save it with the working directory it belongs to:
+
+```bash
+curl -s -X POST http://127.0.0.1:3111/add \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "text": "The staging database listens on port 5433, not 5432.",
+    "cwd": "/home/you/projects/api",
+    "metadata": { "chunk_type": "manual", "importance": "knowledge" }
+  }'
+```
+
+```json
+{"status":"succeeded","id":"manual_dad95c8fe81d4ea0a952a92be92bc396","project":"ws_api_66be38887e291f20c873e9a0954b4e0b","job_id":"job_f9869554c08f457582df0a658f889187","adapter":"http"}
+```
+
+Sending the same text again returns `"status":"deduplicated"` with the existing `id` instead of a new one.
+
+The `project` you get back is the hashed workspace ID derived from `cwd`, not a name you chose. Search with the same `cwd` and the query does not have to repeat the stored wording:
+
+```bash
+curl -s -X POST http://127.0.0.1:3111/search \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "which port does staging postgres use",
+    "cwd": "/home/you/projects/api",
+    "n_results": 3
+  }'
+```
+
+```json
+{"results":[{"id":"manual_dad95c8fe81d4ea0a952a92be92bc396","project":"ws_api_66be38887e291f20c873e9a0954b4e0b","document":"The staging database listens on port 5433, not 5432.","doc_len":52,"score":0.28333306,"timestamp":"2026-08-30T12:40:23.796400433+00:00","chunk_type":"Manual","importance":"Knowledge","category":"General","memory_kind":"record","confidence":null,"adapter":"http"}],"project":"ws_api_66be38887e291f20c873e9a0954b4e0b","total":1,"elapsed_ms":21}
+```
+
+`score` is a ranking composite, not a probability that the memory is relevant, and `doc_len` above the returned `document` length means the excerpt was clipped: fetch the rest with `GET /chunk/{id}`.
+
 ## Tool contract
 
 All hosts use five memory tools:
@@ -183,7 +241,9 @@ Collections named after a directory basename stay readable as a legacy alias, bu
 
 Saving with `supersedes=<id>` must replace an active memory in the same scope. Both changes land in one SQLite transaction and the old row moves to the hidden `_superseded` collection.
 
-Structured facts, rules, provenance, and corrections skip semantic content deduplication so their metadata survives. The `confidence` and `verified_at` fields stay client assertions and earn no automatic ranking bonus.
+Semantic content deduplication applies only to the plainest write: a manual knowledge record in the general category with no confidence, source, role, tool, `source_ids`, `supersedes`, or `verified_at` field. Anything carrying structure, which is every fact, rule, provenance mark, and correction, skips dedup so its metadata survives. The `confidence` and `verified_at` fields stay client assertions and earn no automatic ranking bonus.
+
+Nothing here notices that a stored memory went stale. Save that staging runs on port 5433, change the port next week, and memnest keeps returning 5433. Ranking applies a recency penalty by age and a bonus by importance and memory type; none of it checks whether the text is still true, because the service reads no code and calls no model. Replacement is the caller's job: whoever notices the change saves the new fact with `supersedes=<id>`. Until someone does, the outdated row stays searchable and looks exactly as trustworthy as a correct one.
 
 ## Automatic context and conversation capture
 
@@ -219,6 +279,8 @@ It stores visible user and assistant text after credential redaction. It skips s
 
 The watcher follows the known transcript directories and stores offsets in `<data-dir>/watch-state.json`. A file offset advances only after all chunks were stored or repaired. `--backfill` imports earlier history; the default starts from new transcript data.
 
+How long any of it lives depends on what wrote it. Transcript records captured this way are permanent, and so are manual and consolidated memories and anything marked knowledge, decision, or preference. Legacy AutoLog rows, the ones written before transcript event identity existed, expire after 30 days (`MEMNEST_TTL_AUTOLOG_DAYS`), and filtered rows after 7. Pinned memories are exempt from both. This cleanup runs only in the HTTP service, so a stdio `--mcp` process never expires anything. Expiry is a move to `_trash`, where a row is restorable by id for 30 days before the hard delete, which appends the record to the archive JSONL. The restore and prune commands are in [`docs/operations.md`](docs/operations.md).
+
 ## Storage
 
 Memnest keeps its state under the selected data directory, normally `~/.memnest`:
@@ -226,13 +288,18 @@ Memnest keeps its state under the selected data directory, normally `~/.memnest`
 ```text
 memory.db       SQLite source of truth: memories, workspace registry, the
                 encrypted secrets table, and pending index work
+                (-wal and -shm sit beside it while the service runs)
 text_index/     Tantivy BM25 keyword index, derived from memory.db
-vectors/        HNSW similarity index over e5 embeddings, derived from memory.db
+vectors/        HNSW index over e5 embeddings, used by cross-project search,
+                derived from memory.db
 models/         local embedding model
 master.key      key that decrypts the secrets table
 archive/        plaintext JSONL of hard-deleted memories
+audit.log       JSON lines appended on TTL passes, trash cleanup, and /prune
 watch-state.json
 ```
+
+If `~/.memnest` does not exist but `~/.factory/memories` does, that legacy directory is used as the default instead.
 
 `memory.db` is the only original. The two indexes are caches: every write lands in SQLite first, and pending index jobs then update `text_index/` and `vectors/`. Deleting either directory is safe, and the service rebuilds it from the database. `memory.db` is not rebuildable, so back it up together with `master.key`; without the key the secrets table cannot be decrypted.
 
@@ -242,7 +309,7 @@ Service state is readable as JSON. `/health` reports liveness and the last lifec
 
 The server binds to `127.0.0.1` by default. A non-local bind is refused unless `MEMNEST_TOKEN` is non-empty, and clients must then send `Authorization: Bearer <token>`.
 
-Regular memory text is local but not encrypted at rest. Credential-shaped strings are redacted before storage, and the legacy `raw_chunk` field is not writable through public memory operations. Secrets belong in the vault, not in searchable memory. New stores create `<data-dir>/master.key` with private permissions and use AES-256-GCM. New ciphertext is bound to its secret key or server name, while legacy `$enc$` rows remain readable. Startup fails closed when stored ciphertext does not match the available key. Back up `master.key` separately.
+Regular memory text is local but not encrypted at rest. Redaction runs before storage against a fixed set of known token shapes: OpenAI keys, Slack tokens, GitHub tokens, AWS access key IDs, PEM blocks, Google API keys, and one `key: value` pattern. A connection string with an inline password, a JWT, and an arbitrary high-entropy string all pass through unredacted, so secrets belong in the vault and not in searchable memory. The legacy `raw_chunk` field is not writable through public memory operations. New stores create `<data-dir>/master.key` with private permissions and use AES-256-GCM. New ciphertext is bound to its secret key or server name, while legacy `$enc$` rows remain readable. Startup fails closed when stored ciphertext does not match the available key. Back up `master.key` separately.
 
 Deletion is not erasure. A deleted memory sits in trash for 30 days, and when trash is finally hard-deleted the full record is appended in plaintext to `<data-dir>/archive/YYYY-MM.jsonl`. Set `MEMNEST_ARCHIVE=0` to stop writing those files, and remove the existing `archive/` directory yourself if the text must be gone.
 
@@ -264,14 +331,14 @@ flowchart TB
         H1["pi"]
         H2["Claude Code"]
         H3["Codex"]
-        H4["other MCP clients"]
+        H4["other MCP or HTTP clients"]
     end
 
     subgraph bridges["Transport translators"]
         B1["pi-extension/<br/>tools and Autocontext"]
         B2["memnest hook<br/>prompt-time recall"]
         B3["memnest watch<br/>transcript capture"]
-        B4["adapters/generic-http"]
+        B4["adapters/generic-http<br/>plain-HTTP hosts, no MCP"]
     end
 
     subgraph engine["core/ (the only engine)"]
@@ -295,6 +362,9 @@ flowchart TB
     H1 --> B3
     H2 --> B3
     H3 --> B3
+    H2 --> C1
+    H3 --> C1
+    H4 --> C1
 
     B1 --> C1
     B2 --> C1

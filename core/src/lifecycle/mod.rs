@@ -1,9 +1,6 @@
-pub mod decay;
-
 use crate::MemorySystem;
 use crate::models::{ChunkType, Importance, Metadata};
 use anyhow::Result;
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -100,33 +97,6 @@ pub(crate) fn append_audit_log(
     {
         tracing::warn!("audit log write failed: {e:#}");
     }
-}
-
-pub async fn run_lifecycle(
-    system: Arc<RwLock<MemorySystem>>,
-) -> Result<HashMap<String, serde_json::Value>> {
-    let sys = system.read().await;
-    let db = sys.db.read().await;
-    let mut stats: HashMap<String, serde_json::Value> = HashMap::new();
-
-    let mut stale_count = 0usize;
-    let mut total_count = 0usize;
-
-    if let Ok(chunks) = db.get_all_chunks(100_000) {
-        for chunk in chunks {
-            total_count += 1;
-            let score = decay::analyze_chunk_decay(&chunk);
-            if score < 0.5 {
-                stale_count += 1;
-            }
-        }
-    }
-
-    stats.insert("total_chunks".to_string(), serde_json::json!(total_count));
-    stats.insert("stale_chunks".to_string(), serde_json::json!(stale_count));
-    stats.insert("status".to_string(), serde_json::json!("ok"));
-
-    Ok(stats)
 }
 
 /// Apply the TTL policy: soft-delete chunks whose age exceeds the limit for
