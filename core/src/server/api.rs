@@ -27,6 +27,10 @@ pub struct SearchRequest {
     pub n_results: usize,
     #[serde(default)]
     pub recent_first: bool,
+    /// Restrict automatic recall to deliberate or consolidated memories.
+    /// Explicit searches keep transcripts available by leaving this false.
+    #[serde(default)]
+    pub durable_only: bool,
     /// Optional semantic category filter (e.g. "failure", "insight").
     #[serde(default)]
     pub category: String,
@@ -371,6 +375,7 @@ pub async fn search(
         cwd: req.cwd,
         n_results: req.n_results,
         recent_first: req.recent_first,
+        durable_only: req.durable_only,
         category: (!req.category.trim().is_empty()).then_some(req.category),
         exclude_reserved: req.exclude_reserved,
         adapter: req.adapter,
@@ -381,14 +386,20 @@ pub async fn search(
     }
 }
 
+#[derive(Clone, Copy, Default)]
+pub(crate) struct SearchOptions {
+    pub recent_first: bool,
+    pub exclude_reserved: bool,
+    pub durable_only: bool,
+}
+
 #[cfg(test)]
 pub(crate) async fn run_hybrid_search(
     system: Arc<RwLock<MemorySystem>>,
     query: &str,
     project: &str,
     n: usize,
-    recent_first: bool,
-    exclude_reserved: bool,
+    options: SearchOptions,
     category: Option<String>,
 ) -> Vec<SearchResultItem> {
     let scope = SearchScope::explicit(if project.trim().is_empty() {
@@ -396,16 +407,7 @@ pub(crate) async fn run_hybrid_search(
     } else {
         project
     });
-    run_hybrid_search_scope(
-        system,
-        query,
-        &scope,
-        n,
-        recent_first,
-        exclude_reserved,
-        category,
-    )
-    .await
+    run_hybrid_search_scope(system, query, &scope, n, options, category).await
 }
 
 pub(crate) async fn run_hybrid_search_scope(
@@ -413,8 +415,7 @@ pub(crate) async fn run_hybrid_search_scope(
     query: &str,
     scope: &SearchScope,
     n: usize,
-    recent_first: bool,
-    exclude_reserved: bool,
+    options: SearchOptions,
     category: Option<String>,
 ) -> Vec<SearchResultItem> {
     let n_results = n.clamp(1, 50);
@@ -483,13 +484,21 @@ pub(crate) async fn run_hybrid_search_scope(
             .cloned()
             .or_else(|| db.get_chunk(&id).ok().flatten());
         if let Some(c) = chunk {
+            if options.durable_only
+                && !matches!(
+                    c.metadata.chunk_type,
+                    ChunkType::Manual | ChunkType::Consolidated
+                )
+            {
+                continue;
+            }
             if scope
                 .projects()
                 .is_some_and(|projects| !projects.contains(&c.project))
             {
                 continue;
             }
-            if super::operations::exclude_project(&c.project, exclude_reserved) {
+            if super::operations::exclude_project(&c.project, options.exclude_reserved) {
                 continue;
             }
             if let Some(expected) = &cat_filter {
@@ -555,7 +564,7 @@ pub(crate) async fn run_hybrid_search_scope(
             .partial_cmp(&a.0.score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    if recent_first {
+    if options.recent_first {
         items.sort_by(|a, b| b.0.timestamp.cmp(&a.0.timestamp));
         let ranked = items.into_iter().map(|(item, _)| item).collect();
         return diversify_by_project(ranked, n_results);
@@ -1262,8 +1271,11 @@ pub(crate) async fn build_context_scope(
             &query,
             scope,
             n_results.clamp(1, 20),
-            false,
-            project == "all",
+            SearchOptions {
+                exclude_reserved: project == "all",
+                durable_only: true,
+                ..Default::default()
+            },
             category,
         )
         .await
@@ -2195,8 +2207,7 @@ pub(crate) mod test_support {
             "needle exact scoped memory",
             &scope,
             1,
-            false,
-            false,
+            SearchOptions::default(),
             None,
         )
         .await;
@@ -2310,8 +2321,7 @@ pub(crate) mod test_support {
             "circuit breaker upstream timeouts widget service",
             "all",
             2,
-            false,
-            false,
+            SearchOptions::default(),
             None,
         )
         .await;
@@ -2329,6 +2339,27 @@ pub(crate) mod test_support {
         assert_eq!(
             hi_item.category, "Insight",
             "category should round-trip to results"
+        );
+
+        let durable = run_hybrid_search(
+            system,
+            "circuit breaker upstream timeouts widget service",
+            "all",
+            2,
+            SearchOptions {
+                durable_only: true,
+                ..Default::default()
+            },
+            None,
+        )
+        .await;
+        assert_eq!(
+            durable
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["doc_hi"],
+            "automatic recall must not let raw transcript notes vote"
         );
     }
 

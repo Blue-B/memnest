@@ -132,10 +132,11 @@ flowchart LR
 
 Every write reaches SQLite before the derived indexes. Interrupted index work is replayed at startup, and missing indexes can be rebuilt from `memory.db`.
 
-Two behaviors matter when using the results:
+Three behaviors matter when using the results:
 
 - Memnest does not read your code, so it cannot detect that a saved fact became outdated. Save the replacement with `supersedes=<id>` when the fact changes.
 - Search ranks the nearest memories. It cannot prove that the store contains an answer, so verify a result before acting on it.
+- Explicit search includes captured transcripts for questions about earlier conversations. Automatic context only admits deliberate or consolidated memories, so an unfinished “tried X” note cannot silently steer the next prompt.
 
 ## Data and security
 

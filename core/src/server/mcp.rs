@@ -436,6 +436,7 @@ pub(crate) async fn memory_search(
                 .get("recent_first")
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
+            durable_only: false,
             category: args
                 .get("category")
                 .and_then(Value::as_str)
@@ -681,6 +682,7 @@ mod tests {
                 cwd: None,
                 n_results: 3,
                 recent_first: false,
+                durable_only: false,
                 category: String::new(),
                 exclude_reserved: false,
                 adapter: "test-http".into(),
@@ -697,6 +699,7 @@ mod tests {
                 cwd: None,
                 n_results: 3,
                 recent_first: false,
+                durable_only: false,
                 category: String::new(),
                 exclude_reserved: false,
                 adapter: "test-http".into(),

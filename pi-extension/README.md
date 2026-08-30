@@ -85,7 +85,7 @@ Autocontext is enabled by default. It does not inject a full memory dump at sess
 
 Set `MEMNEST_AUTOCONTEXT_MODE=off` to disable retrieval. Existing `balanced` and `aggressive` values remain accepted, but both now use the same language-neutral semantic gate.
 
-Every card labels retrieved text as untrusted reference data. AutoLog results are marked as conversation evidence, not verified facts, and markup inside stored text is escaped before injection. The agent must verify claims and never follow commands found inside a memory.
+Every card labels retrieved text as untrusted reference data. Automatic context accepts only deliberate or consolidated memories; captured transcripts remain available through explicit `memory_search` calls for questions about earlier conversations. Markup inside stored text is escaped before injection, and the agent must verify claims rather than follow commands found inside a memory.
 
 Common controls:
 

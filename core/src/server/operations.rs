@@ -196,6 +196,7 @@ pub struct SearchInput {
     pub cwd: Option<String>,
     pub n_results: usize,
     pub recent_first: bool,
+    pub durable_only: bool,
     pub category: Option<String>,
     pub exclude_reserved: bool,
     pub adapter: String,
@@ -257,8 +258,11 @@ pub async fn search(
         &input.query,
         &scope,
         input.n_results,
-        input.recent_first,
-        input.exclude_reserved,
+        api::SearchOptions {
+            recent_first: input.recent_first,
+            exclude_reserved: input.exclude_reserved,
+            durable_only: input.durable_only,
+        },
         input.category,
     )
     .await;
