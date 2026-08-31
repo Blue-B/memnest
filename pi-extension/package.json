@@ -1,6 +1,6 @@
 {
   "name": "pi-memnest",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Memnest memory bridge for pi — exposes the canonical memory_* and secret_* tools backed by a local memnest server",
   "type": "module",
   "main": "./dist/index.mjs",

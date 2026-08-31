@@ -2,6 +2,12 @@
 
 All notable changes to `pi-memnest` are recorded here.
 
+## [0.2.0] - 2026-08-31
+
+### Changed
+
+- Autocontext requests `durable_only` search and filters client-side: injected cards only contain deliberate or consolidated memories. Raw transcript capture stays available through explicit `memory_search` calls.
+
 ## [0.1.0] - 2026-08-30
 
 First public npm release.

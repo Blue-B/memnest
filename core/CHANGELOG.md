@@ -4,6 +4,16 @@ All notable changes to the `memnest` Rust engine are recorded here.
 
 ## Unreleased
 
+## [0.2.0] - 2026-08-31
+
+### Added
+
+- `memnest status` reports the conversation watcher's heartbeat and the last transcript capture, warning when the heartbeat is stale or missing. The watch loop records both in its state file, so the check works for systemd, launchd, and manually started watchers alike.
+
+### Changed
+
+- `/search` accepts a `durable_only` flag and the `/context` pack sets it: automatic context only admits deliberate or consolidated memories. Raw transcript AutoLog remains available to explicit searches for questions about earlier conversations.
+
 ## [0.1.0] - 2026-08-28
 
 First public release.
