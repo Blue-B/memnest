@@ -142,6 +142,10 @@ jobs:
       - name: Create Release
         env:
           GH_TOKEN: ${{ github.token }}
+          # This job never checks out the repository, and gh otherwise tries
+          # to read the repo identity from a local .git directory that is not
+          # there. v0.2.0 failed exactly this way.
+          GH_REPO: ${{ github.repository }}
         run: |
           gh release create "$GITHUB_REF_NAME" artifacts/* \
             --generate-notes \
