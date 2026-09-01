@@ -52,6 +52,7 @@ else
 fi
 
 step "Package suites"
+run "packaging contract" bash "$R/core/scripts/verify-packaging.sh"
 run "pi-extension smoke" bash -c "cd '$R/pi-extension' && npm run smoke"
 run "pi-extension e2e"   bash -c "cd '$R/pi-extension' && npm run e2e"
 run "adapters"           bash -c "cd '$R/adapters/generic-http' && node test.mjs"

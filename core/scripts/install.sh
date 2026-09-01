@@ -91,5 +91,3 @@ tar -xzf "$TMP_DIR/$ARCHIVE" -C "$TMP_DIR"
   cd "$TMP_DIR"
   scripts/install-linux.sh "--${MODE}" --bin "$TMP_DIR/memnest"
 )
-
-echo "Memnest API and MCP: http://127.0.0.1:3111/"

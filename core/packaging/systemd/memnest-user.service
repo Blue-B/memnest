@@ -1,6 +1,5 @@
 [Unit]
 Description=Memnest memory server
-After=default.target
 
 [Service]
 Type=simple

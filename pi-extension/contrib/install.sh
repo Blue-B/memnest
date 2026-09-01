@@ -30,6 +30,7 @@ if ! command -v memnest >/dev/null 2>&1; then
 	fi
 fi
 command -v memnest >/dev/null 2>&1 || export PATH="$BIN:$PATH"
+MEMNEST_BIN="$(command -v memnest)"
 
 # 2. register a systemd --user service if systemd is available
 if command -v systemctl >/dev/null 2>&1 && systemctl --user status >/dev/null 2>&1; then
@@ -38,10 +39,9 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user status >/dev/null 2>
 	cat >"$HOME/.config/systemd/user/memnest.service" <<EOF
 [Unit]
 Description=memnest memory server
-After=default.target
 
 [Service]
-ExecStart=$BIN/memnest --host 127.0.0.1 --port 3111
+ExecStart=$MEMNEST_BIN --host 127.0.0.1 --port 3111
 Environment=MEMNEST_DATA_DIR=$DATA
 Restart=on-failure
 RestartSec=2s
@@ -56,14 +56,10 @@ else
 	echo "       start manually: memnest &"
 fi
 
-# 3. install pi-memnest extension from source (if pi is present)
-# pi-memnest is not published to npm yet, so build it from a checkout.
+# 3. install the published pi-memnest extension (if pi is present)
 if command -v pi >/dev/null 2>&1; then
 	echo "[3/3] installing pi-memnest extension ..."
-	tmp_ext="$(mktemp -d)"
-	git clone --depth 1 https://github.com/Blue-B/memnest "$tmp_ext/memnest"
-	(cd "$tmp_ext/memnest/pi-extension" && npm install && pi install .)
-	rm -rf "$tmp_ext"
+	pi install npm:pi-memnest
 else
 	echo "[3/3] pi not installed, skipping extension"
 fi

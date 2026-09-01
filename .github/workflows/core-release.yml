@@ -54,6 +54,9 @@ jobs:
           fi
           echo "tag $GITHUB_REF_NAME matches crate version $manifest_version"
 
+      - name: Verify packaging contract
+        run: bash scripts/verify-packaging.sh
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:

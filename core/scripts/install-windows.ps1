@@ -51,7 +51,7 @@ if (-not $BinPath) {
 }
 
 if (-not $BinPath -or -not (Test-Path $BinPath)) {
-  throw "memnest.exe not found. Extract a Windows release archive, build from source, or pass -BinPath C:\path\memnest.exe"
+  throw "memnest.exe not found. Build from source or pass -BinPath C:\path\memnest.exe"
 }
 
 if (-not $WinSWPath -and (Test-Path ".\WinSW-x64.exe")) {
@@ -142,4 +142,3 @@ for ($i = 0; $i -lt 30; $i++) {
 }
 
 Write-Host "Installed Windows service '$ServiceName'."
-Write-Host "Dashboard: http://127.0.0.1:$Port/"

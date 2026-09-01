@@ -4,6 +4,14 @@ All notable changes to the `memnest` Rust engine are recorded here.
 
 ## Unreleased
 
+## [0.2.1] - 2026-09-01
+
+### Fixed
+
+- Removed a user-systemd ordering cycle that could prevent dependent services from starting during login.
+- Installers no longer advertise the removed Dashboard, a bare 404 URL, or an unpublished Windows archive; Linux output names the live MCP endpoint.
+- The legacy contrib installer now reuses the actual `memnest` binary path and installs the published pi extension instead of rebuilding it from source.
+
 ## [0.2.0] - 2026-08-31
 
 ### Added

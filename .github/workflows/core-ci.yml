@@ -52,6 +52,7 @@ jobs:
           bash scripts/install.sh --help > /dev/null
           bash scripts/install-linux.sh --help > /dev/null
           bash scripts/uninstall-linux.sh --help > /dev/null
+          bash scripts/verify-packaging.sh
           bash scripts/support-bundle.sh --out "$RUNNER_TEMP/support.txt" > /dev/null
           echo body > "$RUNNER_TEMP/artifact"
           sha256sum "$RUNNER_TEMP/artifact" > "$RUNNER_TEMP/artifact.sha256"

@@ -117,4 +117,4 @@ else
 fi
 
 wait_for_health
-echo "Memnest is available at http://${HOST}:${PORT}/"
+echo "Memnest MCP: http://${HOST}:${PORT}/mcp"

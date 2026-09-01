@@ -1,7 +1,6 @@
 [Unit]
-Description=memnest memory server (HTTP API + web dashboard)
+Description=memnest memory server (HTTP API + MCP)
 Documentation=https://github.com/Blue-B/memnest
-After=default.target
 
 [Service]
 Type=simple

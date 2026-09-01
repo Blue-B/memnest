@@ -35,4 +35,3 @@ for ($i = 0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 1
   }
 }
-Write-Host "Dashboard: http://127.0.0.1:$Port/"

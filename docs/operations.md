@@ -8,7 +8,7 @@ For what memnest is and how to connect an agent, start at the [README](../README
 
 ## Requirements
 
-The engine needs Git, a Rust toolchain with Rust 2024 edition support, and internet access on the first embedding operation so fastembed can download the configured model. Core CI builds and tests on Linux and Windows.
+Running a Linux release binary needs neither Git nor Rust. Building from source needs Git and a Rust toolchain with Rust 2024 edition support. The first embedding operation needs internet access so fastembed can download the configured model. Core CI builds and tests on Linux and Windows.
 
 The optional package under `pi-extension/` lists its own runtime requirements in its package README.
 
