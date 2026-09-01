@@ -43,15 +43,15 @@ tantivy = "0.26"
 
 # ML / ONNX Runtime
 # ort = { version = "2.0.0-rc.12", optional = true }  # disabled until openssl issue resolved
-fastembed = { version = "5", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"] }
+fastembed = { version = "6", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"] }
 half = "2.4"
 
 # Cryptography
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 argon2 = "0.5"
-rand = "0.9"
-sha2 = "0.10"
-base64 = "0.22"
+rand = "0.10"
+sha2 = "0.11"
+base64 = "0.23"
 
 # Logging / Tracing
 tracing = "0.1"
@@ -76,7 +76,7 @@ dirs = "6.0"
 
 [dev-dependencies]
 tempfile = "3.19"
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 
 [[bench]]
 name = "hybrid_search"
