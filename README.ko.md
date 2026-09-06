@@ -1,10 +1,12 @@
 # memnest
 
-<!-- markdownlint-disable MD013 -->
+<!-- markdownlint-disable MD013 MD033 -->
+
+<img src="docs/logo.png" alt="memnest 로고" width="440">
 
 [English README](README.md)
 
-코딩 에이전트는 세션이 끝나면 이전 작업을 잊습니다. Memnest는 선택해서 저장한 기억과 대화 기록을 내 컴퓨터에 보관하고, 다음 pi, Claude Code, Codex, MCP 세션에서 다시 찾게 해줍니다.
+코딩 도구를 바꿔도 이전에 저장한 결정을 다시 찾을 수 있게 합니다. Memnest는 기억과 대화 기록을 내 컴퓨터에 보관하고, 같은 서비스에 연결한 pi, Claude Code, Codex, MCP 클라이언트가 함께 검색하게 해줍니다.
 
 [![최신 릴리스](https://img.shields.io/github/v/release/Blue-B/memnest?label=release)](https://github.com/Blue-B/memnest/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
@@ -12,7 +14,30 @@
 ![Protocol](https://img.shields.io/badge/interface-MCP%20%2B%20HTTP-blue.svg)
 [![npm: pi-memnest](https://img.shields.io/npm/v/pi-memnest?label=npm%20pi-memnest&color=cb3837)](https://www.npmjs.com/package/pi-memnest)
 
-![memnest 로컬 우선 아키텍처](docs/architecture.ko.png)
+## 이전 결정을 다음 세션에서 찾기
+
+![독립된 두 MCP 클라이언트에서 저장 ID와 검색 ID가 일치한 실제 결과](docs/demo-result.ko.png)
+
+임시 저장소에서 실행한 실제 MCP 요청과 응답을 읽기 쉽게 배치했습니다. [응답 원본](docs/demo-output.json)에서 같은 기억 ID와 내용을 확인할 수 있습니다. 에이전트 UI를 캡처하거나 성공 장면을 생성한 이미지가 아닙니다.
+
+첫 세션의 대화 기록을 전달하지 않아도 두 번째 세션에서 저장한 결정을 검색할 수 있습니다. 직접 툴을 호출하는 예시이며, 에이전트가 스스로 검색하거나 결과를 올바르게 적용한다는 보장은 아닙니다.
+
+[두 클라이언트 데모](docs/demo.md)는 에이전트 계정 없이 curl로 실행할 수 있습니다. 두 클라이언트는 같은 서비스에 연결해야 합니다. 예제에는 실제 작업공간 대신 별도 `memnest-demo` 프로젝트를 사용합니다.
+
+## 내장 메모리와 다른 점
+
+한 도구 안에서 이전 대화를 기억하는 것이 목적이라면 내장 기능부터 쓰는 편이 간단합니다. Memnest가 필요한 경우는 Claude Code에서 저장한 작업 결정을 pi나 Codex에서도 찾고 싶거나, 여러 작업공간의 기억을 직접 보관하고 검색하려는 때입니다.
+
+| 선택지 | 이미 해주는 일 | Memnest를 고를 이유 |
+| --- | --- | --- |
+| [ChatGPT 메모리](https://help.openai.com/en/articles/8590148), [Claude 채팅 메모리](https://support.claude.com/en/articles/11817273-use-claude-s-chat-search-and-memory-to-build-on-previous-context) | 각 제품에서 이전 대화와 기억을 이후 응답에 활용합니다. | 특정 채팅 제품의 기억과 별개로, 연결한 코딩 도구들이 같은 로컬 저장소를 조회하게 하려는 경우입니다. |
+| [Claude Code 메모리](https://code.claude.com/docs/en/memory), `CLAUDE.md`, `AGENTS.md` | Claude Code도 로컬 Markdown에 자동 메모리를 저장합니다. 규칙 파일은 매번 필요한 지침을 전달하기 좋습니다. | 프로젝트별로 쌓이는 결정과 대화를 키워드와 의미로 검색하고, 다른 도구에서도 같은 API로 찾으려는 경우입니다. 로컬 저장 자체는 Memnest만의 기능이 아닙니다. |
+| [MCP 참조 Memory Server](https://github.com/modelcontextprotocol/servers/tree/main/src/memory) | 로컬 지식 그래프에 개체, 관계, 관찰을 저장합니다. | 그래프를 관리하기보다 작업 결정과 대화 텍스트를 작업공간별로 검색하려는 경우입니다. |
+| [Mem0](https://docs.mem0.ai/open-source/overview) 같은 메모리 계층 | 자체 호스팅이 가능하고 LLM, 임베딩, 저장소를 구성할 수 있습니다. | LLM 호출 없이 로컬 임베딩과 BM25로 검색하는 Rust 서비스 하나, 코딩 도구용 어댑터와 대화 수집기를 원하는 경우입니다. |
+
+다른 메모리 도구보다 검색이 정확하거나 빠르다는 비교 검증은 아직 없습니다. Memnest의 선택 이유는 로컬 저장, 공통 API, 작업공간 검색과 대화 수집의 조합입니다. 짧은 규칙 몇 개만 필요하거나 이미 쓰는 메모리 도구가 충분하다면 추가하지 않아도 됩니다.
+
+Memnest는 ChatGPT나 Claude의 내장 메모리를 자동으로 가져오거나 동기화하지 않습니다. 각 클라이언트를 연결해야 하며, 검색한 내용을 클라우드 모델에 보내면 그 내용은 해당 제공자에게 전달됩니다. 서비스 운영과 로컬 모델의 디스크, RAM 비용도 생깁니다.
 
 ## 주요 기능
 
@@ -116,6 +141,8 @@ memnest watch --backfill
 
 ## 검색과 저장 구조
 
+![memnest 로컬 우선 아키텍처](docs/architecture.ko.png)
+
 ```mermaid
 flowchart LR
     W1["기억 툴, HTTP /add, watch"] --> W2["알려진 자격 증명 형태 가림"]
@@ -132,10 +159,11 @@ flowchart LR
 
 모든 쓰기는 파생 색인보다 먼저 SQLite에 반영됩니다. 중단된 색인 작업은 시작할 때 다시 실행되며, 색인이 없어져도 `memory.db`에서 다시 만들 수 있습니다.
 
-검색 결과를 사용할 때 알아둘 동작은 두 가지입니다.
+검색 결과를 사용할 때 알아둘 동작은 세 가지입니다.
 
 - Memnest는 코드를 읽지 않으므로 저장한 사실이 낡았는지 자동으로 알 수 없습니다. 사실이 바뀌면 `supersedes=<id>`로 새 기억을 저장해야 합니다.
 - 검색은 가장 가까운 기억을 정렬합니다. 저장소에 실제 답이 있는지는 증명하지 못하므로 결과를 확인한 뒤 사용해야 합니다.
+- 직접 검색하면 저장된 대화도 찾을 수 있습니다. 자동 컨텍스트에는 의도적으로 저장하거나 통합한 기억만 포함하므로, 대화 속 미완성 시도가 다음 프롬프트에 자동으로 붙지는 않습니다.
 
 ## 데이터와 보안
 
@@ -154,7 +182,7 @@ flowchart LR
 - [어댑터](adapters/README.md): MCP, HTTP, 다른 호스트 연결
 - [기여](CONTRIBUTING.md): 개발 환경과 검사 명령
 
-Memnest는 `0.1.x` 단계입니다. 업그레이드 전에 데이터베이스를 백업하고 [릴리스 노트](https://github.com/Blue-B/memnest/releases)에서 호환성 변경을 확인하세요.
+Memnest는 `0.2.x` 단계입니다. 업그레이드 전에 데이터베이스를 백업하고 [릴리스 노트](https://github.com/Blue-B/memnest/releases)에서 호환성 변경을 확인하세요.
 
 ## 라이선스
 

@@ -1,10 +1,12 @@
 # memnest
 
-<!-- markdownlint-disable MD013 -->
+<!-- markdownlint-disable MD013 MD033 -->
+
+<img src="docs/logo.png" alt="memnest logo" width="440">
 
 [한국어 README](README.ko.md)
 
-Your coding agent forgets the last session. Memnest keeps selected memories and conversation history on your machine, then makes them available to pi, Claude Code, Codex, and other MCP clients.
+Keep saved decisions available when you switch coding tools. Memnest stores memories and conversation history on your machine so pi, Claude Code, Codex, and other MCP clients connected to the same service can search them.
 
 [![Latest release](https://img.shields.io/github/v/release/Blue-B/memnest?label=release)](https://github.com/Blue-B/memnest/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
@@ -12,7 +14,30 @@ Your coding agent forgets the last session. Memnest keeps selected memories and 
 ![Protocol](https://img.shields.io/badge/interface-MCP%20%2B%20HTTP-blue.svg)
 [![npm: pi-memnest](https://img.shields.io/npm/v/pi-memnest?label=npm%20pi-memnest&color=cb3837)](https://www.npmjs.com/package/pi-memnest)
 
-![memnest local-first architecture](docs/architecture.png)
+## Carry a decision into the next session
+
+![Real MCP results: two independent clients return the same saved memory ID](docs/demo-result.png)
+
+These are actual MCP request and response excerpts from a disposable store, arranged for readability. Check the matching memory ID and text in the [raw responses](docs/demo-output.json). This is not an agent UI screenshot or an AI-generated success scene.
+
+The second session can retrieve the saved decision without the first session's chat history. This is explicit retrieval, not a promise that an agent will remember to call the tool or follow the result correctly.
+
+[Run the two-client demo](docs/demo.md) with curl, no agent account required. Both clients must connect to the same service. Use the dedicated `memnest-demo` project for the example rather than your own workspace.
+
+## Compared with built-in memory
+
+If you only need one tool to remember earlier chats, start with its built-in memory. Memnest is for retrieving a decision saved through Claude Code from pi or Codex, or keeping a searchable store of memories across workspaces under your own control.
+
+| Option | What it already provides | Why choose Memnest |
+| --- | --- | --- |
+| [ChatGPT memory](https://help.openai.com/en/articles/8590148), [Claude chat memory](https://support.claude.com/en/articles/11817273-use-claude-s-chat-search-and-memory-to-build-on-previous-context) | Reuse prior conversations and memories in later responses within each product. | Let connected coding tools query the same local store, separate from a chat product's own memory. |
+| [Claude Code memory](https://code.claude.com/docs/en/memory), `CLAUDE.md`, `AGENTS.md` | Claude Code already saves auto memory in local Markdown. Instruction files are good for rules that should load every time. | Search growing decisions and transcripts by keyword and meaning, using the same API from different tools. Local storage alone is not unique to Memnest. |
+| [MCP reference Memory Server](https://github.com/modelcontextprotocol/servers/tree/main/src/memory) | Stores entities, relations, and observations in a local knowledge graph. | Retrieve workspace-scoped decisions and conversation text rather than maintain a graph. |
+| Memory layers such as [Mem0](https://docs.mem0.ai/open-source/overview) | Offer self-hosting and configurable LLMs, embeddings, and storage. | Use one Rust service with local embeddings and BM25, no LLM calls, coding-tool adapters, and transcript capture. |
+
+There is no comparative benchmark showing that Memnest retrieves more accurately or runs faster than these alternatives. Its case is the combination of local storage, a shared API, workspace search, and transcript capture. A few short rules, or an existing memory tool that already works for you, do not need another service.
+
+Memnest does not automatically import or synchronize ChatGPT's or Claude's built-in memories. Clients need to be connected. If retrieved text is sent to a cloud model, that provider receives it. You also take on service operation and the local model's disk and RAM costs.
 
 ## What it does
 
@@ -116,6 +141,8 @@ It skips system and developer prompts, reasoning, tool traffic, images, and suba
 
 ## How search and storage work
 
+![memnest local-first architecture](docs/architecture.png)
+
 ```mermaid
 flowchart LR
     W1["remember, HTTP /add, or watch"] --> W2["redact known credential shapes"]
@@ -155,7 +182,7 @@ Back up `memory.db` together with `master.key`. The database cannot be rebuilt, 
 - [Adapters](adapters/README.md): MCP, HTTP, and custom-host integration
 - [Contributing](CONTRIBUTING.md): development setup and checks
 
-Memnest is in the `0.1.x` series. Back up the database before upgrading and check the [release notes](https://github.com/Blue-B/memnest/releases) for compatibility changes.
+Memnest is in the `0.2.x` series. Back up the database before upgrading and check the [release notes](https://github.com/Blue-B/memnest/releases) for compatibility changes.
 
 ## License
 

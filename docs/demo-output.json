@@ -1,0 +1,55 @@
+{
+  "service_version": "0.2.1",
+  "scenario": "Two independent curl processes; disposable store; docs/demo.md commands",
+  "remember_request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "memory_remember",
+      "arguments": {
+        "text": "Checkout webhooks: use the event ID as the idempotency key; retries must not charge twice.",
+        "project": "memnest-demo",
+        "memory_kind": "rule",
+        "importance": "decision"
+      }
+    }
+  },
+  "remember_response": {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": {
+      "content": [
+        {
+          "text": "{\"status\":\"succeeded\",\"id\":\"manual_019e59978c83411db03c5136887a1c96\",\"project\":\"memnest-demo\",\"job_id\":\"job_c810d1e566e9483fa2121d25082b7340\",\"adapter\":\"mcp\"}",
+          "type": "text"
+        }
+      ]
+    }
+  },
+  "search_request": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "memory_search",
+      "arguments": {
+        "query": "How should checkout webhook retries avoid duplicate charges?",
+        "project": "memnest-demo",
+        "n_results": 3
+      }
+    }
+  },
+  "search_response": {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": {
+      "content": [
+        {
+          "text": "=== memory search results (How should checkout webhook retries avoid duplicate charges?) ===\n[1] project=memnest-demo score=0.2396 id=manual_019e59978c83411db03c5136887a1c96\n    Checkout webhooks: use the event ID as the idempotency key; retries must not charge twice.",
+          "type": "text"
+        }
+      ]
+    }
+  }
+}

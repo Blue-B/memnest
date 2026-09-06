@@ -16,13 +16,13 @@ This extension does not contain the memory engine. Start the Rust core before in
 
 ## Install
 
-Start the [memnest core service](https://github.com/Blue-B/memnest#install), then install the extension from npm:
+Start the [memnest core service](https://github.com/Blue-B/memnest#quick-start), then install the extension from npm:
 
 ```bash
 pi install npm:pi-memnest
 ```
 
-To pin this first release, use `pi install npm:pi-memnest@0.1.0`. A pinned package is not changed by `pi update --extensions`.
+To pin a release, append its published version, for example `pi install npm:pi-memnest@0.2.0`. A pinned package is not changed by `pi update --extensions`.
 
 To develop from a source checkout instead:
 
@@ -113,7 +113,7 @@ MCP does not describe host session events. The core provides host-neutral automa
 - `memnest hook` reads a host's hook payload on stdin and answers with a context pack, in the shape that host expects.
 - `memnest watch` follows Claude Code, pi, and Codex transcripts and stores visible conversation text, with no host extension hooks.
 
-See [automatic context and conversation capture](https://github.com/Blue-B/memnest#automatic-context-and-conversation-capture) in the root README. Inside pi the extension exposes the same five-tool memory contract, optionally adds four vault tools, and provides the `/memnest` command.
+See [automatic context and conversation capture](https://github.com/Blue-B/memnest#automatic-recall-and-capture) in the root README. Inside pi the extension exposes the same five-tool memory contract, optionally adds four vault tools, and provides the `/memnest` command.
 
 ## Development
 
