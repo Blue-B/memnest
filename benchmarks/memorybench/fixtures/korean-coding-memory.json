@@ -1,0 +1,81 @@
+{
+  "sessions": [
+    {
+      "sessionId": "ko-cache-decision",
+      "metadata": { "date": "2026-01-10" },
+      "messages": [
+        {
+          "role": "user",
+          "content": "검색 결과 캐시는 Redis 대신 프로세스 내부 LRU 캐시로 구현해 주세요. 만료 시간은 5분입니다."
+        },
+        {
+          "role": "assistant",
+          "content": "LRU 캐시와 5분 만료 정책을 적용하겠습니다."
+        }
+      ]
+    },
+    {
+      "sessionId": "ko-test-convention",
+      "metadata": { "date": "2026-01-11" },
+      "messages": [
+        {
+          "role": "user",
+          "content": "비동기 Rust 테스트 이름은 동작_조건_기대결과 형식을 사용하고 tokio::test로 작성합니다."
+        },
+        {
+          "role": "assistant",
+          "content": "새 테스트에 해당 이름 규칙과 tokio::test를 사용하겠습니다."
+        }
+      ]
+    },
+    {
+      "sessionId": "ko-port-update",
+      "metadata": { "date": "2026-01-12" },
+      "messages": [
+        {
+          "role": "user",
+          "content": "개발 서버 포트를 8080에서 8320으로 변경했습니다. 이제 로컬 실행은 8320 포트를 사용합니다."
+        },
+        {
+          "role": "assistant",
+          "content": "최신 개발 서버 포트 8320을 기준으로 문서를 맞추겠습니다."
+        }
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "questionId": "ko-q-cache",
+      "question": "검색 결과 캐시는 무엇을 쓰고 얼마나 유지하나요?",
+      "questionType": "coding-fact",
+      "groundTruth": "프로세스 내부 LRU 캐시를 사용하며 만료 시간은 5분입니다.",
+      "haystackSessionIds": ["ko-cache-decision", "ko-test-convention", "ko-port-update"],
+      "metadata": {
+        "expectedSessionId": "ko-cache-decision",
+        "requiredTerms": ["LRU", "5분"]
+      }
+    },
+    {
+      "questionId": "ko-q-test",
+      "question": "Rust 비동기 테스트의 이름과 실행 매크로 규칙은 무엇인가요?",
+      "questionType": "coding-fact",
+      "groundTruth": "이름은 동작_조건_기대결과 형식이고 tokio::test를 사용합니다.",
+      "haystackSessionIds": ["ko-cache-decision", "ko-test-convention", "ko-port-update"],
+      "metadata": {
+        "expectedSessionId": "ko-test-convention",
+        "requiredTerms": ["동작_조건_기대결과", "tokio::test"]
+      }
+    },
+    {
+      "questionId": "ko-q-port",
+      "question": "현재 로컬 개발 서버 포트는 몇 번인가요?",
+      "questionType": "coding-update",
+      "groundTruth": "현재 로컬 개발 서버 포트는 8320입니다.",
+      "haystackSessionIds": ["ko-cache-decision", "ko-test-convention", "ko-port-update"],
+      "metadata": {
+        "expectedSessionId": "ko-port-update",
+        "requiredTerms": ["8320"]
+      }
+    }
+  ]
+}
