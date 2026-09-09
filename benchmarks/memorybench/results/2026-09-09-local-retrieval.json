@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "kind": "retrieval-only",
+  "startedAt": "2026-09-09T07:35:36.076Z",
+  "completedAt": "2026-09-09T07:36:07.762Z",
+  "environment": {
+    "memnestCommit": "d5a7495c691fc4f3c99beebd24c094f54f4b4a4c",
+    "memnestUrl": "http://127.0.0.1:3201",
+    "embedModel": "intfloat/multilingual-e5-base",
+    "runtime": "Bun 1.3.14",
+    "platform": "linux-x64",
+    "containerTag": "memorybench-ko-879225-1788939336068"
+  },
+  "counts": {
+    "sessions": 3,
+    "questions": 3,
+    "successfulSearches": 3
+  },
+  "metrics": {
+    "answerAccuracy": null,
+    "answerAccuracyReason": "Retrieval-only run: no answering or judge model was called.",
+    "hitAt1": 1,
+    "recallAt3": 1,
+    "mrrAt10": 1,
+    "successRate": 1,
+    "searchLatencyMs": {
+      "p50": 24.82197499999893,
+      "p95": 27.41432200000054
+    },
+    "ingestAndIndexMs": 31601.879858,
+    "contextTokens": null,
+    "contextTokensReason": "MemoryBench computes context tokens during its paid answering phase.",
+    "serverRssSnapshotBytes": 1712091136,
+    "serverRssSnapshotReason": "One end-of-run snapshot read from /proc/<MEMNEST_PID>/status when available.",
+    "diskBytes": 22043
+  },
+  "queries": [
+    {
+      "questionId": "ko-q-cache",
+      "query": "검색 결과 캐시는 무엇을 쓰고 얼마나 유지하나요?",
+      "expectedSessionId": "ko-cache-decision",
+      "durationMs": 24.82197499999893,
+      "rank": 1,
+      "results": [
+        {
+          "id": "manual_c09644de43014a7694e1158dea1548e9",
+          "project": "memorybench-ko-879225-1788939336068",
+          "document": "MemoryBench session: ko-cache-decision\nDate: 2026-01-10\n\n[user] 검색 결과 캐시는 Redis 대신 프로세스 내부 LRU 캐시로 구현해 주세요. 만료 시간은 5분입니다.\n[assistant] LRU 캐시와 5분 만료 정책을 적용하겠습니다.",
+          "doc_len": 160,
+          "score": 0.28333333,
+          "timestamp": "2026-09-09T07:36:07.353404446+00:00",
+          "chunk_type": "Manual",
+          "importance": "Knowledge",
+          "category": "General",
+          "memory_kind": "record",
+          "confidence": null,
+          "adapter": "memorybench"
+        }
+      ]
+    },
+    {
+      "questionId": "ko-q-test",
+      "query": "Rust 비동기 테스트의 이름과 실행 매크로 규칙은 무엇인가요?",
+      "expectedSessionId": "ko-test-convention",
+      "durationMs": 27.41432200000054,
+      "rank": 1,
+      "results": [
+        {
+          "id": "manual_9c2da72228464571bcefb598d07f5c79",
+          "project": "memorybench-ko-879225-1788939336068",
+          "document": "MemoryBench session: ko-test-convention\nDate: 2026-01-11\n\n[user] 비동기 Rust 테스트 이름은 동작_조건_기대결과 형식을 사용하고 tokio::test로 작성합니다.\n[assistant] 새 테스트에 해당 이름 규칙과 tokio::test를 사용하겠습니다.",
+          "doc_len": 172,
+          "score": 0.32708332,
+          "timestamp": "2026-09-09T07:36:07.481022491+00:00",
+          "chunk_type": "Manual",
+          "importance": "Knowledge",
+          "category": "General",
+          "memory_kind": "record",
+          "confidence": null,
+          "adapter": "memorybench"
+        },
+        {
+          "id": "manual_d428c9793bf54d739186e3cd20a983f3",
+          "project": "memorybench-ko-879225-1788939336068",
+          "document": "MemoryBench session: ko-port-update\nDate: 2026-01-12\n\n[user] 개발 서버 포트를 8080에서 8320으로 변경했습니다. 이제 로컬 실행은 8320 포트를 사용합니다.\n[assistant] 최신 개발 서버 포트 8320을 기준으로 문서를 맞추겠습니다.",
+          "doc_len": 165,
+          "score": 0.23514345,
+          "timestamp": "2026-09-09T07:36:07.597781232+00:00",
+          "chunk_type": "Manual",
+          "importance": "Knowledge",
+          "category": "General",
+          "memory_kind": "record",
+          "confidence": null,
+          "adapter": "memorybench"
+        }
+      ]
+    },
+    {
+      "questionId": "ko-q-port",
+      "query": "현재 로컬 개발 서버 포트는 몇 번인가요?",
+      "expectedSessionId": "ko-port-update",
+      "durationMs": 24.61499399999957,
+      "rank": 1,
+      "results": [
+        {
+          "id": "manual_d428c9793bf54d739186e3cd20a983f3",
+          "project": "memorybench-ko-879225-1788939336068",
+          "document": "MemoryBench session: ko-port-update\nDate: 2026-01-12\n\n[user] 개발 서버 포트를 8080에서 8320으로 변경했습니다. 이제 로컬 실행은 8320 포트를 사용합니다.\n[assistant] 최신 개발 서버 포트 8320을 기준으로 문서를 맞추겠습니다.",
+          "doc_len": 165,
+          "score": 0.33333334,
+          "timestamp": "2026-09-09T07:36:07.597781232+00:00",
+          "chunk_type": "Manual",
+          "importance": "Knowledge",
+          "category": "General",
+          "memory_kind": "record",
+          "confidence": null,
+          "adapter": "memorybench"
+        }
+      ]
+    }
+  ]
+}

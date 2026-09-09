@@ -1,0 +1,29 @@
+{
+  "attempted_at": "2026-09-09T06:41:00Z",
+  "scope": "real installed client processes against an isolated local Memnest service and workspace",
+  "clients": {
+    "pi": {
+      "version": "0.85.1",
+      "status": "passed",
+      "seed_adapter": "transport-fixture",
+      "expected": "pi-client-proof-20260909T064100Z",
+      "stdout": "pi-client-proof-20260909T064100Z\n\nPI_RECALLED\n",
+      "claim": "The real pi process used memory_search and returned the seeded token from the matching workspace."
+    },
+    "claude_code": {
+      "version": "2.1.258",
+      "status": "blocked_before_tool_use",
+      "error_status": 403,
+      "error": "Your organization has disabled Claude subscription access for Claude Code; use an Anthropic API key or ask the administrator to enable access."
+    },
+    "codex": {
+      "version": "0.139.0",
+      "status": "blocked_before_tool_use",
+      "errors": [
+        "Provided authentication token is expired.",
+        "Usage limit reached."
+      ]
+    }
+  },
+  "result": "One real pi recall passed. No Claude Code to Codex, Codex to Claude Code, or three-client success is claimed."
+}

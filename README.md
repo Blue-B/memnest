@@ -27,11 +27,11 @@ cat /tmp/memnest-demo-evidence/transcript.txt
 
 The script needs a running service and `memnest` executable but no agent account. It also passes a synthetic fixture in Codex's supported JSONL transcript shape through `memnest watch`. It preserves request and response bodies, a checksum manifest, a plain-text terminal transcript, and an editorially paced ~45-second asciicast. See the [checked-in evidence](docs/demo-evidence/), [terminal cast](docs/demo-evidence/demo.cast), and [full reproduction notes](docs/demo.md).
 
-This proves transport-level persistence and retrieval. It does **not** prove that Claude Code, Codex, pi, or another autonomous agent will choose to save, search, trust, or apply the result.
+This proves transport-level persistence and retrieval. It does **not** prove that Claude Code, Codex, pi, or another autonomous agent will choose to save, search, trust, or apply the result. A separate [real-client validation](docs/client-validation.md) passed with pi 0.85.1; Claude Code and Codex were blocked by account access and usage limits before tool use, so no cross-agent success is claimed.
 
 ## Quick start
 
-Linux x86_64 and aarch64 can install the latest release without a Rust toolchain:
+Linux and macOS on x86_64 or Arm64 can install the latest release without a Rust toolchain:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh \
@@ -41,13 +41,15 @@ bash /tmp/memnest-install.sh --user
 curl -fsS http://127.0.0.1:3111/health
 ```
 
-Windows, WSL, source builds, uninstall, backup, restore, and configuration are in the [operations guide](docs/operations.md).
+The setup starts the local service and transcript watcher, configures detected Claude Code, Codex, and Cursor clients without replacing existing Memnest entries, and runs a remember/search self-test. It backs up every changed client file first. pi still uses the separately installed `pi-memnest` package shown below.
+
+Windows, WSL, source builds, client-config rollback, uninstall, data backup, and native macOS validation limits are in the [operations guide](docs/operations.md).
 
 The first write or search downloads the local embedding model. The default model uses about 1.1 GB on disk and can approach 1.9 GB of memory while embedding.
 
 ## Benchmark status
 
-No comparative benchmark currently shows that Memnest retrieves more accurately or runs faster than other memory tools. The checked-in demo above verifies one write-and-retrieve path; it is not a quality or performance benchmark.
+No comparative benchmark currently shows that Memnest retrieves more accurately or runs faster than other memory tools. A pinned [MemoryBench adapter](benchmarks/memorybench/README.md) and Korean retrieval smoke fixture are included. The checked-in Linux result ranked the expected session first for all three fixture questions, with 24.8 ms p50 and 27.4 ms p95 search latency after indexing. Answer accuracy and context-token metrics are deliberately unset because no answering or judge model was called. This tiny smoke result is not a LongMemEval, LoCoMo, or provider comparison.
 
 ## Connect a client
 
@@ -187,6 +189,7 @@ Back up `memory.db` together with `master.key`. The database cannot be rebuilt, 
 ## Documentation
 
 - [Operations](docs/operations.md): install, configuration, retention, backup, restore, and CLI reference
+- [Real client validation](docs/client-validation.md): one pi success and the exact Claude Code/Codex blockers
 - [Security](SECURITY.md): threat model, vault, redaction, deletion, and network binding
 - [Design decisions](docs/design-decisions.md): reasons behind the shipped architecture
 - [pi extension](pi-extension/README.md): pi setup and Autocontext behavior

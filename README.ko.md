@@ -27,11 +27,11 @@ cat /tmp/memnest-demo-evidence/transcript.txt
 
 실행 중인 서비스와 `memnest` 실행 파일이 필요하지만 에이전트 계정은 필요하지 않습니다. 스크립트는 Codex가 지원하는 JSONL 대화 형식의 합성 fixture도 `memnest watch`에 전달합니다. 요청·응답 본문, 체크섬 manifest, 텍스트 터미널 transcript, 약 45초로 편집한 asciicast를 보관합니다. [저장된 증거](docs/demo-evidence/), [터미널 cast](docs/demo-evidence/demo.cast), [전체 재현 방법](docs/demo.md)을 확인할 수 있습니다.
 
-이 결과는 전송 계층에서 저장과 검색이 이어짐을 증명합니다. Claude Code, Codex, pi 같은 자율 에이전트가 스스로 저장·검색하거나, 결과를 신뢰하고 적용하는지는 **증명하지 않습니다**.
+이 결과는 전송 계층에서 저장과 검색이 이어짐을 증명합니다. Claude Code, Codex, pi 같은 자율 에이전트가 스스로 저장하거나 검색하고, 결과를 신뢰하고 적용하는지는 **증명하지 않습니다**. 별도의 [실제 클라이언트 검증](docs/client-validation.md)에서는 pi 0.85.1 검색이 성공했습니다. Claude Code와 Codex는 툴 호출 전에 계정 접근 권한과 사용량 제한으로 중단됐으므로 교차 에이전트 성공으로 표시하지 않습니다.
 
 ## 빠른 시작
 
-Linux x86_64와 aarch64에서는 Rust 툴체인 없이 최신 릴리스를 설치할 수 있습니다.
+Linux와 macOS의 x86_64, Arm64 환경에서는 Rust 툴체인 없이 최신 릴리스를 설치할 수 있습니다.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh \
@@ -41,13 +41,15 @@ bash /tmp/memnest-install.sh --user
 curl -fsS http://127.0.0.1:3111/health
 ```
 
-Windows, WSL, 소스 빌드, 삭제, 백업, 복구, 설정은 [운영 문서](docs/operations.md)에 있습니다.
+설치 과정은 로컬 서비스와 대화 감시기를 시작하고, 발견한 Claude Code, Codex, Cursor 설정에 기존 Memnest 항목을 덮어쓰지 않고 연결 정보를 추가한 뒤 저장과 검색을 확인합니다. 변경할 클라이언트 파일은 먼저 백업합니다. pi는 아래에 나온 `pi-memnest` 패키지를 별도로 설치합니다.
+
+Windows, WSL, 소스 빌드, 클라이언트 설정 되돌리기, 삭제, 데이터 백업, macOS 네이티브 검증 범위는 [운영 문서](docs/operations.md)에 있습니다.
 
 처음 저장하거나 검색할 때 로컬 임베딩 모델을 내려받습니다. 기본 모델은 디스크 약 1.1 GB를 쓰고 임베딩 중에는 메모리를 약 1.9 GB까지 사용할 수 있습니다.
 
 ## 벤치마크 상태
 
-Memnest가 다른 메모리 도구보다 더 정확하거나 빠르게 검색한다는 비교 벤치마크는 아직 없습니다. 위에 보관한 데모는 한 번의 저장·검색 경로를 검증하며, 품질이나 성능 벤치마크가 아닙니다.
+Memnest가 다른 메모리 도구보다 더 정확하거나 빠르게 검색한다는 비교 벤치마크는 아직 없습니다. 고정된 버전의 [MemoryBench 어댑터](benchmarks/memorybench/README.md)와 한국어 검색 스모크 fixture를 제공합니다. 보관한 Linux 결과에서는 세 질문 모두 기대한 세션이 1위였고, 색인 후 검색 지연은 p50 24.8 ms, p95 27.4 ms였습니다. answering 모델과 judge 모델을 호출하지 않았으므로 답변 정확도와 context token 값은 비워 두었습니다. 세 질문으로 얻은 이 결과는 LongMemEval, LoCoMo, 제공자 비교 결과가 아닙니다.
 
 ## 클라이언트 연결
 
@@ -187,6 +189,7 @@ Memnest는 ChatGPT나 Claude의 내장 메모리를 자동으로 가져오거나
 ## 문서
 
 - [운영](docs/operations.md): 설치, 설정, 보존, 백업, 복구, CLI
+- [실제 클라이언트 검증](docs/client-validation.md): pi 성공 1건과 Claude Code, Codex 차단 원인
 - [보안](SECURITY.md): 위협 모델, 금고, redaction, 삭제, 네트워크 바인딩
 - [설계 결정](docs/design-decisions.md): 현재 아키텍처를 선택한 이유
 - [pi 확장](pi-extension/README.md): pi 설치와 Autocontext 동작

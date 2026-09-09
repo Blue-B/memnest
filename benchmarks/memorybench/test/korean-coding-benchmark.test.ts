@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test"
 import { KoreanCodingBenchmark, validateFixture } from "../korean-coding-benchmark"
+import { percentile } from "../run-korean-retrieval"
+
+describe("retrieval report metrics", () => {
+  test("uses nearest-rank percentiles and handles an empty sample", () => {
+    expect(percentile([], 0.95)).toBeNull()
+    expect(percentile([4, 1, 3, 2], 0.5)).toBe(2)
+    expect(percentile([4, 1, 3, 2], 0.95)).toBe(4)
+  })
+})
 
 describe("KoreanCodingBenchmark", () => {
   test("loads the pinned fixture and exposes deterministic MemoryBench views", async () => {

@@ -7,6 +7,13 @@ HOST="${MEMNEST_HOST:-127.0.0.1}"
 PORT="${MEMNEST_PORT:-3111}"
 BIN_SRC="${BIN_SRC:-}"
 
+validate_port() {
+  case "$PORT" in ''|*[!0-9]*) echo "MEMNEST_PORT must be an integer from 1 to 65535" >&2; exit 2 ;; esac
+  [ "${#PORT}" -le 5 ] && [ "$((10#$PORT))" -ge 1 ] && [ "$((10#$PORT))" -le 65535 ] || {
+    echo "MEMNEST_PORT must be an integer from 1 to 65535" >&2; exit 2;
+  }
+}
+
 usage() {
   cat <<'EOF'
 Usage: scripts/install-linux.sh [--user|--system] [--bin /path/to/memnest]
@@ -29,6 +36,7 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
+validate_port
 
 if ! command -v systemctl >/dev/null 2>&1; then
   echo "systemd is required for this installer" >&2
@@ -108,7 +116,8 @@ if [ "$MODE" = "system" ]; then
   sudo install -m 0644 "$ROOT/packaging/systemd/memnest.service" /etc/systemd/system/memnest.service
   patch_service_env /etc/systemd/system/memnest.service sudo
   sudo systemctl daemon-reload
-  sudo systemctl enable --now memnest.service
+  sudo systemctl enable memnest.service
+  sudo systemctl restart memnest.service
   sudo systemctl status memnest.service --no-pager -l
   echo "System installs do not run a root transcript watcher; run memnest watch as the desktop user if capture is wanted."
 else
@@ -122,7 +131,8 @@ else
   patch_service_env "$HOME/.config/systemd/user/memnest.service"
   sed -i "s/^Environment=MEMNEST_PORT=.*/Environment=MEMNEST_PORT=${PORT}/" "$HOME/.config/systemd/user/memnest-watch.service"
   systemctl --user daemon-reload
-  systemctl --user enable --now memnest.service memnest-watch.service
+  systemctl --user enable memnest.service memnest-watch.service
+  systemctl --user restart memnest.service memnest-watch.service
   systemctl --user status memnest.service memnest-watch.service --no-pager -l
 fi
 

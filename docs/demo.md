@@ -11,6 +11,8 @@ This demo makes two separate curl invocations against one Memnest service:
 
 These are [supported Memnest client surfaces](../adapters/README.md#supported-surfaces). The path tests persistence across independent transport clients and one shipped transcript parser. It does not launch Claude Code, Codex, pi, or an LLM, and it does not test whether an autonomous agent decides to save, recall, trust, or apply memory.
 
+A separate [real-client attempt](client-validation.md) passed the pi search path. Claude Code and Codex stopped on account access and usage errors before tool use, so that attempt is not presented as a cross-agent demo.
+
 ## Run it
 
 Requirements are a running Memnest service, the `memnest` executable, Bash, curl, and Python 3. The recorder uses no npm or Python packages. By default the service is expected at `http://127.0.0.1:3111`; set `MEMNEST_BIN` if the executable is not on `PATH`.
@@ -22,7 +24,7 @@ cat /tmp/memnest-demo-evidence/transcript.txt
 
 Set `MEMNEST_URL` for another local address. If the service has bearer authentication, set `MEMNEST_TOKEN`; the token is sent as a header and is not written to the evidence.
 
-The script writes one fictional decision to the dedicated `memnest-demo` project. Project scope separates search results, not database files. For a clean run, start a disposable service with its own data directory:
+The script writes one fictional decision to a unique `memnest-demo-<timestamp>-<pid>` project, so repeated runs against one service do not deduplicate each other. Project scope separates search results, not database files. For a clean run, start a disposable service with its own data directory:
 
 ```bash
 DATA_DIR="$(mktemp -d)"

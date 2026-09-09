@@ -20,11 +20,15 @@ interface AddResponse {
   error?: string
 }
 
-interface SearchResult {
+export interface SearchResult {
   id: string
   document: string
   score: number
   [key: string]: unknown
+}
+
+interface SearchResponse {
+  results: SearchResult[]
 }
 
 /** MemoryBench provider backed by Memnest's local HTTP API. */
@@ -86,7 +90,7 @@ export class MemnestProvider implements Provider {
   }
 
   async search(query: string, options: SearchOptions): Promise<unknown[]> {
-    const results = await this.request<SearchResult[]>("/search", {
+    const response = await this.request<SearchResponse>("/search", {
       method: "POST",
       body: JSON.stringify({
         query,
@@ -95,11 +99,12 @@ export class MemnestProvider implements Provider {
         adapter: "memorybench",
       }),
     })
-    if (!Array.isArray(results)) throw new Error("Memnest /search returned a non-array response")
+    if (!Array.isArray(response.results))
+      throw new Error("Memnest /search response is missing its results array")
     // MemoryBench thresholds are provider-specific. Memnest hybrid scores are
     // not normalized probabilities, so applying (for example) its default 0.3
     // client-side would incorrectly discard valid RRF results.
-    return results
+    return response.results
   }
 
   async clear(containerTag: string): Promise<void> {

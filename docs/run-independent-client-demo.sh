@@ -9,6 +9,7 @@ TEXT='Checkout webhooks: use the event ID as the idempotency key; retries must n
 QUERY='How should checkout webhook retries avoid duplicate charges?'
 TRANSCRIPT_TEXT='Transcript handoff: checkout retry tests must reuse the original event ID.'
 MEMNEST_BIN="${MEMNEST_BIN:-memnest}"
+PROJECT="memnest-demo-$(date -u +%Y%m%dT%H%M%S)-$$"
 
 for command in curl python3 "$MEMNEST_BIN"; do
   command -v "$command" >/dev/null || { echo "missing required command: $command" >&2; exit 2; }
@@ -23,10 +24,10 @@ if [[ -n "${MEMNEST_TOKEN:-}" ]]; then
 fi
 
 cat >"$OUT/client-a-mcp-request.json" <<JSON
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory_remember","arguments":{"text":"$TEXT","project":"memnest-demo","memory_kind":"rule","importance":"decision"}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory_remember","arguments":{"text":"$TEXT","project":"$PROJECT","memory_kind":"rule","importance":"decision"}}}
 JSON
 cat >"$OUT/client-b-http-request.json" <<JSON
-{"query":"$QUERY","project":"memnest-demo","n_results":3,"adapter":"demo-independent-http"}
+{"query":"$QUERY","project":"$PROJECT","n_results":3,"adapter":"demo-independent-http"}
 JSON
 cat >"$OUT/codex-transcript/session.jsonl" <<JSONL
 {"type":"session_meta","payload":{"id":"scripted-codex-session","cwd":"/tmp/memnest-demo-transcript","thread_source":"user"}}
@@ -62,11 +63,12 @@ curl --fail-with-body --silent --show-error --max-time 300 \
   "${headers[@]}" --data-binary @"$OUT/transcript-search-request.json" \
   "$BASE_URL/search" >"$OUT/transcript-search-response.json"
 
-python3 - "$OUT" "$BASE_URL" <<'PY'
+python3 - "$OUT" "$BASE_URL" "$PROJECT" <<'PY'
 import datetime, hashlib, json, pathlib, sys
 
 out = pathlib.Path(sys.argv[1])
 base_url = sys.argv[2]
+project = sys.argv[3]
 text = "Checkout webhooks: use the event ID as the idempotency key; retries must not charge twice."
 transcript_text = "Transcript handoff: checkout retry tests must reuse the original event ID."
 
@@ -156,6 +158,7 @@ manifest = {
     "recorded_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     "service_version": health.get("version", "not reported"),
     "service_url": base_url,
+    "project": project,
     "memory_id": memory_id,
     "transcript_memory_id": transcript_matches[0]["id"],
     "verification": {"same_id": True, "exact_text": True, "codex_transcript_fixture_retrieved": True},

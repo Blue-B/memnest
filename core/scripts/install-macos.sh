@@ -11,6 +11,13 @@ LOGS="$HOME/Library/Logs/Memnest"
 BACKUPS="$DATA_DIR/setup-backups"
 SHARE="$HOME/.local/share/memnest/scripts"
 
+validate_port() {
+  case "$PORT" in ''|*[!0-9]*) echo "MEMNEST_PORT must be an integer from 1 to 65535" >&2; exit 2 ;; esac
+  [ "${#PORT}" -le 5 ] && [ "$((10#$PORT))" -ge 1 ] && [ "$((10#$PORT))" -le 65535 ] || {
+    echo "MEMNEST_PORT must be an integer from 1 to 65535" >&2; exit 2;
+  }
+}
+
 usage() { echo "Usage: scripts/install-macos.sh [--bin /path/to/memnest]"; }
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -20,6 +27,7 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
+validate_port
 [ "$(uname -s)" = Darwin ] || { echo "install-macos.sh requires macOS" >&2; exit 1; }
 if [ -z "$BIN_SRC" ]; then
   for candidate in ./memnest ./target/release/memnest "$ROOT/memnest" "$ROOT/target/release/memnest"; do

@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import pathlib
+import stat
 import tempfile
 import unittest
 
@@ -12,6 +13,13 @@ setup_clients = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(setup_clients)
 
 
+def read_json(path):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise AssertionError(f"invalid test JSON at {path}: {error}") from error
+
+
 class SetupClientsTest(unittest.TestCase):
     def test_merge_is_idempotent_and_restore_is_exact(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -19,19 +27,53 @@ class SetupClientsTest(unittest.TestCase):
             original = '{"keep": {"user": true}}\n'
             (home / ".claude").mkdir()
             (home / ".claude.json").write_text(original)
-            manifest = setup_clients.configure(home, pathlib.Path("/opt/memnest"), "http://127.0.0.1:3111", True)
+            binary = pathlib.Path("/opt/Memnest Tools/memnest")
+            manifest = setup_clients.configure(home, binary, "http://127.0.0.1:3111", True)
             self.assertIsNotNone(manifest)
-            claude = json.loads((home / ".claude.json").read_text())
+            claude = read_json(home / ".claude.json")
             self.assertTrue(claude["keep"]["user"])
             self.assertEqual(claude["mcpServers"]["memnest"]["url"], "http://127.0.0.1:3111/mcp")
+            settings = read_json(home / ".claude" / "settings.json")
+            hook_command = settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+            self.assertEqual(hook_command, "'/opt/Memnest Tools/memnest' hook --url http://127.0.0.1:3111")
+            manifest_doc = read_json(manifest)
+            self.assertTrue(all(entry["post_sha256"] for entry in manifest_doc["files"]))
+            self.assertEqual(stat.S_IMODE(manifest.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(manifest.parent.stat().st_mode), 0o700)
+            self.assertEqual(stat.S_IMODE((manifest.parent / "setup-clients.py").stat().st_mode), 0o700)
+            self.assertTrue(all(stat.S_IMODE(pathlib.Path(entry["backup"]).stat().st_mode) == 0o600 for entry in manifest_doc["files"]))
             first_manifest = manifest.read_text()
-            self.assertIsNone(setup_clients.configure(home, pathlib.Path("/opt/memnest"), "http://127.0.0.1:3111", True))
+            self.assertIsNone(setup_clients.configure(home, binary, "http://127.0.0.1:3111", True))
             self.assertEqual(manifest.read_text(), first_manifest)
             setup_clients.restore(manifest)
             self.assertEqual((home / ".claude.json").read_text(), original)
             self.assertFalse((home / ".claude" / "settings.json").exists())
             self.assertFalse((home / ".cursor" / "mcp.json").exists())
             self.assertFalse((home / ".codex" / "config.toml").exists())
+
+    def test_restore_refuses_later_changes_without_force(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = pathlib.Path(directory)
+            manifest = setup_clients.configure(home, pathlib.Path("/opt/memnest"), "http://127.0.0.1:3111", True)
+            (home / ".claude.json").write_text('{"changed_after_setup": true}\n')
+            with self.assertRaisesRegex(ValueError, "changed after setup"):
+                setup_clients.restore(manifest)
+            self.assertTrue((home / ".cursor" / "mcp.json").exists())
+            setup_clients.restore(manifest, force=True)
+            self.assertFalse((home / ".claude.json").exists())
+            self.assertFalse((home / ".cursor" / "mcp.json").exists())
+
+    def test_malformed_config_is_rejected_before_any_write(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = pathlib.Path(directory)
+            (home / ".claude").mkdir()
+            original = '{"existing": true}\n'
+            (home / ".claude.json").write_text(original)
+            (home / ".claude" / "settings.json").write_text("not json")
+            with self.assertRaisesRegex(ValueError, "could not read JSON config"):
+                setup_clients.configure(home, pathlib.Path("/opt/memnest"), "http://127.0.0.1:3111", True)
+            self.assertEqual((home / ".claude.json").read_text(), original)
+            self.assertFalse((home / ".memnest").exists())
 
     def test_existing_memnest_entries_are_not_overwritten(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -41,7 +83,7 @@ class SetupClientsTest(unittest.TestCase):
             (home / ".codex").mkdir()
             (home / ".codex" / "config.toml").write_text('[mcp_servers.memnest]\nurl = "http://custom/mcp"\n')
             setup_clients.configure(home, pathlib.Path("/opt/memnest"), "http://127.0.0.1:3111", True)
-            self.assertEqual(json.loads((home / ".claude.json").read_text())["mcpServers"]["memnest"]["url"], "http://custom/mcp")
+            self.assertEqual(read_json(home / ".claude.json")["mcpServers"]["memnest"]["url"], "http://custom/mcp")
             self.assertIn("http://custom/mcp", (home / ".codex" / "config.toml").read_text())
 
 

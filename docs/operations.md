@@ -30,12 +30,13 @@ scripts/setup.sh --user --bin ./memnest              # extracted archive
 scripts/setup.sh --user --bin target/release/memnest # source build
 ```
 
-User-mode setup installs and starts the server and conversation watcher; setup detects Claude Code, Codex, Cursor, and pi, and merges only the supported MCP and Claude prompt-hook entries. Existing Memnest client entries are left unchanged. Every changed client file is first copied byte-for-byte to the timestamped manifest directory printed by setup; a newly created file gets an `ABSENT` marker so restore removes it. Setup finishes by remembering, searching for, and trashing a unique scratch memory. The first round trip can download the embedding model.
+User-mode setup installs and starts the server and conversation watcher; setup detects Claude Code, Codex, Cursor, and pi, and merges only the supported MCP and Claude prompt-hook entries. Existing Memnest client entries are left unchanged. Every changed client file is first copied byte-for-byte to a private timestamped directory. That directory contains the manifest and its own restore script, so uninstalling the service does not remove the rollback tool. A newly created file gets an `ABSENT` marker. Setup finishes by remembering, searching for, and trashing a unique scratch memory. The first round trip can download the embedding model.
 
-Restore all client files from one setup run, in reverse change order:
+Setup prints an exact restore command using the timestamped directory. Restore first checks the post-setup SHA-256 for every client file and refuses to overwrite later user or client changes. Review conflicting files before using `--force-restore`, which intentionally replaces those changes with the pre-setup copies.
 
 ```bash
-python3 ~/.local/share/memnest/scripts/setup-clients.py --restore ~/.memnest/setup-backups/<timestamp>/manifest.json
+python3 ~/.memnest/setup-backups/<timestamp>/setup-clients.py \
+  --restore ~/.memnest/setup-backups/<timestamp>/manifest.json
 ```
 
 On Linux this uses systemd and stores user data in `~/.memnest`. Use `--system` for `/var/lib/memnest`; system mode intentionally does not run a root transcript watcher, so capture must be run by the desktop user. On macOS it installs both `io.memnest.service` and `io.memnest.watch` in `~/Library/LaunchAgents`, supports Intel and Apple Silicon release archives, and stores logs in `~/Library/Logs/Memnest`.
@@ -58,7 +59,7 @@ Restore client configuration before using `--remove-data`, because setup manifes
 
 Pass `--remove-data` only when the retained store and setup backups should be permanently deleted. Uninstall does not guess which shared client entries the user still wants; use the exact manifest restore command first to roll those back.
 
-Validate an installed macOS service with `scripts/validate-installed-macos.sh`. This repository's Linux environment can syntax- and contract-check launchd files, but only a macOS host can exercise `launchctl`, launch persistence, restart, and native x86_64/arm64 execution.
+Validate an installed macOS service with `scripts/validate-installed-macos.sh`. This repository's Linux environment can syntax- and contract-check launchd files, but only a logged-in macOS host can exercise `launchctl`, launch persistence, restart, reinstall, uninstall, and native x86_64/arm64 execution. The release workflow builds and runs each native binary, but it does not execute the launchd lifecycle. macOS archives are not code-signed or notarized, so downloaded artifacts may require an explicit Gatekeeper approval until signing is added.
 
 ### WSL
 

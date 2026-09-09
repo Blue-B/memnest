@@ -68,3 +68,11 @@ Retrieved content is labeled as untrusted reference data, and embedded markup is
 MCP exposes tool calls but not host conversation events. `memnest watch` therefore reads the transcript files already written by pi, Claude Code, and Codex.
 
 The watcher stores visible user and assistant text and skips system prompts, reasoning, tool traffic, images, and subagent sidechains. One capture path is smaller and easier to audit than a separate extension for every host.
+
+## No LLM curator ships by default
+
+Raw transcript records remain available to explicit searches. Automatic context accepts only deliberate manual memories and consolidated memories, so an unreviewed transcript cannot silently become prompt guidance.
+
+The checked-in three-question Korean retrieval smoke run found every designated transcript without generation. It is too small to establish general retrieval quality, while a complete MemoryBench answer and judge run still requires external model credentials and cost. That evidence does not justify adding a summarization model, provider configuration, or another lossy write path.
+
+A curator remains a possible later experiment, not a hidden requirement. It should be considered only if a repeatable benchmark shows that raw retrieval misses important coding decisions. Any version must be optional, run after capture, retain source IDs, write reviewable consolidated records, and leave the zero-LLM path unchanged.

@@ -6,6 +6,12 @@ PORT="${MEMNEST_PORT:-3111}"
 MODE="${MODE:-user}"
 CONFIGURE_CLIENTS=1
 VERIFY=1
+validate_port() {
+  case "$PORT" in ''|*[!0-9]*) echo "MEMNEST_PORT must be an integer from 1 to 65535" >&2; exit 2 ;; esac
+  [ "${#PORT}" -le 5 ] && [ "$((10#$PORT))" -ge 1 ] && [ "$((10#$PORT))" -le 65535 ] || {
+    echo "MEMNEST_PORT must be an integer from 1 to 65535" >&2; exit 2;
+  }
+}
 usage() {
   cat <<'EOF'
 Usage: scripts/setup.sh [--bin /path/to/memnest] [--user|--system] [--no-clients] [--no-verify]
@@ -26,6 +32,7 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
+validate_port
 OS="$(uname -s)"
 case "$OS" in
   Linux)
@@ -80,7 +87,7 @@ else
 fi
 cat <<EOF
 Setup complete. MCP endpoint: http://127.0.0.1:$PORT/mcp
-Rollback client changes: python3 "$INSTALLED_SCRIPTS/setup-clients.py" --restore <manifest printed above>
+Rollback client changes: use the exact restore command printed above when setup changed a client file.
 Uninstall: $UNINSTALL
 Data is retained unless --remove-data is explicitly passed to the uninstaller.
 EOF

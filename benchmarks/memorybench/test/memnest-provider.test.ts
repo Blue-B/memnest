@@ -17,10 +17,15 @@ describe("MemnestProvider MemoryBench contract", () => {
       if (url.endsWith("/health")) return jsonResponse({ status: "ok" })
       if (url.endsWith("/add")) return jsonResponse({ status: "succeeded", id: "manual-1" }, 201)
       if (url.endsWith("/search")) {
-        return jsonResponse([
-          { id: "manual-1", document: "LRU 5분", score: 0.8 },
-          { id: "manual-2", document: "distractor", score: 0.2 },
-        ])
+        return jsonResponse({
+          results: [
+            { id: "manual-1", document: "LRU 5분", score: 0.8 },
+            { id: "manual-2", document: "distractor", score: 0.2 },
+          ],
+          project: "question-run",
+          total: 2,
+          elapsed_ms: 4,
+        })
       }
       if (url.endsWith("/prune")) return jsonResponse({ matched: 1, deleted: 1, ids: ["manual-1"] })
       return jsonResponse({ error: "unexpected" }, 500)
@@ -87,6 +92,20 @@ describe("MemnestProvider MemoryBench contract", () => {
       project: "question-run",
       keep_latest: 0,
     })
+  })
+
+  test("rejects a malformed search envelope", async () => {
+    const provider = new MemnestProvider()
+    await provider.initialize({
+      apiKey: "none",
+      fetchImpl: (async (input) =>
+        String(input).endsWith("/health")
+          ? jsonResponse({ status: "ok" })
+          : jsonResponse([])) as typeof fetch,
+    })
+    await expect(
+      provider.search("query", { containerTag: "run" })
+    ).rejects.toThrow("missing its results array")
   })
 
   test("supports an unauthenticated local daemon and reports HTTP failures", async () => {
