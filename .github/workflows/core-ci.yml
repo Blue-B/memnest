@@ -5,6 +5,7 @@ on:
     paths:
       - "core/**"
       - ".github/workflows/core-ci.yml"
+      - ".github/workflows/core-release.yml"
   push:
     branches:
       - main
@@ -12,6 +13,7 @@ on:
     paths:
       - "core/**"
       - ".github/workflows/core-ci.yml"
+      - ".github/workflows/core-release.yml"
 
 permissions:
   contents: read
@@ -52,13 +54,43 @@ jobs:
           bash scripts/install.sh --help > /dev/null
           bash scripts/install-linux.sh --help > /dev/null
           bash scripts/uninstall-linux.sh --help > /dev/null
+          bash scripts/setup.sh --help > /dev/null
+          bash scripts/install-macos.sh --help > /dev/null
+          bash scripts/uninstall-macos.sh --help > /dev/null
           bash scripts/verify-packaging.sh
+          bash scripts/verify-macos-packaging.sh
+          python3 scripts/test-setup-clients.py
           bash scripts/support-bundle.sh --out "$RUNNER_TEMP/support.txt" > /dev/null
           echo body > "$RUNNER_TEMP/artifact"
           sha256sum "$RUNNER_TEMP/artifact" > "$RUNNER_TEMP/artifact.sha256"
           bash scripts/verify-artifact.sh "$RUNNER_TEMP/artifact" "$RUNNER_TEMP/artifact.sha256"
       - name: Third-party notices are current
         run: python3 scripts/generate-third-party-notices.py --check
+
+  macos-packaging:
+    strategy:
+      matrix:
+        include:
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: macos-14
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Native release build
+        run: cargo build --release --locked --target "${{ matrix.target }}"
+      - name: Installer and launchd contract checks
+        run: bash scripts/verify-macos-packaging.sh
 
   windows:
     runs-on: windows-latest
@@ -88,6 +120,10 @@ jobs:
           bash -n scripts/verify-artifact.sh
           bash -n scripts/validate-installed.sh
           bash -n scripts/support-bundle.sh
+          bash -n scripts/setup.sh
+          bash -n scripts/install-macos.sh
+          bash -n scripts/uninstall-macos.sh
+          bash -n scripts/validate-installed-macos.sh
       - name: License metadata
         shell: bash
         run: python3 scripts/check-licenses.py

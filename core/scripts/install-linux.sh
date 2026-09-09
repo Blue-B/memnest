@@ -99,21 +99,31 @@ wait_for_health() {
 }
 
 if [ "$MODE" = "system" ]; then
-  sudo install -m 0755 "$BIN_SRC" /usr/local/bin/memnest
-  sudo mkdir -p /var/lib/memnest
+  if ! [ "$BIN_SRC" -ef /usr/local/bin/memnest ]; then
+    sudo install -m 0755 "$BIN_SRC" /usr/local/bin/memnest
+  fi
+  sudo mkdir -p /var/lib/memnest /usr/local/share/memnest
+  sudo install -d /usr/local/share/memnest/scripts
+  sudo install -m 0755 "$ROOT/scripts/setup-clients.py" "$ROOT/scripts/uninstall-linux.sh" /usr/local/share/memnest/scripts/
   sudo install -m 0644 "$ROOT/packaging/systemd/memnest.service" /etc/systemd/system/memnest.service
   patch_service_env /etc/systemd/system/memnest.service sudo
   sudo systemctl daemon-reload
   sudo systemctl enable --now memnest.service
   sudo systemctl status memnest.service --no-pager -l
+  echo "System installs do not run a root transcript watcher; run memnest watch as the desktop user if capture is wanted."
 else
-  install -d "$HOME/.local/bin" "$HOME/.config/systemd/user" "$HOME/.memnest"
-  install -m 0755 "$BIN_SRC" "$HOME/.local/bin/memnest"
+  install -d "$HOME/.local/bin" "$HOME/.local/share/memnest/scripts" "$HOME/.config/systemd/user" "$HOME/.memnest"
+  if ! [ "$BIN_SRC" -ef "$HOME/.local/bin/memnest" ]; then
+    install -m 0755 "$BIN_SRC" "$HOME/.local/bin/memnest"
+  fi
+  install -m 0755 "$ROOT/scripts/setup-clients.py" "$ROOT/scripts/uninstall-linux.sh" "$HOME/.local/share/memnest/scripts/"
   install -m 0644 "$ROOT/packaging/systemd/memnest-user.service" "$HOME/.config/systemd/user/memnest.service"
+  install -m 0644 "$ROOT/packaging/systemd/memnest-watch-user.service" "$HOME/.config/systemd/user/memnest-watch.service"
   patch_service_env "$HOME/.config/systemd/user/memnest.service"
+  sed -i "s/^Environment=MEMNEST_PORT=.*/Environment=MEMNEST_PORT=${PORT}/" "$HOME/.config/systemd/user/memnest-watch.service"
   systemctl --user daemon-reload
-  systemctl --user enable --now memnest.service
-  systemctl --user status memnest.service --no-pager -l
+  systemctl --user enable --now memnest.service memnest-watch.service
+  systemctl --user status memnest.service memnest-watch.service --no-pager -l
 fi
 
 wait_for_health

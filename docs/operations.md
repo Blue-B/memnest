@@ -8,7 +8,7 @@ For what memnest is and how to connect an agent, start at the [README](../README
 
 ## Requirements
 
-Running a Linux release binary needs neither Git nor Rust. Building from source needs Git and a Rust toolchain with Rust 2024 edition support. The first embedding operation needs internet access so fastembed can download the configured model. Core CI builds and tests on Linux and Windows.
+Running a Linux or macOS release binary needs neither Git nor Rust. Building from source needs Git and a Rust toolchain with Rust 2024 edition support. The first embedding operation needs internet access so fastembed can download the configured model. Core CI builds and tests on Linux and Windows and builds both native macOS release targets.
 
 The optional package under `pi-extension/` lists its own runtime requirements in its package README.
 
@@ -21,15 +21,44 @@ cd core
 cargo build --release
 ```
 
-### Linux with systemd
+### One-command setup on Linux and macOS
+
+From an extracted release archive (or from `core/` after building), run:
+
+```bash
+scripts/setup.sh --user --bin ./memnest              # extracted archive
+scripts/setup.sh --user --bin target/release/memnest # source build
+```
+
+User-mode setup installs and starts the server and conversation watcher; setup detects Claude Code, Codex, Cursor, and pi, and merges only the supported MCP and Claude prompt-hook entries. Existing Memnest client entries are left unchanged. Every changed client file is first copied byte-for-byte to the timestamped manifest directory printed by setup; a newly created file gets an `ABSENT` marker so restore removes it. Setup finishes by remembering, searching for, and trashing a unique scratch memory. The first round trip can download the embedding model.
+
+Restore all client files from one setup run, in reverse change order:
+
+```bash
+python3 ~/.local/share/memnest/scripts/setup-clients.py --restore ~/.memnest/setup-backups/<timestamp>/manifest.json
+```
+
+On Linux this uses systemd and stores user data in `~/.memnest`. Use `--system` for `/var/lib/memnest`; system mode intentionally does not run a root transcript watcher, so capture must be run by the desktop user. On macOS it installs both `io.memnest.service` and `io.memnest.watch` in `~/Library/LaunchAgents`, supports Intel and Apple Silicon release archives, and stores logs in `~/Library/Logs/Memnest`.
+
+The lower-level Linux installer remains available:
 
 ```bash
 scripts/preflight-linux.sh --user --bin target/release/memnest
 scripts/install-linux.sh --user --bin target/release/memnest
-curl -fsS http://127.0.0.1:3111/health
 ```
 
-The user service stores data in `~/.memnest`. Use `--system` for a system service with data in `/var/lib/memnest`.
+### Rollback and uninstall
+
+Restore client configuration before using `--remove-data`, because setup manifests live under the data directory. Uninstall keeps memories, logs, and config backups by default:
+
+```bash
+~/.local/share/memnest/scripts/uninstall-linux.sh --user # Linux
+~/.local/share/memnest/scripts/uninstall-macos.sh         # macOS
+```
+
+Pass `--remove-data` only when the retained store and setup backups should be permanently deleted. Uninstall does not guess which shared client entries the user still wants; use the exact manifest restore command first to roll those back.
+
+Validate an installed macOS service with `scripts/validate-installed-macos.sh`. This repository's Linux environment can syntax- and contract-check launchd files, but only a macOS host can exercise `launchctl`, launch persistence, restart, and native x86_64/arm64 execution.
 
 ### WSL
 

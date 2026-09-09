@@ -1,0 +1,15 @@
+[Unit]
+Description=Memnest conversation watcher
+After=memnest.service
+Requires=memnest.service
+
+[Service]
+Type=simple
+Environment=MEMNEST_PORT=3111
+ExecStart=%h/.local/bin/memnest --data-dir %h/.memnest watch --url http://127.0.0.1:${MEMNEST_PORT}
+Restart=on-failure
+RestartSec=5
+WorkingDirectory=%h/.local/share/memnest
+
+[Install]
+WantedBy=default.target

@@ -10,8 +10,9 @@ usage() {
 Usage:
   scripts/install.sh [--user|--system]
 
-Downloads a release archive, installs the memnest binary, and registers
-the Linux systemd service. For WSL and Windows native installs, use:
+Downloads a release archive and runs the idempotent Linux systemd or macOS
+launchd setup, including detected client configuration and a scratch round trip.
+For WSL and Windows native installs, use:
 
   scripts/install-wsl.ps1
   scripts/install-windows.ps1
@@ -49,6 +50,10 @@ esac
 
 case "$OS" in
 linux) TARGET="${TARGET_ARCH}-unknown-linux-gnu" ;;
+darwin)
+  [ "$MODE" = user ] || { echo "macOS installs support only --user" >&2; exit 1; }
+  TARGET="${TARGET_ARCH}-apple-darwin"
+  ;;
 *)
   echo "unsupported OS: $OS" >&2
   exit 1
@@ -77,7 +82,11 @@ curl -fsSL "$URL" -o "$TMP_DIR/$ARCHIVE"
 curl -fsSL "$CHECKSUM_URL" -o "$TMP_DIR/$ARCHIVE.sha256"
 
 expected="$(awk '{print tolower($1)}' "$TMP_DIR/$ARCHIVE.sha256")"
-actual="$(sha256sum "$TMP_DIR/$ARCHIVE" | awk '{print tolower($1)}')"
+if command -v sha256sum >/dev/null 2>&1; then
+  actual="$(sha256sum "$TMP_DIR/$ARCHIVE" | awk '{print tolower($1)}')"
+else
+  actual="$(shasum -a 256 "$TMP_DIR/$ARCHIVE" | awk '{print tolower($1)}')"
+fi
 if [ "$expected" != "$actual" ]; then
   echo "checksum mismatch for $ARCHIVE" >&2
   echo "expected: $expected" >&2
@@ -89,5 +98,5 @@ tar -xzf "$TMP_DIR/$ARCHIVE" -C "$TMP_DIR"
 
 (
   cd "$TMP_DIR"
-  scripts/install-linux.sh "--${MODE}" --bin "$TMP_DIR/memnest"
+  scripts/setup.sh "--${MODE}" --bin "$TMP_DIR/memnest"
 )

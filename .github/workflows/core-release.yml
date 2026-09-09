@@ -10,8 +10,8 @@ permissions:
 
 jobs:
   build:
-    # Linux only. Nothing downloads a published Windows archive: install.sh
-    # refuses a non-Linux host, and install-windows.ps1 takes a -BinPath that
+    # Linux and macOS archives are published. Nothing downloads a published
+    # Windows archive: install-windows.ps1 takes a -BinPath that
     # defaults to a locally built target\release\memnest.exe, which is the
     # path the operations guide documents. Windows still gets compile coverage
     # from the windows-latest job in core-ci.yml. To publish Windows builds
@@ -25,6 +25,10 @@ jobs:
             os: ubuntu-latest
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+          - target: aarch64-apple-darwin
+            os: macos-14
 
     runs-on: ${{ matrix.os }}
     env:
@@ -97,7 +101,11 @@ jobs:
           cp LICENSE THIRD_PARTY_NOTICES.md dist/
           cp ../README.md dist/
           tar -czf "memnest-$VERSION-$TARGET.tar.gz" -C dist .
-          sha256sum "memnest-$VERSION-$TARGET.tar.gz" > "memnest-$VERSION-$TARGET.tar.gz.sha256"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "memnest-$VERSION-$TARGET.tar.gz" > "memnest-$VERSION-$TARGET.tar.gz.sha256"
+          else
+            shasum -a 256 "memnest-$VERSION-$TARGET.tar.gz" > "memnest-$VERSION-$TARGET.tar.gz.sha256"
+          fi
 
       # Unpack exactly what would be published and run it, so a broken archive
       # fails here instead of on a user's machine. A cross-built aarch64 binary
@@ -113,7 +121,8 @@ jobs:
           tar -xzf "$archive" -C "$unpacked"
           test -f "$unpacked/THIRD_PARTY_NOTICES.md"
           test -x "$unpacked/memnest"
-          if [ "$TARGET" = "x86_64-unknown-linux-gnu" ]; then
+          case "$TARGET" in
+            x86_64-unknown-linux-gnu|x86_64-apple-darwin|aarch64-apple-darwin)
             packaged_version="$("$unpacked/memnest" --version)"
             echo "packaged binary reports: $packaged_version"
             case "$packaged_version" in
@@ -121,7 +130,8 @@ jobs:
               *) echo "packaged binary does not report ${VERSION#v}" >&2; exit 1 ;;
             esac
             "$unpacked/memnest" --help > /dev/null
-          fi
+            ;;
+          esac
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -25,8 +25,8 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ "$MODE" = "system" ]; then
-  sudo systemctl disable --now memnest.service 2>/dev/null || true
-  sudo rm -f /etc/systemd/system/memnest.service
+  sudo systemctl disable --now memnest-watch.service memnest.service 2>/dev/null || true
+  sudo rm -f /etc/systemd/system/memnest.service /etc/systemd/system/memnest-watch.service
   sudo systemctl daemon-reload
   sudo rm -f /usr/local/bin/memnest
   sudo rm -rf /usr/local/share/memnest
@@ -34,8 +34,8 @@ if [ "$MODE" = "system" ]; then
     sudo rm -rf /var/lib/memnest
   fi
 else
-  systemctl --user disable --now memnest.service 2>/dev/null || true
-  rm -f "$HOME/.config/systemd/user/memnest.service"
+  systemctl --user disable --now memnest-watch.service memnest.service 2>/dev/null || true
+  rm -f "$HOME/.config/systemd/user/memnest.service" "$HOME/.config/systemd/user/memnest-watch.service"
   systemctl --user daemon-reload
   rm -f "$HOME/.local/bin/memnest"
   rm -rf "$HOME/.local/share/memnest"

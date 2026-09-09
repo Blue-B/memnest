@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 USER_UNIT="$ROOT/packaging/systemd/memnest-user.service"
+WATCH_UNIT="$ROOT/packaging/systemd/memnest-watch-user.service"
 
 fail() {
   printf 'packaging contract failed: %s\n' "$1" >&2
@@ -13,6 +14,12 @@ for after in $(sed -n 's/^After=//p' "$USER_UNIT"); do
   for wanted in $(sed -n 's/^WantedBy=//p' "$USER_UNIT"); do
     [ "$after" != "$wanted" ] || fail "user service cannot be ordered after its own install target: $after"
   done
+done
+
+grep -q 'After=memnest.service' "$WATCH_UNIT" || fail "watch service must start after the server"
+grep -q 'Requires=memnest.service' "$WATCH_UNIT" || fail "watch service must require the server"
+for script in setup.sh setup-clients.py install-macos.sh uninstall-macos.sh validate-installed-macos.sh; do
+  [ -f "$ROOT/scripts/$script" ] || fail "missing setup/macOS script: $script"
 done
 
 if grep -E -i -n 'dashboard|Windows release archive|Memnest API and MCP:|Memnest is available at http' \

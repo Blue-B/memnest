@@ -57,6 +57,8 @@ else
   BIN="${BIN:-$HOME/.local/bin/memnest}"
   systemctl --user is-enabled "$SERVICE"
   systemctl --user is-active "$SERVICE"
+  systemctl --user is-enabled memnest-watch.service
+  systemctl --user is-active memnest-watch.service
   wait_for_health
   "$BIN" --data-dir "$DATA_DIR" --doctor
   systemctl --user restart "$SERVICE"

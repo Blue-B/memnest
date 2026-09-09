@@ -28,7 +28,11 @@ if [ ! -f "$CHECKSUM" ]; then
 fi
 
 expected="$(awk '{print tolower($1)}' "$CHECKSUM")"
-actual="$(sha256sum "$ARTIFACT" | awk '{print tolower($1)}')"
+if command -v sha256sum >/dev/null 2>&1; then
+  actual="$(sha256sum "$ARTIFACT" | awk '{print tolower($1)}')"
+else
+  actual="$(shasum -a 256 "$ARTIFACT" | awk '{print tolower($1)}')"
+fi
 
 if [ "$expected" != "$actual" ]; then
   echo "checksum mismatch for $ARTIFACT" >&2
