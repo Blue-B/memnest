@@ -31,7 +31,7 @@ This proves transport-level persistence and retrieval. It does **not** prove tha
 
 ## Quick start
 
-Linux and macOS on x86_64 or Arm64 can install the latest release without a Rust toolchain:
+Linux and macOS on x86_64 or Arm64 can install the latest release without a Rust toolchain. The default setup requires Python 3.11 or newer to validate and merge client configuration safely:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh \

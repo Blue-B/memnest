@@ -9,6 +9,8 @@ import pathlib
 import shlex
 import shutil
 
+import tomllib
+
 
 def executable(name):
     return shutil.which(name) is not None
@@ -76,10 +78,11 @@ def configure(home, binary, url, force_all):
     if cursor:
         load_json(home / ".cursor" / "mcp.json")
     if codex and (home / ".codex" / "config.toml").exists():
+        path = home / ".codex" / "config.toml"
         try:
-            (home / ".codex" / "config.toml").read_text()
-        except (OSError, UnicodeError) as error:
-            raise ValueError(f"could not read Codex config: {error}") from error
+            tomllib.loads(path.read_text())
+        except (OSError, UnicodeError, tomllib.TOMLDecodeError) as error:
+            raise ValueError(f"could not read TOML config {path}: {error}") from error
 
     def persist_manifest():
         doc = {"created": stamp, "home": str(home), "files": entries}

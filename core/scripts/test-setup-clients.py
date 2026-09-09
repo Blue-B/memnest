@@ -64,16 +64,22 @@ class SetupClientsTest(unittest.TestCase):
             self.assertFalse((home / ".cursor" / "mcp.json").exists())
 
     def test_malformed_config_is_rejected_before_any_write(self):
-        with tempfile.TemporaryDirectory() as directory:
-            home = pathlib.Path(directory)
-            (home / ".claude").mkdir()
-            original = '{"existing": true}\n'
-            (home / ".claude.json").write_text(original)
-            (home / ".claude" / "settings.json").write_text("not json")
-            with self.assertRaisesRegex(ValueError, "could not read JSON config"):
-                setup_clients.configure(home, pathlib.Path("/opt/memnest"), "http://127.0.0.1:3111", True)
-            self.assertEqual((home / ".claude.json").read_text(), original)
-            self.assertFalse((home / ".memnest").exists())
+        for path, invalid, message in (
+            (pathlib.Path(".claude/settings.json"), "not json", "could not read JSON config"),
+            (pathlib.Path(".codex/config.toml"), 'model = "unterminated', "could not read TOML config"),
+        ):
+            with self.subTest(path=path), tempfile.TemporaryDirectory() as directory:
+                home = pathlib.Path(directory)
+                (home / ".claude").mkdir()
+                original = '{"existing": true}\n'
+                (home / ".claude.json").write_text(original)
+                target = home / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(invalid)
+                with self.assertRaisesRegex(ValueError, message):
+                    setup_clients.configure(home, pathlib.Path("/opt/memnest"), "http://127.0.0.1:3111", True)
+                self.assertEqual((home / ".claude.json").read_text(), original)
+                self.assertFalse((home / ".memnest").exists())
 
     def test_existing_memnest_entries_are_not_overwritten(self):
         with tempfile.TemporaryDirectory() as directory:

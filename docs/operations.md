@@ -8,7 +8,7 @@ For what memnest is and how to connect an agent, start at the [README](../README
 
 ## Requirements
 
-Running a Linux or macOS release binary needs neither Git nor Rust. Building from source needs Git and a Rust toolchain with Rust 2024 edition support. The first embedding operation needs internet access so fastembed can download the configured model. Core CI builds and tests on Linux and Windows and builds both native macOS release targets.
+Running a Linux or macOS release binary needs neither Git nor Rust. The default setup requires Python 3.11 or newer so the standard-library TOML parser can validate Codex configuration before any client file changes. Building from source needs Git and a Rust toolchain with Rust 2024 edition support. The first embedding operation needs internet access so fastembed can download the configured model. Core CI builds and tests on Linux and Windows and builds both native macOS release targets.
 
 The optional package under `pi-extension/` lists its own runtime requirements in its package README.
 

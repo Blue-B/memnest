@@ -31,7 +31,7 @@ cat /tmp/memnest-demo-evidence/transcript.txt
 
 ## 빠른 시작
 
-Linux와 macOS의 x86_64, Arm64 환경에서는 Rust 툴체인 없이 최신 릴리스를 설치할 수 있습니다.
+Linux와 macOS의 x86_64, Arm64 환경에서는 Rust 툴체인 없이 최신 릴리스를 설치할 수 있습니다. 기본 setup은 클라이언트 설정을 안전하게 검증하고 병합하기 위해 Python 3.11 이상을 사용합니다.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh \

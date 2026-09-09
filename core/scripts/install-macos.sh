@@ -37,6 +37,7 @@ fi
 [ -n "$BIN_SRC" ] && [ -x "$BIN_SRC" ] || { echo "memnest binary not found; pass --bin" >&2; exit 1; }
 command -v launchctl >/dev/null || { echo "launchctl is required" >&2; exit 1; }
 command -v plutil >/dev/null || { echo "plutil is required" >&2; exit 1; }
+command -v python3 >/dev/null || { echo "install-macos.sh requires python3" >&2; exit 1; }
 
 mkdir -p "$BIN_DIR" "$AGENTS" "$LOGS" "$DATA_DIR" "$BACKUPS" "$SHARE"
 install -m 0755 "$ROOT/scripts/setup-clients.py" "$ROOT/scripts/uninstall-macos.sh" "$ROOT/scripts/validate-installed-macos.sh" "$SHARE/"
