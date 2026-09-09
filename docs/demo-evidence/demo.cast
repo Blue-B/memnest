@@ -1,0 +1,13 @@
+{"version":2,"width":100,"height":24,"timestamp":1788936155,"env":{"SHELL":"/bin/bash","TERM":"xterm-256color"},"title":"Memnest independent-client transport demo"}
+[0.2,"o","$ ./docs/run-independent-client-demo.sh demo-evidence\r\n"]
+[2.5,"o","TRANSPORT PROOF — no agent or LLM is running\r\n\r\n"]
+[6.0,"o","Client A: MCP over Streamable HTTP → memory_remember\r\n"]
+[10.0,"o","decision: Checkout webhooks: use the event ID as the idempotency key; retries must not charge twice.\r\n"]
+[15.0,"o","write status: succeeded\r\nmemory ID: manual_60952d6ee81241418d851d44e6117d6f\r\n\r\n"]
+[21.0,"o","Client B: separate curl process, JSON HTTP API → POST /search\r\n"]
+[26.0,"o","query: How should checkout webhook retries avoid duplicate charges?\r\n"]
+[32.0,"o","retrieved ID: manual_60952d6ee81241418d851d44e6117d6f\r\n"]
+[35.0,"o","retrieved text: Checkout webhooks: use the event ID as the idempotency key; retries must not charge twice.\r\n\r\n"]
+[38.0,"o","Codex-format JSONL fixture → memnest watch → HTTP search: PASS\r\n"]
+[41.0,"o","PASS: IDs/text match; the shipped transcript parser also retrieved its fixture.\r\n"]
+[44.5,"o","Not proved: autonomous agent save/recall/application behavior.\r\n"]

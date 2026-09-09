@@ -1,0 +1,2 @@
+{"type":"session_meta","payload":{"id":"scripted-codex-session","cwd":"/tmp/memnest-demo-transcript","thread_source":"user"}}
+{"type":"event_msg","id":"scripted-turn-1","payload":{"type":"user_message","message":"Transcript handoff: checkout retry tests must reuse the original event ID."}}

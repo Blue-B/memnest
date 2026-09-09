@@ -1,0 +1,2 @@
+command=memnest watch --path <fixture> --once --backfill
+exit_status=0

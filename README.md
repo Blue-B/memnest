@@ -6,7 +6,7 @@
 
 [한국어 README](README.ko.md)
 
-Keep saved decisions available when you switch coding tools. Memnest stores memories and conversation history on your machine so pi, Claude Code, Codex, and other MCP clients connected to the same service can search them.
+Save a coding decision through one client and retrieve the same record from another client, with both connected to one local Memnest service. Memnest keeps memories and conversation history on your machine for pi, Claude Code, Codex, and other MCP clients.
 
 [![Latest release](https://img.shields.io/github/v/release/Blue-B/memnest?label=release)](https://github.com/Blue-B/memnest/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
@@ -14,44 +14,20 @@ Keep saved decisions available when you switch coding tools. Memnest stores memo
 ![Protocol](https://img.shields.io/badge/interface-MCP%20%2B%20HTTP-blue.svg)
 [![npm: pi-memnest](https://img.shields.io/npm/v/pi-memnest?label=npm%20pi-memnest&color=cb3837)](https://www.npmjs.com/package/pi-memnest)
 
-## Carry a decision into the next session
+## See the exact result
 
-![Real MCP results: two independent clients return the same saved memory ID](docs/demo-result.png)
+![Earlier real results: two independent MCP clients return the same saved memory ID](docs/demo-result.png)
 
-These are actual MCP request and response excerpts from a disposable store, arranged for readability. Check the matching memory ID and text in the [raw responses](docs/demo-output.json). This is not an agent UI screenshot or an AI-generated success scene.
+The image is an earlier MCP-to-MCP run. In the reproducible demo below, a curl process writes a decision through MCP over Streamable HTTP. A second curl process, with no state from the first, finds the same ID and exact text through Memnest's JSON HTTP API. These are real supported client surfaces against one disposable store.
 
-The second session can retrieve the saved decision without the first session's chat history. This is explicit retrieval, not a promise that an agent will remember to call the tool or follow the result correctly.
+```bash
+./docs/run-independent-client-demo.sh /tmp/memnest-demo-evidence
+cat /tmp/memnest-demo-evidence/transcript.txt
+```
 
-[Run the two-client demo](docs/demo.md) with curl, no agent account required. Both clients must connect to the same service. Use the dedicated `memnest-demo` project for the example rather than your own workspace.
+The script needs a running service and `memnest` executable but no agent account. It also passes a synthetic fixture in Codex's supported JSONL transcript shape through `memnest watch`. It preserves request and response bodies, a checksum manifest, a plain-text terminal transcript, and an editorially paced ~45-second asciicast. See the [checked-in evidence](docs/demo-evidence/), [terminal cast](docs/demo-evidence/demo.cast), and [full reproduction notes](docs/demo.md).
 
-## Compared with built-in memory
-
-If you only need one tool to remember earlier chats, start with its built-in memory. Memnest is for retrieving a decision saved through Claude Code from pi or Codex, or keeping a searchable store of memories across workspaces under your own control.
-
-| Option | What it already provides | Why choose Memnest |
-| --- | --- | --- |
-| [ChatGPT memory](https://help.openai.com/en/articles/8590148), [Claude chat memory](https://support.claude.com/en/articles/11817273-use-claude-s-chat-search-and-memory-to-build-on-previous-context) | Reuse prior conversations and memories in later responses within each product. | Let connected coding tools query the same local store, separate from a chat product's own memory. |
-| [Claude Code memory](https://code.claude.com/docs/en/memory), `CLAUDE.md`, `AGENTS.md` | Claude Code already saves auto memory in local Markdown. Instruction files are good for rules that should load every time. | Search growing decisions and transcripts by keyword and meaning, using the same API from different tools. Local storage alone is not unique to Memnest. |
-| [MCP reference Memory Server](https://github.com/modelcontextprotocol/servers/tree/main/src/memory) | Stores entities, relations, and observations in a local knowledge graph. | Retrieve workspace-scoped decisions and conversation text rather than maintain a graph. |
-| Memory layers such as [Mem0](https://docs.mem0.ai/open-source/overview) | Offer self-hosting and configurable LLMs, embeddings, and storage. | Use one Rust service with local embeddings and BM25, no LLM calls, coding-tool adapters, and transcript capture. |
-
-There is no comparative benchmark showing that Memnest retrieves more accurately or runs faster than these alternatives. Its case is the combination of local storage, a shared API, workspace search, and transcript capture. A few short rules, or an existing memory tool that already works for you, do not need another service.
-
-Memnest does not automatically import or synchronize ChatGPT's or Claude's built-in memories. Clients need to be connected. If retrieved text is sent to a cloud model, that provider receives it. You also take on service operation and the local model's disk and RAM costs.
-
-## What it does
-
-| Capability | Behavior |
-| --- | --- |
-| Durable memory | Saves decisions, preferences, corrections, facts, and rules across sessions. |
-| Conversation capture | Stores visible user and assistant text after credential redaction, without LLM summarization. |
-| Local search | Combines BM25 keyword matching with multilingual vector similarity. |
-| Workspace scope | Keeps each directory separate, with `playbook` for rules shared everywhere. |
-| Secret vault | Stores credentials in AES-256-GCM ciphertext outside searchable memory. |
-
-A small `CLAUDE.md` or `AGENTS.md` is still the simplest place for rules that should load every time. Memnest is for material that grows across projects and sessions and should be retrieved only when it matches the current query.
-
-The Rust service is the only engine. SQLite is the source of truth, the search indexes are rebuildable, embeddings run locally, and no LLM is called.
+This proves transport-level persistence and retrieval. It does **not** prove that Claude Code, Codex, pi, or another autonomous agent will choose to save, search, trust, or apply the result.
 
 ## Quick start
 
@@ -68,6 +44,12 @@ curl -fsS http://127.0.0.1:3111/health
 Windows, WSL, source builds, uninstall, backup, restore, and configuration are in the [operations guide](docs/operations.md).
 
 The first write or search downloads the local embedding model. The default model uses about 1.1 GB on disk and can approach 1.9 GB of memory while embedding.
+
+## Benchmark status
+
+No comparative benchmark currently shows that Memnest retrieves more accurately or runs faster than other memory tools. The checked-in demo above verifies one write-and-retrieve path; it is not a quality or performance benchmark.
+
+## Connect a client
 
 ### pi
 
@@ -92,6 +74,20 @@ Point a Streamable HTTP MCP client at the running service:
 ```
 
 The same service also exposes a JSON HTTP API at `http://127.0.0.1:3111`. Stdio MCP and custom-host examples are in the [adapter guide](adapters/README.md).
+
+## What it does
+
+| Capability | Behavior |
+| --- | --- |
+| Durable memory | Saves decisions, preferences, corrections, facts, and rules across sessions. |
+| Conversation capture | Stores visible user and assistant text after credential redaction, without LLM summarization. |
+| Local search | Combines BM25 keyword matching with multilingual vector similarity. |
+| Workspace scope | Keeps each directory separate, with `playbook` for rules shared everywhere. |
+| Secret vault | Stores credentials in AES-256-GCM ciphertext outside searchable memory. |
+
+A small `CLAUDE.md` or `AGENTS.md` is still the simplest place for rules that should load every time. Memnest is for material that grows across projects and sessions and should be retrieved only when it matches the current query.
+
+The Rust service is the only engine. SQLite is the source of truth, the search indexes are rebuildable, embeddings run locally, and no LLM is called.
 
 ## Use it
 
@@ -164,6 +160,21 @@ Three behaviors matter when using the results:
 - Memnest does not read your code, so it cannot detect that a saved fact became outdated. Save the replacement with `supersedes=<id>` when the fact changes.
 - Search ranks the nearest memories. It cannot prove that the store contains an answer, so verify a result before acting on it.
 - Explicit search includes captured transcripts for questions about earlier conversations. Automatic context only admits deliberate or consolidated memories, so an unfinished “tried X” note cannot silently steer the next prompt.
+
+## Compared with built-in memory
+
+If you only need one tool to remember earlier chats, start with its built-in memory. Memnest is for retrieving a decision saved through Claude Code from pi or Codex, or keeping a searchable store of memories across workspaces under your own control.
+
+| Option | What it already provides | Why choose Memnest |
+| --- | --- | --- |
+| [ChatGPT memory](https://help.openai.com/en/articles/8590148), [Claude chat memory](https://support.claude.com/en/articles/11817273-use-claude-s-chat-search-and-memory-to-build-on-previous-context) | Reuse prior conversations and memories in later responses within each product. | Let connected coding tools query the same local store, separate from a chat product's own memory. |
+| [Claude Code memory](https://code.claude.com/docs/en/memory), `CLAUDE.md`, `AGENTS.md` | Claude Code already saves auto memory in local Markdown. Instruction files are good for rules that should load every time. | Search growing decisions and transcripts by keyword and meaning, using the same API from different tools. Local storage alone is not unique to Memnest. |
+| [MCP reference Memory Server](https://github.com/modelcontextprotocol/servers/tree/main/src/memory) | Stores entities, relations, and observations in a local knowledge graph. | Retrieve workspace-scoped decisions and conversation text rather than maintain a graph. |
+| Memory layers such as [Mem0](https://docs.mem0.ai/open-source/overview) | Offer self-hosting and configurable LLMs, embeddings, and storage. | Use one Rust service with local embeddings and BM25, no LLM calls, coding-tool adapters, and transcript capture. |
+
+There is no comparative benchmark showing that Memnest retrieves more accurately or runs faster than these alternatives. Its case is the combination of local storage, a shared API, workspace search, and transcript capture. A few short rules, or an existing memory tool that already works for you, do not need another service.
+
+Memnest does not automatically import or synchronize ChatGPT's or Claude's built-in memories. Clients need to be connected. If retrieved text is sent to a cloud model, that provider receives it. You also take on service operation and the local model's disk and RAM costs.
 
 ## Data and security
 

@@ -1,0 +1,27 @@
+{
+  "recorded_at": "2026-09-09T06:42:35.716541+00:00",
+  "service_version": "0.2.1",
+  "service_url": "http://127.0.0.1:3187",
+  "memory_id": "manual_60952d6ee81241418d851d44e6117d6f",
+  "transcript_memory_id": "transcript_a5630396a5f23843491c548c79f12151",
+  "verification": {
+    "same_id": true,
+    "exact_text": true,
+    "codex_transcript_fixture_retrieved": true
+  },
+  "scope": "transport/parser-level write and retrieval; no autonomous agent behavior tested",
+  "files": {
+    "health.json": "1e7782d5fdd34476f8a2c32e2dca7014327c426b5cd3fef99f71c8c6802ec036",
+    "client-a-mcp-request.json": "02df4f20e72ae8d712e7c5e8ae90845de73ba3d1511935e12ab436af1c64ddf9",
+    "client-a-mcp-response.json": "3916a3f8d5fe782154bb91127516ad351ae5ff0a7c5f3972c799c04bb01432a0",
+    "client-b-http-request.json": "2fe9ad5f2b5d5863c70da75c40af86bfd2382b41309b176dc99d5f4981214f13",
+    "client-b-http-response.json": "200ba643a71a0d60f82fd286fb45f251c5184303d7b88e5ef26994c229b64cb3",
+    "codex-transcript/session.jsonl": "b6a3218ae6a98635924d3859f9aafde94b9984e1266fdf9f17dff5a75acf5268",
+    "watch-output.txt": "998aecd4f685e1f1a1959b7557662f79b2bc6005d8fed030fa3cd30e12c96ec4",
+    "transcript-search-request.json": "4d3278561e7a9d5b5625ad237b87a3bd1311d1ffdcb0a5da9dd33e048c2a4d5b",
+    "transcript-search-response.json": "33505cbe54aaf6dae978591e29a519db3ee0fc056e954d80f9427e97c79f78b7",
+    "transcript.txt": "7f333014cfb5afb48eb6efcad68ea107895c64525440fa2be247cc0970201d60",
+    "demo.cast": "916e783d4d4bb7f7530e6d6bfacf6663c3f9dd9d895d9168778ae18c10ad6960"
+  },
+  "recorder": "docs/run-independent-client-demo.sh"
+}

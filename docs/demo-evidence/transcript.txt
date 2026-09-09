@@ -1,0 +1,80 @@
+MEMNEST INDEPENDENT-CLIENT DEMO
+
+Scope: transport-level proof only; no agent or LLM was launched.
+Service: http://127.0.0.1:3187
+
+CLIENT A — MCP over Streamable HTTP
+memory_remember('Checkout webhooks: use the event ID as the idempotency key; retries must not charge twice.', project='memnest-demo')
+
+RAW RESPONSE
+{
+  "id": 1,
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "text": "{\"status\":\"succeeded\",\"id\":\"manual_60952d6ee81241418d851d44e6117d6f\",\"project\":\"memnest-demo\",\"job_id\":\"job_17d7f0278241419f957750612bffa70e\",\"adapter\":\"mcp\"}",
+        "type": "text"
+      }
+    ]
+  }
+}
+
+CLIENT B — JSON HTTP API, a separate curl process with no Client A state
+POST /search query='How should checkout webhook retries avoid duplicate charges?'
+
+RAW RESPONSE
+{
+  "results": [
+    {
+      "id": "manual_60952d6ee81241418d851d44e6117d6f",
+      "project": "memnest-demo",
+      "document": "Checkout webhooks: use the event ID as the idempotency key; retries must not charge twice.",
+      "doc_len": 90,
+      "score": 0.23958334,
+      "timestamp": "2026-09-09T06:42:35.459957753+00:00",
+      "chunk_type": "Manual",
+      "importance": "Decision",
+      "category": "General",
+      "memory_kind": "rule",
+      "confidence": null,
+      "adapter": "mcp"
+    }
+  ],
+  "project": "memnest-demo",
+  "total": 1,
+  "elapsed_ms": 34
+}
+
+VERIFIED
+Client A wrote ID: manual_60952d6ee81241418d851d44e6117d6f
+Client B retrieved the same ID and exact text: yes
+
+SUPPORTED TRANSCRIPT-FORMAT CHECK
+A scripted fixture uses Codex's session_meta + event_msg JSONL shape.
+memnest watch parsed it; a subsequent HTTP search returned:
+{
+  "results": [
+    {
+      "id": "transcript_a5630396a5f23843491c548c79f12151",
+      "project": "ws_memnest-demo-transcript_ffb8132fa88cee77a639ce59f66af04f",
+      "document": "User said: Transcript handoff: checkout retry tests must reuse the original event ID.",
+      "doc_len": 85,
+      "score": 0.0904762,
+      "timestamp": "2026-09-09T06:42:35.600068113+00:00",
+      "chunk_type": "AutoLog",
+      "importance": "Log",
+      "category": "General",
+      "memory_kind": "record",
+      "confidence": null,
+      "adapter": "codex"
+    }
+  ],
+  "project": "ws_memnest-demo-transcript_ffb8132fa88cee77a639ce59f66af04f",
+  "total": 1,
+  "elapsed_ms": 28
+}
+Parsed transcript document found: yes (transcript_a5630396a5f23843491c548c79f12151)
+
+This fixture checks the shipped parser and watcher without running Codex.
+This does not show that an autonomous agent will decide to save, search, or apply a memory.

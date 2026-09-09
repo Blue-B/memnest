@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory_remember","arguments":{"text":"Checkout webhooks: use the event ID as the idempotency key; retries must not charge twice.","project":"memnest-demo","memory_kind":"rule","importance":"decision"}}}
