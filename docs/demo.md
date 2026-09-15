@@ -2,7 +2,7 @@
 
 <!-- markdownlint-disable MD013 -->
 
-This demo makes two separate curl invocations against one Memnest service:
+This demo checks one narrow claim: two independent clients connected to one Memnest service can persist and retrieve the same record. It makes two separate curl invocations:
 
 1. Client A calls `memory_remember` through **MCP over Streamable HTTP**.
 2. Client B receives no process or chat state from A and calls `/search` through the **JSON HTTP API**.
@@ -73,9 +73,27 @@ Neither recording is a comparative accuracy or latency benchmark. IDs, scores, a
 
 ## Try it with agents
 
-Connect two agent hosts to the same HTTP service using the [adapter guide](../adapters/README.md#mcp-clients). Ask one to call `memory_remember`, then start a fresh session in the other and ask it to call `memory_search`. Inspect the actual tool requests and results rather than accepting an answer from the model's own knowledge.
+Connect two agent hosts to the same HTTP service using the [adapter guide](../adapters/README.md#mcp-clients). The following prompts make the success condition explicit.
 
-That is a separate, interactive test. A successful scripted transport demo cannot substitute for evidence that a particular agent autonomously chose the tools. The saved payment rule is fictional and is not a complete payment implementation.
+In Client A:
+
+```text
+Call memory_remember exactly once with project="memnest-demo-agent" and this text:
+"Checkout webhook retries must reuse the original event ID."
+Return the stored record ID.
+```
+
+Start a fresh session in Client B:
+
+```text
+Call memory_search in project="memnest-demo-agent" for:
+"How do checkout retries avoid duplicate processing?"
+Report the matching record ID and quote the stored text. Do not answer from general knowledge.
+```
+
+Count the handoff as successful only when the Client B tool result contains Client A's record ID and exact text. Inspect the actual tool calls rather than accepting the model's answer alone.
+
+This is a separate, interactive test. A successful scripted transport demo cannot substitute for evidence that a particular agent autonomously chose the tools. The saved payment rule is fictional and is not a complete payment implementation.
 
 ## Remove the example
 

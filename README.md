@@ -6,32 +6,26 @@
 
 [한국어](README.ko.md) | [Install](#install) | [Use it](#use-it) | [Operations](docs/operations.md)
 
-Keep coding decisions and conversation history on your machine, then find them from pi, Claude Code, Codex, or another connected MCP client. Each client queries the same local Memnest service.
+Ask Codex why Claude Code changed a setting last week. Memnest lets any connected client search the captured local record instead of relying on an AI-written summary.
+
+It stores visible pi, Claude Code, and Codex conversation text on your machine and serves one shared store over MCP and HTTP. Memnest makes no generative LLM calls and needs no cloud account.
 
 [![Latest release](https://img.shields.io/github/v/release/Blue-B/memnest?label=release)](https://github.com/Blue-B/memnest/releases/latest)
 [![npm: pi-memnest](https://img.shields.io/npm/v/pi-memnest?label=npm%20pi-memnest&color=cb3837)](https://www.npmjs.com/package/pi-memnest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## What it does
+[![One independent client saves a decision and another retrieves the same ID and text](docs/demo-result.png)](docs/demo.md)
 
-- Save decisions, preferences, and corrections across sessions.
-- Capture visible pi, Claude Code, and Codex conversations without LLM summarization.
-- Search by keyword and meaning, within a workspace or across explicitly selected projects.
-- Share rules through `playbook`; keep credentials in a separate encrypted vault.
+The checked-in [reproducible demo](docs/demo.md) sends real requests from two independent client processes and requires the saved ID and retrieved text to match. It proves the shared store and transcript parser without pretending that an LLM chose the tools. [Real-client validation](docs/client-validation.md) records the separately verified pi path and the account blockers for Claude Code and Codex.
+
+## Why Memnest
+
+- **Source-backed retrieval.** Results keep stable record IDs. The current source build can page through long records and return available session and capture metadata.
+- **One history for several clients.** pi, Claude Code, Codex, and other MCP clients query the same local service instead of maintaining isolated copies.
+- **No generated memory layer.** Conversation capture does not call an LLM to rewrite or summarize the text. Search uses local keyword and multilingual embedding indexes.
+- **A small public contract.** Five tools cover remembering, searching, reading, correcting, and deleting. Deleted records move to trash, and corrections can retain the prior record as provenance.
 
 For a few rules that should load every time, use `CLAUDE.md` or `AGENTS.md`. Memnest is for a growing record that you want to search when needed. It does not import or synchronize ChatGPT's or Claude's built-in memory.
-
-## Release status
-
-| Available now | Not yet released |
-| --- | --- |
-| Core v0.2.1: Linux x86_64 and Arm64 archives | Integrated setup with client configuration and recovery |
-| pi-memnest v0.2.0 on npm | Source pagination and nearby conversation records |
-| Memory tools, local search, and transcript capture | Default-off pi automatic recall and additional source metadata |
-
-macOS installation and Intel/Apple Silicon packaging code are present, but no macOS archive is published in v0.2.1. Native installation, restart, and removal have not been verified. Do not treat macOS as a validated release target yet.
-
-The next-release features below require the updated source, not just the published core or npm package. See the [change summary (Korean)](docs/next-release.ko.md), [core changelog](core/CHANGELOG.md), and [pi changelog](pi-extension/CHANGELOG.md).
 
 ## Install
 
@@ -129,6 +123,20 @@ memnest watch --backfill
 ```
 
 Capture is separate from automatic recall. It skips system/developer prompts, reasoning, tool traffic, images, and subagent sidechains. Captured transcripts remain until deleted. Automatic recall is optional; it can still select an irrelevant memory, so inspect sources before acting on them.
+
+## Compatibility and release status
+
+| Available now | Planned for v0.3.0 |
+| --- | --- |
+| Core v0.2.1: Linux x86_64 and Arm64 archives | Integrated setup with client configuration and recovery |
+| pi-memnest v0.2.0 on npm | Source pagination and nearby conversation records |
+| Memory tools, local search, and transcript capture | Default-off pi automatic recall and additional source metadata |
+
+The current source is the v0.3.0 candidate, but its package versions, tag, and release have not been changed. The scope is intentionally limited to safer setup and source-backed reading. It does not include a new ranking algorithm, graph, dashboard, or team service.
+
+macOS installation and Intel/Apple Silicon packaging code are present, but no macOS archive is published in v0.2.1. Native installation, restart, and removal have not been verified. Do not treat macOS as a validated release target yet.
+
+The planned features require the updated source, not just the published core or npm package. See the [change summary (Korean)](docs/next-release.ko.md), [core changelog](core/CHANGELOG.md), and [pi changelog](pi-extension/CHANGELOG.md).
 
 ## How it works
 
