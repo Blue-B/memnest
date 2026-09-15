@@ -60,7 +60,7 @@ function registerTool(
 }
 
 export default function register(pi: ExtensionAPI): void {
-	installAutocontext(pi);
+	const autocontextEnabled = installAutocontext(pi);
 	pi.registerCommand?.("memnest", {
 		description: "Show Memnest status, stored memory count, and search latency",
 		handler: async (_args: string, ctx: any) => {
@@ -99,6 +99,7 @@ export default function register(pi: ExtensionAPI): void {
 				"Memnest ok",
 				`Memories: ${count}`,
 				`Data: ${healthData.data_dir}`,
+				`Autocontext: ${autocontextEnabled ? "on (explicit opt-in)" : "off"}`,
 			];
 			// Latency counters live in process memory and reset on restart, so a
 			// fresh service reports zero searches. Skip the line instead of
@@ -224,7 +225,7 @@ export default function register(pi: ExtensionAPI): void {
 				const lines = [`=== memory search results (${p.query}) ===`];
 				for (const [i, item] of (data.results ?? []).entries())
 					lines.push(
-						`[${i + 1}] project=${item.project} score=${Number(item.score).toFixed(4)} id=${item.id}\n    ${item.document}`,
+						`[${i + 1}] project=${item.project} score=${Number(item.score).toFixed(4)} id=${item.id} doc_len=${item.doc_len}\n    ${item.document}`,
 					);
 				if (!(data.results ?? []).length) lines.push("no results");
 				return result(lines.join("\n"));
@@ -238,18 +239,54 @@ export default function register(pi: ExtensionAPI): void {
 		pi,
 		"memory_get",
 		"Memory: get",
-		"Fetch one memory by id.",
-		Type.Object({ id: Type.String() }),
+		"Read a redacted memory page and optional same-session transcript neighbors in capture order. max_chars caps total document text; fetch clipped neighbors individually by id.",
+		Type.Object({
+			id: Type.String(),
+			offset: Type.Optional(Type.Integer({ minimum: 0 })),
+			max_chars: Type.Optional(Type.Integer({ minimum: 1, maximum: 30000 })),
+			before: Type.Optional(Type.Integer({ minimum: 0, maximum: 5 })),
+			after: Type.Optional(Type.Integer({ minimum: 0, maximum: 5 })),
+		}),
 		async (_id: string, p: any) => {
-			const r = await call(`/chunk/${encodeURIComponent(p.id)}`, undefined, "GET");
+			const query = new URLSearchParams();
+			for (const key of ["offset", "max_chars", "before", "after"])
+				if (p[key] !== undefined) query.set(key, String(p[key]));
+			const r = await call(
+				`/chunk/${encodeURIComponent(p.id)}?${query}`,
+				undefined,
+				"GET",
+			);
 			if (r.error) return result(r.text, true);
 			try {
 				const c = JSON.parse(r.text);
-				return result(
-					`id=${c.id} project=${c.project} type=${c.chunk_type} importance=${c.importance} created=${c.timestamp}\n${c.document}`,
-				);
+				if (!c || typeof c.document !== "string")
+					return result("Invalid memory response from Memnest core.", true);
+				if (c.next_offset === undefined) {
+					if (p.before > 0 || p.after > 0)
+						return result(
+							"Memnest core does not support transcript neighbors; upgrade the core service or read this id without before/after.",
+							true,
+						);
+					// Older cores return the full redacted text. Bound it before exposing it to the model.
+					const chars = Array.from(c.document);
+					const offset = p.offset ?? 0;
+					const page = chars.slice(offset, offset + (p.max_chars ?? 8000));
+					const end = Math.min(offset, chars.length) + page.length;
+					Object.assign(c, {
+						document: page.join(""),
+						doc_len: chars.length,
+						offset,
+						returned_chars: page.length,
+						total_returned_chars: page.length,
+						has_more: end < chars.length,
+						next_offset: end < chars.length ? end : null,
+						truncated: offset > 0 || end < chars.length,
+						paging: "client",
+					});
+				}
+				return result(JSON.stringify(c));
 			} catch {
-				return result(r.text);
+				return result("Invalid memory response from Memnest core.", true);
 			}
 		},
 	);

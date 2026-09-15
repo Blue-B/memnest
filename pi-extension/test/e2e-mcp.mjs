@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const bin = process.env.MEMNEST_BIN ?? "memnest";
 const data = mkdtempSync(join(tmpdir(), "memnest-contract-e2e-"));
+const modelCache = process.env.MEMNEST_MODEL_CACHE ?? fileURLToPath(new URL("../../core/target/test-model-cache", import.meta.url));
+if (existsSync(modelCache)) symlinkSync(modelCache, join(data, "models"), "dir");
 const child = spawn(bin, ["--mcp", "--data-dir", data], {
 	stdio: ["pipe", "pipe", "pipe"],
 	env: { ...process.env, MEMNEST_EXPOSE_SECRET_TOOLS: "1" },
@@ -99,6 +102,16 @@ try {
 	const names = listed.result.tools.map((tool) => tool.name);
 	if (JSON.stringify(names) !== JSON.stringify(expected))
 		throw new Error(`unexpected tools: ${names.join(",")}`);
+	const rejected = await request("tools/call", {
+		name: "memory_remember",
+		arguments: {
+			project: "contract-e2e",
+			text: "must fail without corrupting stdio",
+			supersedes: "missing-e2e-memory",
+		},
+	});
+	if (!rejected.result?.isError)
+		throw new Error("invalid supersedes target was accepted");
 	const remembered = await request("tools/call", {
 		name: "memory_remember",
 		arguments: {
@@ -150,7 +163,7 @@ try {
 	)
 		throw new Error("delete failed");
 	console.log(
-		"MCP E2E: exact tools, scoped search, secret error, and delete passed",
+		"MCP E2E: exact tools, clean error transport, scoped search, secret error, and delete passed",
 	);
 } finally {
 	await stopChild();

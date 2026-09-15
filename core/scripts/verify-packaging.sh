@@ -18,7 +18,7 @@ done
 
 grep -q 'After=memnest.service' "$WATCH_UNIT" || fail "watch service must start after the server"
 grep -q 'Requires=memnest.service' "$WATCH_UNIT" || fail "watch service must require the server"
-for script in setup.sh setup-clients.py install-macos.sh uninstall-macos.sh validate-installed-macos.sh; do
+for script in setup.sh setup-clients.py linux-service-config.sh install-macos.sh uninstall-macos.sh validate-installed-macos.sh; do
   [ -f "$ROOT/scripts/$script" ] || fail "missing setup/macOS script: $script"
 done
 

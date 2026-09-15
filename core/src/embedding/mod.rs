@@ -25,10 +25,11 @@ impl EmbedCache {
             return;
         }
         if self.order.len() >= EMBED_CACHE_CAPACITY
-            && let Some(oldest) = self.order.first().cloned() {
-                self.map.remove(&oldest);
-                self.order.remove(0);
-            }
+            && let Some(oldest) = self.order.first().cloned()
+        {
+            self.map.remove(&oldest);
+            self.order.remove(0);
+        }
         self.map.insert(key.clone(), value);
         self.order.push(key);
     }

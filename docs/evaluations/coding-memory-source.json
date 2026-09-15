@@ -1,0 +1,610 @@
+{
+  "fixture": "scripts/fixtures/coding-memory.json",
+  "records": 16,
+  "cases": [
+    {
+      "id": "port-en",
+      "project": "atlas",
+      "query": "Which port does the Atlas API use now?",
+      "relevant": [
+        "port"
+      ],
+      "service": [
+        "port",
+        "auth",
+        "noise1",
+        "test",
+        "noise2"
+      ],
+      "keyword": [
+        "port",
+        "test",
+        "auth",
+        "retry",
+        "migration"
+      ],
+      "latency_ms": 30.471,
+      "scores": [
+        0.05833324,
+        0.03877238,
+        0.017590497,
+        0.020022385,
+        -0.0012924783
+      ]
+    },
+    {
+      "id": "port-ko",
+      "project": "atlas",
+      "query": "아틀라스 API의 현재 포트는?",
+      "relevant": [
+        "port"
+      ],
+      "service": [
+        "korean",
+        "port"
+      ],
+      "keyword": [
+        "korean"
+      ],
+      "latency_ms": 30.064,
+      "scores": [
+        0.020833246,
+        0.0038933498
+      ]
+    },
+    {
+      "id": "port-file",
+      "project": "atlas",
+      "query": "server/config.rs port",
+      "relevant": [
+        "port"
+      ],
+      "service": [
+        "port"
+      ],
+      "keyword": [
+        "port",
+        "auth",
+        "retry",
+        "migration",
+        "cache"
+      ],
+      "latency_ms": 25.601,
+      "scores": [
+        0.13333325
+      ]
+    },
+    {
+      "id": "obsolete",
+      "project": "atlas",
+      "query": "8320 obsolete port",
+      "relevant": [
+        "port"
+      ],
+      "service": [
+        "port"
+      ],
+      "keyword": [
+        "port"
+      ],
+      "latency_ms": 24.687,
+      "scores": [
+        0.13333325
+      ]
+    },
+    {
+      "id": "tests-en",
+      "project": "atlas",
+      "query": "How do I run the Rust tests offline?",
+      "relevant": [
+        "test"
+      ],
+      "service": [
+        "test",
+        "noise2",
+        "noise3",
+        "noise1",
+        "auth"
+      ],
+      "keyword": [
+        "test",
+        "auth",
+        "migration",
+        "noise1",
+        "noise2"
+      ],
+      "latency_ms": 28.256,
+      "scores": [
+        0.06904754,
+        0.0019065216,
+        0.0034306198,
+        0.0013392866,
+        0.0019646105
+      ]
+    },
+    {
+      "id": "tests-ko",
+      "project": "atlas",
+      "query": "인터넷 없이 Rust 테스트를 실행하는 명령은?",
+      "relevant": [
+        "test"
+      ],
+      "service": [
+        "korean",
+        "test"
+      ],
+      "keyword": [
+        "test",
+        "korean"
+      ],
+      "latency_ms": 29.101,
+      "scores": [
+        0.04306002,
+        0.013060019
+      ]
+    },
+    {
+      "id": "auth-en",
+      "project": "atlas",
+      "query": "How is HTTP authentication configured?",
+      "relevant": [
+        "auth"
+      ],
+      "service": [
+        "auth",
+        "port",
+        "test"
+      ],
+      "keyword": [
+        "auth",
+        "port"
+      ],
+      "latency_ms": 26.743,
+      "scores": [
+        0.04333324,
+        0.012522378,
+        -0.0050747204
+      ]
+    },
+    {
+      "id": "auth-file",
+      "project": "atlas",
+      "query": "server/auth.rs ATLAS_TOKEN",
+      "relevant": [
+        "auth"
+      ],
+      "service": [
+        "auth"
+      ],
+      "keyword": [
+        "auth",
+        "port",
+        "retry",
+        "migration",
+        "cache"
+      ],
+      "latency_ms": 30.13,
+      "scores": [
+        0.13333325
+      ]
+    },
+    {
+      "id": "retry-en",
+      "project": "atlas",
+      "query": "How many times are payment webhooks retried?",
+      "relevant": [
+        "retry"
+      ],
+      "service": [
+        "retry",
+        "noise1",
+        "auth"
+      ],
+      "keyword": [
+        "retry",
+        "noise1"
+      ],
+      "latency_ms": 27.764,
+      "scores": [
+        0.026190393,
+        0.0029735304,
+        -0.012946519
+      ]
+    },
+    {
+      "id": "retry-ko",
+      "project": "atlas",
+      "query": "결제 웹훅 재시도 횟수와 중복 방지 방법은?",
+      "relevant": [
+        "retry"
+      ],
+      "service": [
+        "retry",
+        "timezone",
+        "korean"
+      ],
+      "keyword": [],
+      "latency_ms": 30.223,
+      "scores": [
+        -0.033333424,
+        -0.033606652,
+        -0.033871062
+      ]
+    },
+    {
+      "id": "migration-en",
+      "project": "atlas",
+      "query": "How are SQLite schema migrations made atomic?",
+      "relevant": [
+        "migration"
+      ],
+      "service": [
+        "migration",
+        "noise1",
+        "test",
+        "auth"
+      ],
+      "keyword": [
+        "migration",
+        "test",
+        "noise1"
+      ],
+      "latency_ms": 29.245,
+      "scores": [
+        0.047618963,
+        0.0025278963,
+        0.003950954,
+        -0.013646147
+      ]
+    },
+    {
+      "id": "migration-file",
+      "project": "atlas",
+      "query": "storage/migrate.rs transaction",
+      "relevant": [
+        "migration"
+      ],
+      "service": [
+        "migration"
+      ],
+      "keyword": [
+        "migration",
+        "port",
+        "auth",
+        "retry",
+        "cache"
+      ],
+      "latency_ms": 27.177,
+      "scores": [
+        0.13333325
+      ]
+    },
+    {
+      "id": "cache-en",
+      "project": "atlas",
+      "query": "How many compiled templates fit in the cache?",
+      "relevant": [
+        "cache"
+      ],
+      "service": [
+        "cache",
+        "noise1",
+        "noise3",
+        "noise2",
+        "retry"
+      ],
+      "keyword": [
+        "cache",
+        "noise1",
+        "noise3",
+        "auth",
+        "retry"
+      ],
+      "latency_ms": 30.547,
+      "scores": [
+        0.05833324,
+        0.019758064,
+        0.020286884,
+        -0.0006710999,
+        -0.00071396254
+      ]
+    },
+    {
+      "id": "cache-ko",
+      "project": "atlas",
+      "query": "템플릿 캐시 최대 크기는?",
+      "relevant": [
+        "cache"
+      ],
+      "service": [
+        "cache",
+        "timezone",
+        "korean"
+      ],
+      "keyword": [],
+      "latency_ms": 27.958,
+      "scores": [
+        -0.033333424,
+        -0.033606652,
+        -0.033871062
+      ]
+    },
+    {
+      "id": "deploy-ko",
+      "project": "atlas",
+      "query": "금요일 배포 정책과 배포 전 준비는?",
+      "relevant": [
+        "korean"
+      ],
+      "service": [
+        "korean"
+      ],
+      "keyword": [
+        "korean"
+      ],
+      "latency_ms": 28.754,
+      "scores": [
+        0.07333325
+      ]
+    },
+    {
+      "id": "deploy-en",
+      "project": "atlas",
+      "query": "What should we do before deployment and which day is forbidden?",
+      "relevant": [
+        "korean"
+      ],
+      "service": [
+        "noise1",
+        "logs",
+        "migration",
+        "port",
+        "noise2"
+      ],
+      "keyword": [
+        "port",
+        "migration",
+        "logs",
+        "noise1"
+      ],
+      "latency_ms": 31.688,
+      "scores": [
+        0.007851627,
+        -0.0038240436,
+        -0.0048500816,
+        -0.004345379,
+        -0.021438263
+      ]
+    },
+    {
+      "id": "timezone-ko",
+      "project": "atlas",
+      "query": "예약 작업은 어떤 시간대를 사용하나?",
+      "relevant": [
+        "timezone"
+      ],
+      "service": [
+        "timezone"
+      ],
+      "keyword": [
+        "timezone"
+      ],
+      "latency_ms": 29.749,
+      "scores": [
+        0.07333325
+      ]
+    },
+    {
+      "id": "timezone-en",
+      "project": "atlas",
+      "query": "What timezone is used for scheduled jobs?",
+      "relevant": [
+        "timezone"
+      ],
+      "service": [
+        "test",
+        "port",
+        "migration"
+      ],
+      "keyword": [
+        "port",
+        "test"
+      ],
+      "latency_ms": 29.117,
+      "scores": [
+        0.02565266,
+        0.0027472016,
+        -0.012946519
+      ]
+    },
+    {
+      "id": "logs",
+      "project": "atlas",
+      "query": "Which fields are retained in request logs?",
+      "relevant": [
+        "logs"
+      ],
+      "service": [
+        "logs",
+        "noise1",
+        "noise3",
+        "cache",
+        "retry"
+      ],
+      "keyword": [
+        "logs",
+        "noise1",
+        "retry",
+        "migration",
+        "cache"
+      ],
+      "latency_ms": 29.72,
+      "scores": [
+        0.047618963,
+        0.024402108,
+        0.003182605,
+        0.003174514,
+        0.0029421267
+      ]
+    },
+    {
+      "id": "isolate-port",
+      "project": "beacon",
+      "query": "server/config.rs API port",
+      "relevant": [
+        "beta-port"
+      ],
+      "service": [
+        "beta-port"
+      ],
+      "keyword": [
+        "beta-port",
+        "beta-retry"
+      ],
+      "latency_ms": 27.149,
+      "scores": [
+        0.13333325
+      ]
+    },
+    {
+      "id": "isolate-tests",
+      "project": "beacon",
+      "query": "How do I run tests?",
+      "relevant": [
+        "beta-test"
+      ],
+      "service": [
+        "beta-test"
+      ],
+      "keyword": [
+        "beta-test"
+      ],
+      "latency_ms": 27.075,
+      "scores": [
+        0.05833324
+      ]
+    },
+    {
+      "id": "isolate-retry",
+      "project": "beacon",
+      "query": "payment webhooks retry limit",
+      "relevant": [
+        "beta-retry"
+      ],
+      "service": [
+        "beta-retry"
+      ],
+      "keyword": [
+        "beta-retry"
+      ],
+      "latency_ms": 28.898,
+      "scores": [
+        0.09583326
+      ]
+    },
+    {
+      "id": "absent-en",
+      "project": "atlas",
+      "query": "What is the Kubernetes production cluster name?",
+      "relevant": [],
+      "service": [
+        "port",
+        "noise3",
+        "noise2",
+        "noise1",
+        "auth"
+      ],
+      "keyword": [
+        "port",
+        "auth",
+        "noise1",
+        "noise2",
+        "noise3"
+      ],
+      "latency_ms": 32.43,
+      "scores": [
+        0.003968072,
+        0.0039510466,
+        0.0025278963,
+        0.001794342,
+        0.0022049036
+      ]
+    },
+    {
+      "id": "absent-ko",
+      "project": "atlas",
+      "query": "운영 Redis 비밀번호 교체 주기는?",
+      "relevant": [],
+      "service": [
+        "timezone",
+        "korean",
+        "retry"
+      ],
+      "keyword": [],
+      "latency_ms": 28.832,
+      "scores": [
+        -0.033333424,
+        -0.033606652,
+        -0.033871155
+      ]
+    },
+    {
+      "id": "absent-project",
+      "project": "empty-project",
+      "query": "server/config.rs API port",
+      "relevant": [],
+      "service": [],
+      "keyword": [],
+      "latency_ms": 3.485,
+      "scores": []
+    },
+    {
+      "id": "absent-domain",
+      "project": "beacon",
+      "query": "What is our iOS signing certificate renewal policy?",
+      "relevant": [],
+      "service": [
+        "beta-port",
+        "beta-retry",
+        "beta-test"
+      ],
+      "keyword": [],
+      "latency_ms": 29.519,
+      "scores": [
+        -0.0148566505,
+        -0.033333424,
+        -0.033871062
+      ]
+    }
+  ],
+  "metrics": {
+    "service": {
+      "positive_cases": 22,
+      "hit_at_1": 0.8181818181818182,
+      "recall_at_5": 0.9090909090909091,
+      "mrr_at_5": 0.8636363636363636,
+      "negative_cases": 4,
+      "negative_empty_rate": 0.25
+    },
+    "keyword": {
+      "positive_cases": 22,
+      "hit_at_1": 0.7727272727272727,
+      "recall_at_5": 0.7727272727272727,
+      "mrr_at_5": 0.7727272727272727,
+      "negative_cases": 4,
+      "negative_empty_rate": 0.75
+    }
+  },
+  "latency_ms": {
+    "p50": 29.101,
+    "p95": 31.688
+  },
+  "rss_after_queries": "VmRSS:\t 1734620 kB",
+  "health": {
+    "version": "0.2.1",
+    "embed_model": "intfloat/multilingual-e5-base"
+  },
+  "diagnostic": "endpoint: http://localhost:42803\nhealth: ok; core version: 0.2.1\ncapabilities: scoped search and paged get advertised (not an execution test)\nembedding readiness / index backlog / remote capture: unknown (not exposed by these contracts)\nlocal capture: not inspected; use `status` with the watcher's --data-dir for its local heartbeat\n",
+  "unauthorized": "endpoint: http://localhost:42803\nembedding readiness / index backlog / remote capture: unknown (not exposed by these contracts)\ndiagnostic: authentication failure at /health; check MEMNEST_TOKEN (not printed)\nlocal capture: not inspected; use `status` with the watcher's --data-dir for its local heartbeat\n",
+  "limitations": "26 authored cases, 16 records, single ordered warm run. No paid LLM, competitor, answer-generation or general superiority evaluation. Token baseline has no morphology/stopword/ranking tuning."
+}

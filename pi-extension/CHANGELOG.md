@@ -2,6 +2,20 @@
 
 All notable changes to `pi-memnest` are recorded here.
 
+## Unreleased
+
+### Changed
+
+- Autocontext is off by default. Only an explicit `balanced` or `aggressive` mode enables it; unrecognized modes fail closed. The five memory tools and conversation capture remain available independently.
+- `/memnest` reports the pi Autocontext state.
+- Opt-in memory cards include ID, project, and creation time for source verification. Missing IDs/projects and missing or nonnumeric/nonfinite scores are no longer accepted.
+- `memory_get` accepts offsets, document budgets and neighboring captures, and returns JSON text with continuation and provenance. Responses from an older core are bounded client-side and marked `paging: "client"`; neighboring captures require the updated core.
+- Search results include `doc_len` while retaining their existing excerpts.
+
+### Validation
+
+- Added default-off negative cases for connection checks, ordinary edits, translation and changed decisions, plus opt-in checks for malformed results, superseded memories and workspace boundaries. These test retrieval policy, not embedding or answer accuracy.
+
 ## [0.2.0] - 2026-08-31
 
 ### Changed

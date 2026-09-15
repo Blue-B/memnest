@@ -296,3 +296,109 @@ pub fn print_report(checks: &[Check]) -> i32 {
         0
     }
 }
+
+/// Probe only public diagnostic contracts; never open a DB, initialize an index,
+/// or embed text. Bound both elapsed time and untrusted response size.
+pub async fn diagnose_service(base: &str) -> i32 {
+    println!("endpoint: {base}");
+    let result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()?;
+        let token = crate::server::auth_token();
+        let health = diagnostic_json(&client, base, "/health", token.as_deref(), None).await?;
+        if health.get("status").and_then(|v| v.as_str()) != Some("ok") {
+            anyhow::bail!("health contract mismatch (expected status=ok)");
+        }
+        // Do not echo response strings: even version/error fields may contain
+        // credentials, server-local paths, or terminal control sequences.
+        println!("health: ok (response body omitted)");
+        let tools = diagnostic_json(
+            &client,
+            base,
+            "/mcp",
+            token.as_deref(),
+            Some(serde_json::json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}})),
+        )
+        .await?;
+        let list = tools
+            .pointer("/result/tools")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("MCP capability mismatch: tools/list unavailable"))?;
+        for (name, fields) in [
+            ("memory_search", &["query", "project"][..]),
+            ("memory_get", &["id", "offset", "max_chars"][..]),
+        ] {
+            let properties = list
+                .iter()
+                .find(|v| v["name"] == name)
+                .and_then(|v| v.pointer("/inputSchema/properties"));
+            if !fields
+                .iter()
+                .all(|field| properties.and_then(|p| p.get(field)).is_some())
+            {
+                anyhow::bail!(
+                    "MCP capability mismatch: {name} missing required source-client fields"
+                );
+            }
+        }
+        println!("capabilities: scoped search and paged get advertised (not an execution test)");
+        Ok::<(), anyhow::Error>(())
+    })
+    .await;
+    println!(
+        "embedding readiness / index backlog / remote capture: unknown (not exposed by these contracts)"
+    );
+    match result {
+        Ok(Ok(())) => 0,
+        Ok(Err(error)) => {
+            println!("diagnostic: {error}");
+            1
+        }
+        Err(_) => {
+            println!("diagnostic: timed out (5 second total budget)");
+            1
+        }
+    }
+}
+
+async fn diagnostic_json(
+    client: &reqwest::Client,
+    base: &str,
+    path: &str,
+    token: Option<&str>,
+    body: Option<serde_json::Value>,
+) -> Result<serde_json::Value> {
+    let mut request = if let Some(body) = body {
+        client.post(format!("{base}{path}")).json(&body)
+    } else {
+        client.get(format!("{base}{path}"))
+    };
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let mut response = request
+        .send()
+        .await
+        .map_err(|_| anyhow::anyhow!("service unreachable or transport failure at {path}"))?;
+    match response.status().as_u16() {
+        401 | 403 => {
+            anyhow::bail!("authentication failure at {path}; check MEMNEST_TOKEN (not printed)")
+        }
+        200 => (),
+        code => anyhow::bail!("HTTP {code} at {path}; service/capability mismatch"),
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| anyhow::anyhow!("response transport failure at {path}"))?
+    {
+        if bytes.len() + chunk.len() > 256 * 1024 {
+            anyhow::bail!("diagnostic response exceeds 256 KiB");
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    serde_json::from_slice(&bytes).map_err(|_| anyhow::anyhow!("invalid JSON contract at {path}"))
+}

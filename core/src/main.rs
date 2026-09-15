@@ -57,7 +57,11 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum CliCommand {
     /// Report the running version, whether the local service is reachable, and where it stores data.
-    Status,
+    Status {
+        /// Read-only HTTP health and MCP capability checks (5 second total budget).
+        #[arg(long)]
+        diagnose: bool,
+    },
     /// Answer a host's prompt hook with a context pack, for automatic injection
     /// without a per-host extension. Reads the hook payload on stdin and writes
     /// the reply on stdout; never fails, so it cannot block a prompt.
@@ -108,6 +112,7 @@ struct ImportRecord {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
@@ -158,7 +163,24 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .await?;
             }
-            CliCommand::Status => {
+            CliCommand::Status { diagnose } => {
+                if *diagnose {
+                    let host = if matches!(config.api_host.as_str(), "0.0.0.0" | "::") {
+                        "localhost"
+                    } else {
+                        &config.api_host
+                    };
+                    let base = format!(
+                        "http://{}:{}",
+                        canonical_display_host(host),
+                        config.api_port
+                    );
+                    let code = memnest::doctor::diagnose_service(&base).await;
+                    println!(
+                        "local capture: not inspected; use `status` with the watcher's --data-dir for its local heartbeat"
+                    );
+                    std::process::exit(code);
+                }
                 let reachable = service_reachable(&config.api_host, config.api_port);
                 println!("memnest v{}", env!("CARGO_PKG_VERSION"));
                 // Report the address that was probed. "not reachable" alone is

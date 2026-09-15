@@ -3,7 +3,7 @@
 //
 // Verifies:
 //   1. ESM bundle loads without throwing.
-//   2. register() registers exactly the canonical ten tools.
+//   2. register() registers exactly the canonical five memory tools.
 //   3. Each registered tool has a callable .execute function.
 //   4. No AutoLog capture hooks are installed.
 //   5. memory_search defaults are correct and it fails closed without a cwd.
@@ -13,6 +13,10 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+
+delete process.env.MEMNEST_AUTOCONTEXT_MODE;
+delete process.env.MEMNEST_AUTOCONTEXT_DISABLE;
+delete process.env.MEMNEST_EXPOSE_SECRET_TOOLS;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BUNDLE = join(__dirname, "..", "dist", "index.mjs");
@@ -57,6 +61,7 @@ assert("ESM bundle loads", typeof mod.default === "function");
 await mod.default(proxy);
 assert("register() called without throwing", true);
 assert("/memnest command registered", commands.has("memnest"));
+assert("Autocontext is off by default", !hooks.includes("before_agent_start"));
 const AUTOLOG_HOOKS = [
 	"input",
 	"message_end",

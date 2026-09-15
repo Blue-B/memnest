@@ -2,7 +2,7 @@ use crate::MemorySystem;
 use crate::models::{Metadata, is_internal_project};
 use crate::redaction::redact_text;
 use crate::workspace::{SearchScope, identity as workspace_identity};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -278,7 +278,83 @@ pub async fn search(
     })
 }
 
-pub async fn get(system: Arc<RwLock<MemorySystem>>, id: &str) -> Result<Value, OperationError> {
+pub const MAX_OUTPUT_CHARS: usize = 30_000;
+const MAX_PROVENANCE_CHARS: usize = 2048;
+const MAX_SOURCE_IDS: usize = 16;
+
+fn validate_max_chars(value: Option<usize>) -> Result<(), OperationError> {
+    if value.is_some_and(|n| !(1..=MAX_OUTPUT_CHARS).contains(&n)) {
+        return Err(OperationError::bad("max_chars must be between 1 and 30000"));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct GetOptions {
+    #[serde(default)]
+    pub offset: usize,
+    pub max_chars: Option<usize>,
+    #[serde(default)]
+    pub before: usize,
+    #[serde(default)]
+    pub after: usize,
+}
+
+impl GetOptions {
+    fn validate(&self) -> Result<(), OperationError> {
+        validate_max_chars(self.max_chars)?;
+        if self.before > 5 || self.after > 5 {
+            return Err(OperationError::bad(
+                "before and after must be between 0 and 5",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn chunk_page(c: &crate::models::MemoryChunk, offset: usize, remaining: &mut usize) -> Value {
+    let redacted = redact_text(&c.document);
+    let doc_len = redacted.chars().count();
+    let document: String = redacted.chars().skip(offset).take(*remaining).collect();
+    let returned_chars = document.chars().count();
+    *remaining -= returned_chars;
+    let end = offset.min(doc_len) + returned_chars;
+    // Only selected provenance: redact before clipping, never expose raw_chunk.
+    // A separate small budget prevents source metadata from bypassing the text cap.
+    let mut provenance_remaining = MAX_PROVENANCE_CHARS;
+    let mut provenance_truncated = c.metadata.source_ids.len() > MAX_SOURCE_IDS;
+    let mut bounded = |value: &str| {
+        let redacted = redact_text(value);
+        let len = redacted.chars().count();
+        let kept: String = redacted.chars().take(provenance_remaining).collect();
+        provenance_truncated |= len > provenance_remaining;
+        provenance_remaining = provenance_remaining.saturating_sub(len);
+        kept
+    };
+    let provenance = json!({
+        "session_id":bounded(&c.metadata.session_id),
+        "source":c.metadata.source.as_deref().map(&mut bounded),
+        "cwd":c.metadata.cwd.as_deref().map(&mut bounded),
+        "role":c.metadata.role.as_deref().map(&mut bounded),
+        "event_id":c.metadata.event_id.as_deref().map(&mut bounded),
+        "source_ids":c.metadata.source_ids.iter().take(MAX_SOURCE_IDS).map(|s| bounded(s)).collect::<Vec<_>>(),
+        "sequence":c.metadata.sequence
+    });
+    json!({"id":c.id,"project":c.project,"document":document,"doc_len":doc_len,
+        "timestamp":c.created_at.to_rfc3339(),"chunk_type":format!("{:?}",c.metadata.chunk_type),
+        "importance":format!("{:?}",c.metadata.importance),"category":format!("{:?}",c.metadata.category),
+        "provenance":provenance,"provenance_truncated":provenance_truncated,
+        "offset":offset,"returned_chars":returned_chars,
+        "has_more":end < doc_len,"next_offset":if end < doc_len {Some(end)} else {None},
+        "truncated":offset > 0 || end < doc_len})
+}
+
+pub async fn get(
+    system: Arc<RwLock<MemorySystem>>,
+    id: &str,
+    options: GetOptions,
+) -> Result<Value, OperationError> {
+    options.validate()?;
     if id.trim().is_empty() {
         return Err(OperationError::bad("id is required"));
     }
@@ -288,10 +364,28 @@ pub async fn get(system: Arc<RwLock<MemorySystem>>, id: &str) -> Result<Value, O
         .get_chunk(id)
         .map_err(|e| OperationError::internal(e.to_string()))?
         .ok_or_else(|| OperationError::not_found(format!("chunk not found: {id}")))?;
-    let redacted = redact_text(&c.document);
-    Ok(
-        json!({"id":c.id,"project":c.project,"document":redacted.chars().take(8000).collect::<String>(),"doc_len":redacted.chars().count(),"timestamp":c.created_at.to_rfc3339(),"chunk_type":format!("{:?}",c.metadata.chunk_type),"importance":format!("{:?}",c.metadata.importance),"category":format!("{:?}",c.metadata.category)}),
-    )
+    let mut remaining = options.max_chars.unwrap_or(8000);
+    let budget = remaining;
+    let mut page = chunk_page(&c, options.offset, &mut remaining);
+    let before = db
+        .transcript_neighbors(&c, options.before, true)
+        .map_err(|e| OperationError::internal(e.to_string()))?;
+    let after = db
+        .transcript_neighbors(&c, options.after, false)
+        .map_err(|e| OperationError::internal(e.to_string()))?;
+    page["before"] = before
+        .iter()
+        .map(|c| chunk_page(c, 0, &mut remaining))
+        .collect();
+    page["after"] = after
+        .iter()
+        .map(|c| chunk_page(c, 0, &mut remaining))
+        .collect();
+    page["total_returned_chars"] = json!(budget - remaining);
+    page["neighbor_order"] = json!(
+        "capture order (created_at, id), not source chronology; sequence is an event part number"
+    );
+    Ok(page)
 }
 
 pub async fn update(
@@ -380,6 +474,98 @@ pub async fn delete(
 mod tests {
     use super::*;
     use crate::models::INTERNAL_PROJECTS;
+
+    #[test]
+    fn chunk_page_unicode_and_caps() {
+        let c = crate::models::MemoryChunk {
+            id: "unicode".into(),
+            project: "p".into(),
+            document: "😀한e\u{301}".repeat(9000),
+            embedding: None,
+            metadata: Metadata::default(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let mut budget = 3;
+        let page = chunk_page(&c, 1, &mut budget);
+        assert_eq!(page["document"], "한e\u{301}");
+        assert_eq!(page["next_offset"], 4);
+        assert_eq!(page["doc_len"], 36000);
+        assert_eq!(budget, 0);
+        assert_eq!(page["provenance_truncated"], false);
+        for cap in [8000, MAX_OUTPUT_CHARS] {
+            let mut budget = cap;
+            let page = chunk_page(&c, 0, &mut budget);
+            assert_eq!(page["returned_chars"], cap);
+            assert_eq!(page["next_offset"], cap);
+            assert_eq!(page["has_more"], true);
+        }
+        for cap in [0, MAX_OUTPUT_CHARS + 1] {
+            assert!(validate_max_chars(Some(cap)).is_err());
+        }
+        assert!(
+            GetOptions {
+                before: 6,
+                ..Default::default()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            GetOptions {
+                after: 6,
+                ..Default::default()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(GetOptions::default().validate().is_ok());
+    }
+
+    #[test]
+    fn chunk_page_bounds_and_redacts_provenance() {
+        let mut c = crate::models::MemoryChunk {
+            id: "metadata".into(),
+            project: "p".into(),
+            document: "body".into(),
+            embedding: None,
+            metadata: Metadata {
+                session_id: "s".into(),
+                source_ids: vec!["password=supersecret123".into(); MAX_SOURCE_IDS + 1],
+                ..Default::default()
+            },
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let page = chunk_page(&c, 0, &mut 1);
+        assert_eq!(page["document"], "b");
+        assert_eq!(page["provenance_truncated"], true);
+        assert_eq!(
+            page["provenance"]["source_ids"].as_array().unwrap().len(),
+            MAX_SOURCE_IDS
+        );
+        assert!(!page.to_string().contains("supersecret123"));
+
+        c.metadata.session_id = "😀한".repeat(MAX_PROVENANCE_CHARS);
+        let page = chunk_page(&c, 0, &mut 1);
+        assert_eq!(
+            page["provenance"]["session_id"]
+                .as_str()
+                .unwrap()
+                .chars()
+                .count(),
+            MAX_PROVENANCE_CHARS
+        );
+        assert!(
+            page["provenance"]["source_ids"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|id| id == "")
+        );
+        assert_eq!(page["provenance_truncated"], true);
+        assert_eq!(page["next_offset"], 1);
+    }
 
     #[test]
     fn canonical_scope_only_always_hides_internal_buckets() {

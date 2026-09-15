@@ -4,64 +4,84 @@
 
 <img src="docs/logo.png" alt="memnest 로고" width="440">
 
-[English README](README.md)
+[English](README.md) | [설치](#설치) | [사용법](#사용법) | [운영 문서](docs/operations.md)
 
-한 클라이언트에서 저장한 코딩 결정을 같은 로컬 Memnest 서비스에 연결한 다른 클라이언트에서 동일한 기록으로 찾습니다. Memnest는 pi, Claude Code, Codex, MCP 클라이언트가 사용할 기억과 대화 기록을 내 컴퓨터에 보관합니다.
+코딩 중 내린 결정과 대화 기록을 내 컴퓨터에 보관하고, pi, Claude Code, Codex 또는 MCP 클라이언트에서 다시 찾습니다. 연결한 도구들은 같은 로컬 Memnest 서비스를 조회합니다.
 
 [![최신 릴리스](https://img.shields.io/github/v/release/Blue-B/memnest?label=release)](https://github.com/Blue-B/memnest/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-![Rust](https://img.shields.io/badge/core-Rust-orange.svg)
-![Protocol](https://img.shields.io/badge/interface-MCP%20%2B%20HTTP-blue.svg)
 [![npm: pi-memnest](https://img.shields.io/npm/v/pi-memnest?label=npm%20pi-memnest&color=cb3837)](https://www.npmjs.com/package/pi-memnest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## 정확한 결과 확인하기
+## 주요 기능
 
-![독립된 두 MCP 클라이언트에서 저장 ID와 검색 ID가 일치한 이전 실제 결과](docs/demo-result.ko.png)
+- 세션이 끝나도 결정, 선호, 정정 내용을 보관합니다.
+- pi, Claude Code, Codex의 대화 텍스트를 LLM 요약 없이 저장합니다.
+- 키워드와 의미로 검색하고, 작업공간별로 검색 범위를 나눕니다.
+- 공유 규칙은 `playbook`에, 자격 증명은 별도의 암호화 금고에 둡니다.
 
-이미지는 이전 MCP-to-MCP 실행 결과입니다. 아래의 재현 가능한 데모에서는 첫 번째 curl 프로세스가 Streamable HTTP MCP로 결정을 저장합니다. 첫 프로세스의 상태를 받지 않은 두 번째 curl 프로세스는 Memnest JSON HTTP API로 같은 ID와 정확한 내용을 찾습니다. 하나의 임시 저장소에 실제로 지원되는 두 클라이언트 표면을 연결한 결과입니다.
+매번 읽어야 하는 짧은 규칙이라면 `CLAUDE.md`나 `AGENTS.md`가 더 간단합니다. Memnest는 계속 쌓이는 기록을 필요할 때 찾아보려는 경우에 적합합니다. ChatGPT나 Claude의 내장 메모리를 가져오거나 동기화하는 도구는 아닙니다.
+
+## 배포 상태
+
+| 지금 설치할 수 있는 버전 | 아직 배포하지 않은 변경 |
+| --- | --- |
+| 코어 v0.2.1: Linux x86_64와 Arm64 압축 파일 | 클라이언트 연결과 설정 복구를 포함한 통합 setup |
+| npm의 pi-memnest v0.2.0 | 긴 원문 이어 읽기와 주변 대화 조회 |
+| 기억 도구, 로컬 검색, 대화 저장 | pi 자동 회상 기본 꺼짐과 추가 출처 정보 |
+
+macOS 설치 코드와 Intel/Apple Silicon 패키징 코드는 있습니다. 다만 v0.2.1에는 macOS 배포 파일이 없으며, 실제 Mac에서 설치, 재시작, 제거를 검증하지 못했습니다. 아직 검증된 지원 환경으로 보지 마세요.
+
+아래에서 다음 버전으로 표시한 기능은 수정된 소스가 필요합니다. 공개 코어나 npm 패키지만 설치해서는 사용할 수 없습니다. 자세한 변경점은 [다음 출시 요약](docs/next-release.ko.md), [코어 변경 이력](core/CHANGELOG.md), [pi 변경 이력](pi-extension/CHANGELOG.md)에 있습니다.
+
+## 설치
+
+### 공개 버전: Linux에 새로 설치
+
+Rust 없이 코어 v0.2.1을 설치하는 명령입니다. 이 버전의 설치기는 서버만 설치합니다. 클라이언트는 아래에서 연결하고, 대화 저장은 별도로 실행하세요.
 
 ```bash
-./docs/run-independent-client-demo.sh /tmp/memnest-demo-evidence
-cat /tmp/memnest-demo-evidence/transcript.txt
-```
-
-실행 중인 서비스와 `memnest` 실행 파일이 필요하지만 에이전트 계정은 필요하지 않습니다. 스크립트는 Codex가 지원하는 JSONL 대화 형식의 합성 fixture도 `memnest watch`에 전달합니다. 요청·응답 본문, 체크섬 manifest, 텍스트 터미널 transcript, 약 45초로 편집한 asciicast를 보관합니다. [저장된 증거](docs/demo-evidence/), [터미널 cast](docs/demo-evidence/demo.cast), [전체 재현 방법](docs/demo.md)을 확인할 수 있습니다.
-
-이 결과는 전송 계층에서 저장과 검색이 이어짐을 증명합니다. Claude Code, Codex, pi 같은 자율 에이전트가 스스로 저장하거나 검색하고, 결과를 신뢰하고 적용하는지는 **증명하지 않습니다**. 별도의 [실제 클라이언트 검증](docs/client-validation.md)에서는 pi 0.85.1 검색이 성공했습니다. Claude Code와 Codex는 툴 호출 전에 계정 접근 권한과 사용량 제한으로 중단됐으므로 교차 에이전트 성공으로 표시하지 않습니다.
-
-## 빠른 시작
-
-Linux와 macOS의 x86_64, Arm64 환경에서는 Rust 툴체인 없이 최신 릴리스를 설치할 수 있습니다. 기본 setup은 클라이언트 설정을 안전하게 검증하고 병합하기 위해 Python 3.11 이상을 사용합니다.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.2.1/core/scripts/install.sh \
   -o /tmp/memnest-install.sh
-# 실행하기 전에 스크립트를 확인하세요.
-bash /tmp/memnest-install.sh --user
+# 실행하기 전에 스크립트를 읽어보세요.
+VERSION=v0.2.1 bash /tmp/memnest-install.sh --user
 curl -fsS http://127.0.0.1:3111/health
 ```
 
-설치 과정은 로컬 서비스와 대화 감시기를 시작하고, 발견한 Claude Code, Codex, Cursor 설정에 기존 Memnest 항목을 덮어쓰지 않고 연결 정보를 추가한 뒤 저장과 검색을 확인합니다. 변경할 클라이언트 파일은 먼저 백업합니다. pi는 아래에 나온 `pi-memnest` 패키지를 별도로 설치합니다.
+기존 서비스를 직접 설정해 두었다면 이 옛 설치기를 다시 실행하지 마세요. 서비스 설정을 덮어쓸 수 있습니다. 업그레이드 전에는 데이터를 백업하고 [소스 빌드 업그레이드 절차](docs/operations.md#one-command-setup-from-source)를 확인하세요.
 
-Windows, WSL, 소스 빌드, 클라이언트 설정 되돌리기, 삭제, 데이터 백업, macOS 네이티브 검증 범위는 [운영 문서](docs/operations.md)에 있습니다.
+처음 저장하거나 검색할 때 약 1.1 GB의 임베딩 모델을 내려받습니다. 임베딩 중에는 RAM을 약 1.9 GB까지 사용할 수 있습니다. Windows와 WSL 설치 방법은 [운영 문서](docs/operations.md)에 있습니다.
 
-처음 저장하거나 검색할 때 로컬 임베딩 모델을 내려받습니다. 기본 모델은 디스크 약 1.1 GB를 쓰고 임베딩 중에는 메모리를 약 1.9 GB까지 사용할 수 있습니다.
+### 다음 버전: 소스에서 빌드
 
-## 벤치마크 상태
+미출시 변경이 포함된 저장소에서 실행합니다. Rust와 Python 3.11 이상이 필요합니다.
 
-Memnest가 다른 메모리 도구보다 더 정확하거나 빠르게 검색한다는 비교 벤치마크는 아직 없습니다. 고정된 버전의 [MemoryBench 어댑터](benchmarks/memorybench/README.md)와 한국어 검색 스모크 fixture를 제공합니다. 보관한 Linux 결과에서는 세 질문 모두 기대한 세션이 1위였고, 색인 후 검색 지연은 p50 24.8 ms, p95 27.4 ms였습니다. answering 모델과 judge 모델을 호출하지 않았으므로 답변 정확도와 context token 값은 비워 두었습니다. 세 질문으로 얻은 이 결과는 LongMemEval, LoCoMo, 제공자 비교 결과가 아닙니다.
+```bash
+cargo build --release --locked --manifest-path core/Cargo.toml
+bash core/scripts/setup.sh --user --bin core/target/release/memnest
+```
+
+Linux에서 setup은 서버와 대화 감시기를 시작하고, Claude Code, Codex, Cursor의 연결 설정을 추가한 뒤 저장과 검색을 확인합니다. 변경할 클라이언트 파일은 먼저 백업하며, 기존 Memnest 연결 항목은 유지합니다. pi는 별도로 설치합니다. 자동 회상 hook이 필요할 때만 `--autocontext`를 추가하세요.
+
+지원하는 형식의 기존 Linux 서비스는 설정과 포트를 보존합니다. 실행 명령을 바꿨거나 systemd 추가 설정 파일, 외부 환경 파일을 사용한다면 임의로 덮어쓰지 않고 변경 전에 중단합니다. 이런 경우의 수동 업그레이드와 복구는 [운영 문서](docs/operations.md#linux-service-upgrades)를 참고하세요.
 
 ## 클라이언트 연결
 
 ### pi
 
-코어 서비스를 먼저 실행한 뒤 어댑터를 설치합니다.
+공개 버전은 다음과 같이 설치합니다.
 
 ```bash
-pi install npm:pi-memnest
+pi install npm:pi-memnest@0.2.0
 ```
 
-어댑터는 기억 툴과 작업공간 범위 Autocontext를 등록하고 `/memnest` 상태 명령을 제공합니다. 자세한 내용은 [pi 확장 문서](pi-extension/README.md)에 있습니다.
+다음 버전의 소스 기능을 쓰려면 저장소 루트에서 로컬 확장을 빌드하고 설치합니다.
+
+```bash
+(cd pi-extension && npm ci && npm run build)
+pi install ./pi-extension
+```
+
+둘 다 기억 도구와 `/memnest` 상태 명령을 제공합니다. 공개 v0.2.0은 자동 회상이 기본으로 켜져 있고, 다음 버전은 기본으로 꺼져 있습니다. 명시적으로 끄려면 `MEMNEST_AUTOCONTEXT_MODE=off`, 켜려면 `balanced`를 설정하세요. 자세한 설정은 [pi 확장 문서](pi-extension/README.md)에 있습니다.
 
 ### MCP
 
@@ -75,128 +95,70 @@ Streamable HTTP MCP 클라이언트를 실행 중인 서비스에 연결합니�
 }
 ```
 
-같은 서비스가 `http://127.0.0.1:3111`에서 JSON HTTP API도 제공합니다. stdio MCP와 다른 호스트 연결 예시는 [어댑터 문서](adapters/README.md)에 있습니다.
-
-## 주요 기능
-
-| 기능 | 동작 |
-| --- | --- |
-| 영구 기억 | 결정, 선호, 정정, 사실, 규칙을 세션이 끝난 뒤에도 보관합니다. |
-| 대화 저장 | 사용자와 어시스턴트가 주고받은 텍스트를 자격 증명 형태만 가린 뒤 요약 없이 저장합니다. |
-| 로컬 검색 | BM25 키워드 검색과 다국어 벡터 유사도를 함께 사용합니다. |
-| 작업공간 분리 | 디렉터리별 기억을 나누고, `playbook`에는 모든 프로젝트에서 공유할 규칙을 둡니다. |
-| 비밀 금고 | 자격 증명을 검색 가능한 기억과 분리해 AES-256-GCM으로 암호화합니다. |
-
-항상 불러와야 하는 짧은 규칙은 `CLAUDE.md`나 `AGENTS.md`에 적는 편이 가장 단순합니다. Memnest는 프로젝트와 세션이 늘면서 쌓이고, 지금 질문과 관련 있을 때만 찾아야 하는 자료에 적합합니다.
-
-Rust 서비스 하나가 모든 기능을 처리합니다. SQLite가 원본이고 검색 색인은 다시 만들 수 있습니다. 임베딩은 로컬에서 실행하며 LLM은 호출하지 않습니다.
+stdio MCP와 JSON HTTP 예시는 [어댑터 문서](adapters/README.md)에 있습니다. 기록을 공유하려는 클라이언트는 같은 서비스에 연결해야 합니다.
 
 ## 사용법
 
-모든 호스트에서 같은 기억 툴 5개를 사용합니다.
-
-```text
-memory_remember
-memory_search
-memory_get
-memory_update
-memory_delete
-```
-
-에이전트가 공유 규칙을 저장하고 다음 세션에서 찾는 예시입니다.
+모든 클라이언트에서 같은 기억 도구 5개를 사용합니다. `memory_remember`, `memory_search`, `memory_get`, `memory_update`, `memory_delete`입니다.
 
 ```text
 memory_remember(text="staging에서는 5433 포트를 사용한다.", project="playbook")
 memory_search(query="staging 데이터베이스 포트", project="playbook")
+memory_get(id="<검색 결과의 ID>")
 ```
 
-호스트가 현재 작업 디렉터리를 전달한다면 `project`를 생략할 수 있습니다. 현재 작업공간과 `playbook`을 함께 검색합니다. 모든 프로젝트를 검색하려는 경우에만 `project=all`을 사용하세요. 삭제한 기억은 바로 지워지지 않고 휴지통으로 이동합니다.
+호스트가 현재 디렉터리를 전달한다면 `project`를 생략해 현재 작업공간과 `playbook`을 함께 검색할 수 있습니다. 전체 프로젝트를 검색하려는 경우에만 `project=all`을 사용하세요. 사실이 바뀌면 `supersedes=<이전 ID>`로 새 기억을 저장합니다. 삭제한 기록은 휴지통으로 이동합니다.
 
-비밀 금고 툴은 기본적으로 모델에 노출되지 않습니다. 신뢰하는 프로세스에서만 `MEMNEST_EXPOSE_SECRET_TOOLS=1`로 켤 수 있습니다.
+### 원문 더 읽기 (다음 버전)
 
-## 자동 회상과 대화 저장
+검색은 기존처럼 결과마다 최대 600자를 보여줍니다. 시험적으로 추가했던 검색 전체 글자 수 제한은 제거했습니다.
 
-`memnest hook`은 Claude Code와 Codex가 프롬프트를 보내기 전에 관련 컨텍스트를 붙입니다. 서비스나 작업공간을 찾지 못하면 아무것도 출력하지 않으므로 프롬프트를 막지 않습니다.
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "memnest hook" }] }
-    ]
-  }
-}
+```text
+memory_get(id="<검색 결과 ID>", offset=0, max_chars=8000)
+memory_get(id="<같은 ID>", offset=<next_offset>, max_chars=8000)
+memory_get(id="<대화 기록 ID>", before=1, after=1)
 ```
 
-`memnest watch`는 pi, Claude Code, Codex 대화를 따라가며 화면에 보이는 대화 텍스트를 저장합니다.
+이전에는 조회해도 앞 8,000자까지만 볼 수 있었지만, 이제 뒷부분을 이어 읽을 수 있습니다. 주변 기록은 다른 프로젝트가 아니라 같은 대화에서 가져옵니다. 저장된 순서가 실제 대화 순서와 항상 같지는 않습니다. 원문이 잘렸다면 `next_offset`부터 다시 읽고, 주변 기록은 해당 ID로 따로 조회할 수 있습니다. 자세한 동작은 [원문 조회 문서](docs/bounded-retrieval.md)에 있습니다.
+
+### 대화 저장
 
 ```bash
 memnest watch
 memnest watch --backfill
 ```
 
-시스템 프롬프트, 개발자 프롬프트, reasoning, 툴 입출력, 이미지, 서브에이전트 대화는 저장하지 않습니다. 저장한 대화는 직접 삭제하기 전까지 보관됩니다. 보존과 복구 규칙은 [운영 문서](docs/operations.md)에 있습니다.
+대화 저장과 자동 회상은 별개입니다. 시스템과 개발자 프롬프트, 추론 내용, 도구 입출력, 이미지, 서브에이전트 대화는 저장하지 않습니다. 수집한 대화는 삭제할 때까지 보관합니다. 자동 회상은 선택 기능이며, 관련 없는 기억을 고를 수도 있으므로 원문을 확인한 뒤 사용하세요.
 
-## 검색과 저장 구조
+## 동작 구조
 
-![memnest 로컬 우선 아키텍처](docs/architecture.ko.png)
+![Memnest 아키텍처](docs/architecture.ko.png)
 
-```mermaid
-flowchart LR
-    W1["기억 툴, HTTP /add, watch"] --> W2["알려진 자격 증명 형태 가림"]
-    W2 --> W3["SQLite 트랜잭션"]
-    W3 --> W4["BM25 색인"]
-    W3 --> W5["벡터 색인"]
+Rust 서비스 하나가 SQLite에 기록을 저장하고, BM25와 로컬 다국어 임베딩으로 검색합니다. SQLite가 원본이고 검색 색인은 다시 만들 수 있습니다. 다음 버전에서 보완한 것은 원문 조회이지, 검색 모델이나 순위 알고리즘이 아닙니다.
 
-    R1["질의와 작업공간"] --> R2["BM25 후보"]
-    R1 --> R3["벡터 후보"]
-    R2 --> R4["병합과 재정렬"]
-    R3 --> R4
-    R4 --> R5["검색 결과"]
-```
+Memnest 자체는 생성형 LLM을 호출하지 않습니다. 연결한 코딩 AI가 검색 결과를 읽고 판단할 때는 그 AI의 모델을 사용합니다. Memnest는 저장소에 답이 있는지 증명하거나, 코드 변경으로 옛 기억이 틀렸는지 자동 판별하지 못합니다.
 
-모든 쓰기는 파생 색인보다 먼저 SQLite에 반영됩니다. 중단된 색인 작업은 시작할 때 다시 실행되며, 색인이 없어져도 `memory.db`에서 다시 만들 수 있습니다.
+## 검증과 한계
 
-검색 결과를 사용할 때 알아둘 동작은 세 가지입니다.
+![독립된 두 MCP 클라이언트에서 같은 저장 ID를 찾은 결과](docs/demo-result.ko.png)
 
-- Memnest는 코드를 읽지 않으므로 저장한 사실이 낡았는지 자동으로 알 수 없습니다. 사실이 바뀌면 `supersedes=<id>`로 새 기억을 저장해야 합니다.
-- 검색은 가장 가까운 기억을 정렬합니다. 저장소에 실제 답이 있는지는 증명하지 못하므로 결과를 확인한 뒤 사용해야 합니다.
-- 직접 검색하면 저장된 대화도 찾을 수 있습니다. 자동 컨텍스트에는 의도적으로 저장하거나 통합한 기억만 포함하므로, 대화 속 미완성 시도가 다음 프롬프트에 자동으로 붙지는 않습니다.
+[재현 데모](docs/demo.md)는 한 연결에서 저장한 기록을 다른 연결에서 같은 ID와 내용으로 찾습니다. 공유 저장소의 동작을 확인한 것이며, 서로 다른 AI의 자율적인 판단을 입증한 것은 아닙니다. [실제 클라이언트 검증](docs/client-validation.md)에는 pi 성공과 Claude Code, Codex의 계정 차단을 구분해 기록했습니다.
 
-## 내장 메모리와 다른 점
-
-한 도구 안에서 이전 대화를 기억하는 것이 목적이라면 내장 기능부터 쓰는 편이 간단합니다. Memnest가 필요한 경우는 Claude Code에서 저장한 작업 결정을 pi나 Codex에서도 찾고 싶거나, 여러 작업공간의 기억을 직접 보관하고 검색하려는 때입니다.
-
-| 선택지 | 이미 해주는 일 | Memnest를 고를 이유 |
-| --- | --- | --- |
-| [ChatGPT 메모리](https://help.openai.com/en/articles/8590148), [Claude 채팅 메모리](https://support.claude.com/en/articles/11817273-use-claude-s-chat-search-and-memory-to-build-on-previous-context) | 각 제품에서 이전 대화와 기억을 이후 응답에 활용합니다. | 특정 채팅 제품의 기억과 별개로, 연결한 코딩 도구들이 같은 로컬 저장소를 조회하게 하려는 경우입니다. |
-| [Claude Code 메모리](https://code.claude.com/docs/en/memory), `CLAUDE.md`, `AGENTS.md` | Claude Code도 로컬 Markdown에 자동 메모리를 저장합니다. 규칙 파일은 매번 필요한 지침을 전달하기 좋습니다. | 프로젝트별로 쌓이는 결정과 대화를 키워드와 의미로 검색하고, 다른 도구에서도 같은 API로 찾으려는 경우입니다. 로컬 저장 자체는 Memnest만의 기능이 아닙니다. |
-| [MCP 참조 Memory Server](https://github.com/modelcontextprotocol/servers/tree/main/src/memory) | 로컬 지식 그래프에 개체, 관계, 관찰을 저장합니다. | 그래프를 관리하기보다 작업 결정과 대화 텍스트를 작업공간별로 검색하려는 경우입니다. |
-| [Mem0](https://docs.mem0.ai/open-source/overview) 같은 메모리 계층 | 자체 호스팅이 가능하고 LLM, 임베딩, 저장소를 구성할 수 있습니다. | LLM 호출 없이 로컬 임베딩과 BM25로 검색하는 Rust 서비스 하나, 코딩 도구용 어댑터와 대화 수집기를 원하는 경우입니다. |
-
-다른 메모리 도구보다 검색이 정확하거나 빠르다는 비교 검증은 아직 없습니다. Memnest의 선택 이유는 로컬 저장, 공통 API, 작업공간 검색과 대화 수집의 조합입니다. 짧은 규칙 몇 개만 필요하거나 이미 쓰는 메모리 도구가 충분하다면 추가하지 않아도 됩니다.
-
-Memnest는 ChatGPT나 Claude의 내장 메모리를 자동으로 가져오거나 동기화하지 않습니다. 각 클라이언트를 연결해야 하며, 검색한 내용을 클라우드 모델에 보내면 그 내용은 해당 제공자에게 전달됩니다. 서비스 운영과 로컬 모델의 디스크, RAM 비용도 생깁니다.
+[MemoryBench 어댑터와 한국어 시험 데이터](benchmarks/memorybench/README.md)도 제공합니다. 세 질문에서 기대한 세션을 1위로 찾았지만, 작은 검색 검사일 뿐 다른 도구보다 정확하거나 빠르다는 비교 결과는 아닙니다. 전체 벤치마크와 원문 조회 검사는 검증 범위가 다릅니다.
 
 ## 데이터와 보안
 
-서버는 기본적으로 `127.0.0.1`에만 바인딩합니다. 3111 포트를 인터넷에 직접 노출하지 마세요.
+서비스는 기본적으로 내 컴퓨터 안에서만 연결할 수 있습니다. 3111 포트를 인터넷에 직접 노출하지 마세요. 기록은 로컬에 보관하지만, 검색 결과를 클라우드 AI에 보내면 그 내용은 해당 모델 제공자에게 전달됩니다.
 
-일반 기억은 로컬에 저장되지만 암호화되지 않습니다. redaction은 알려진 자격 증명 형태만 잡으므로 비밀 값은 검색 가능한 기억이 아니라 금고에 저장해야 합니다. 삭제한 기록은 30일 동안 휴지통에서 복구할 수 있고 archive JSONL에도 남을 수 있습니다. 민감한 자료를 저장하기 전에 [SECURITY.md](SECURITY.md)를 읽으세요.
+일반 기억은 암호화되지 않습니다. 알려진 자격 증명 형태를 가릴 뿐 모든 비밀 값을 찾아내지는 못합니다. 자격 증명은 AES-256-GCM 금고에 보관하세요. 금고 도구는 기본적으로 모델에 노출되지 않습니다. 삭제한 기록은 30일 동안 휴지통에서 복구할 수 있고, 보관용 JSONL 파일에도 남을 수 있습니다.
 
-`memory.db`와 `master.key`를 함께 백업하세요. 데이터베이스는 다시 만들 수 없지만 텍스트 색인과 벡터 색인은 다시 만들 수 있습니다.
+업그레이드 전에 `memory.db`와 `master.key`를 함께 백업하세요. 보안 한계는 [SECURITY.md](SECURITY.md), 백업과 복구, 보존, 제거 절차는 [운영 문서](docs/operations.md)에 있습니다.
 
-## 문서
+## 더 읽기
 
-- [운영](docs/operations.md): 설치, 설정, 보존, 백업, 복구, CLI
-- [실제 클라이언트 검증](docs/client-validation.md): pi 성공 1건과 Claude Code, Codex 차단 원인
-- [보안](SECURITY.md): 위협 모델, 금고, redaction, 삭제, 네트워크 바인딩
-- [설계 결정](docs/design-decisions.md): 현재 아키텍처를 선택한 이유
-- [pi 확장](pi-extension/README.md): pi 설치와 Autocontext 동작
-- [어댑터](adapters/README.md): MCP, HTTP, 다른 호스트 연결
-- [기여](CONTRIBUTING.md): 개발 환경과 검사 명령
-
-Memnest는 `0.2.x` 단계입니다. 업그레이드 전에 데이터베이스를 백업하고 [릴리스 노트](https://github.com/Blue-B/memnest/releases)에서 호환성 변경을 확인하세요.
+- [설계 결정](docs/design-decisions.md)
+- [개발 환경과 검사](CONTRIBUTING.md)
+- [릴리스 노트](https://github.com/Blue-B/memnest/releases)
 
 ## 라이선스
 

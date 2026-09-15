@@ -66,8 +66,8 @@ mod tests {
         assert_eq!(after.searches, before.searches + 2);
         assert!(after.max_ms >= 30);
 
-        let recorded_total = after.average_ms * after.searches as f64
-            - before.average_ms * before.searches as f64;
+        let recorded_total =
+            after.average_ms * after.searches as f64 - before.average_ms * before.searches as f64;
         assert!((recorded_total - 40.0).abs() < 1e-6);
     }
 

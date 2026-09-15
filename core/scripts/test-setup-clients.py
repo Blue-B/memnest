@@ -28,7 +28,7 @@ class SetupClientsTest(unittest.TestCase):
             (home / ".claude").mkdir()
             (home / ".claude.json").write_text(original)
             binary = pathlib.Path("/opt/Memnest Tools/memnest")
-            manifest = setup_clients.configure(home, binary, "http://127.0.0.1:3111", True)
+            manifest = setup_clients.configure(home, binary, "http://127.0.0.1:3111", True, autocontext=True)
             self.assertIsNotNone(manifest)
             claude = read_json(home / ".claude.json")
             self.assertTrue(claude["keep"]["user"])
@@ -43,13 +43,29 @@ class SetupClientsTest(unittest.TestCase):
             self.assertEqual(stat.S_IMODE((manifest.parent / "setup-clients.py").stat().st_mode), 0o700)
             self.assertTrue(all(stat.S_IMODE(pathlib.Path(entry["backup"]).stat().st_mode) == 0o600 for entry in manifest_doc["files"]))
             first_manifest = manifest.read_text()
-            self.assertIsNone(setup_clients.configure(home, binary, "http://127.0.0.1:3111", True))
+            self.assertIsNone(setup_clients.configure(home, binary, "http://127.0.0.1:3111", True, autocontext=True))
             self.assertEqual(manifest.read_text(), first_manifest)
             setup_clients.restore(manifest)
             self.assertEqual((home / ".claude.json").read_text(), original)
             self.assertFalse((home / ".claude" / "settings.json").exists())
             self.assertFalse((home / ".cursor" / "mcp.json").exists())
             self.assertFalse((home / ".codex" / "config.toml").exists())
+
+    def test_default_has_tools_without_recall_and_preserves_opted_in_hooks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = pathlib.Path(directory)
+            binary = pathlib.Path("/opt/memnest")
+            url = "http://127.0.0.1:3111"
+            setup_clients.configure(home, binary, url, True)
+            settings = home / ".claude" / "settings.json"
+            self.assertFalse(settings.exists(), "default setup must not install a prompt hook")
+            self.assertIn("memnest", read_json(home / ".claude.json")["mcpServers"])
+            self.assertTrue((home / ".codex" / "config.toml").exists())
+            setup_clients.configure(home, binary, url, True, autocontext=True)
+            before = settings.read_bytes()
+            self.assertIn("UserPromptSubmit", read_json(settings)["hooks"])
+            self.assertIsNone(setup_clients.configure(home, binary, url, True))
+            self.assertEqual(settings.read_bytes(), before, "existing hooks are never removed by default setup")
 
     def test_restore_refuses_later_changes_without_force(self):
         with tempfile.TemporaryDirectory() as directory:

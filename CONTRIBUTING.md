@@ -11,8 +11,10 @@ For anything larger than a bug fix, open an issue first and describe the problem
 you hit. That avoids the case where a change is finished before we find out it
 does not fit the design. Small fixes can go straight to a pull request.
 
-Nothing here is published to npm or crates.io yet, so every install is a source
-checkout. Expect the layout and the interfaces to still move.
+Public core binary release v0.2.1 and npm extension v0.2.0 exist. This checkout
+also contains unreleased capabilities: do not assume a published install matches
+source tests or docs marked source-only. No crates.io publication is implied.
+Expect the layout and the interfaces to still move.
 
 ## Repository layout
 

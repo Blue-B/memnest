@@ -60,6 +60,11 @@ pub struct RecentChunk {
     pub importance: Importance,
 }
 
+fn is_transcript_id(id: &str) -> bool {
+    id.strip_prefix("transcript_")
+        .is_some_and(|digest| digest.len() == 32 && digest.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
 pub struct Database {
     pool: Pool<SqliteConnectionManager>,
 }
@@ -91,6 +96,12 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_chunks_project ON chunks(project);
             CREATE INDEX IF NOT EXISTS idx_chunks_created ON chunks(created_at);
             CREATE INDEX IF NOT EXISTS idx_chunks_project_created ON chunks(project, created_at DESC);
+
+            -- Opaque event IDs only: prevent a purged transcript from returning
+            -- when its external source is replayed. No content or provenance.
+            CREATE TABLE IF NOT EXISTS transcript_tombstones (
+                id TEXT PRIMARY KEY
+            );
 
             CREATE TABLE IF NOT EXISTS workspaces (
                 id TEXT PRIMARY KEY,
@@ -269,6 +280,27 @@ impl Database {
     // ── Chunks ───────────────────────────────────────────────
 
     pub fn insert_chunk(&self, chunk: &MemoryChunk) -> Result<()> {
+        self.store_chunk(chunk, false)?;
+        Ok(())
+    }
+
+    /// Retry-safe event insertion. Existing (including hidden) rows and purged
+    /// event IDs win over a replay, even if deletion happened during embedding.
+    pub fn insert_transcript_if_absent(&self, chunk: &MemoryChunk) -> Result<bool> {
+        anyhow::ensure!(is_transcript_id(&chunk.id), "invalid transcript id");
+        self.store_chunk(chunk, true)
+    }
+
+    pub fn transcript_was_purged(&self, id: &str) -> Result<bool> {
+        let conn = self.pool.get()?;
+        Ok(conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM transcript_tombstones WHERE id = ?1)",
+            params![id],
+            |row| row.get(0),
+        )?)
+    }
+
+    fn store_chunk(&self, chunk: &MemoryChunk, replay: bool) -> Result<bool> {
         let mut conn = self.pool.get()?;
         let embedding_bytes = chunk
             .embedding
@@ -276,7 +308,23 @@ impl Database {
             .map(|embedding| encode_embedding(embedding))
             .unwrap_or_default();
         let meta = serde_json::to_string(&chunk.metadata)?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let purged: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM transcript_tombstones WHERE id = ?1)",
+            params![chunk.id],
+            |row| row.get(0),
+        )?;
+        if replay {
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM chunks WHERE id = ?1)",
+                params![chunk.id],
+                |row| row.get(0),
+            )?;
+            if purged || exists {
+                return Ok(false);
+            }
+        }
+        anyhow::ensure!(!purged, "transcript was permanently deleted");
         tx.execute(
             "INSERT OR REPLACE INTO chunks (id, project, document, embedding, metadata, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -300,7 +348,7 @@ impl Database {
             params![chunk.id, Utc::now().to_rfc3339()],
         )?;
         tx.commit()?;
-        Ok(())
+        Ok(true)
     }
 
     pub fn insert_superseding_chunk(&self, chunk: &MemoryChunk, superseded_id: &str) -> Result<()> {
@@ -315,7 +363,13 @@ impl Database {
             .map(|embedding| encode_embedding(embedding))
             .unwrap_or_default();
         let meta = serde_json::to_string(&chunk.metadata)?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let purged: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM transcript_tombstones WHERE id = ?1)",
+            params![chunk.id],
+            |row| row.get(0),
+        )?;
+        anyhow::ensure!(!purged, "transcript was permanently deleted");
         let previous_project: String = tx.query_row(
             "SELECT project FROM chunks WHERE id = ?1",
             params![superseded_id],
@@ -618,6 +672,54 @@ impl Database {
         }
     }
 
+    /// Bounded adjacent captures, never a cross-session or internal-bucket expansion.
+    pub fn transcript_neighbors(
+        &self,
+        anchor: &MemoryChunk,
+        count: usize,
+        before: bool,
+    ) -> Result<Vec<MemoryChunk>> {
+        if count == 0
+            || crate::models::is_internal_project(&anchor.project)
+            || anchor.metadata.session_id.trim().is_empty()
+            || !anchor
+                .metadata
+                .source
+                .as_deref()
+                .is_some_and(|s| s.ends_with(".transcript"))
+        {
+            return Ok(Vec::new());
+        }
+        let conn = self.pool.get()?;
+        let (comparison, order) = if before { ("<", "DESC") } else { (">", "ASC") };
+        let sql = format!(
+            "SELECT id, project, document, X'', metadata, created_at, updated_at
+            FROM chunks WHERE project = ?1
+            AND json_extract(metadata, '$.session_id') = ?2
+            AND json_extract(metadata, '$.source') = ?3
+            AND json_extract(metadata, '$.cwd') IS ?4
+            AND (created_at, id) {comparison} (SELECT created_at, id FROM chunks WHERE id = ?5)
+            ORDER BY created_at {order}, id {order} LIMIT ?6"
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let mut rows = stmt.query(params![
+            anchor.project,
+            anchor.metadata.session_id,
+            anchor.metadata.source,
+            anchor.metadata.cwd,
+            anchor.id,
+            count.min(5) as i64
+        ])?;
+        let mut result = Vec::new();
+        while let Some(row) = rows.next()? {
+            result.push(self.row_to_chunk(row)?);
+        }
+        if before {
+            result.reverse();
+        }
+        Ok(result)
+    }
+
     pub fn insert_memory_alias(&self, alias_id: &str, canonical_id: &str) -> Result<()> {
         let conn = self.pool.get()?;
         conn.execute(
@@ -630,7 +732,7 @@ impl Database {
 
     pub fn delete_chunk(&self, id: &str) -> Result<bool> {
         let mut conn = self.pool.get()?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         let canonical_id: String = tx
             .query_row(
                 "SELECT canonical_id FROM memory_aliases WHERE alias_id = ?1",
@@ -645,6 +747,14 @@ impl Database {
         )?;
         let affected = tx.execute("DELETE FROM chunks WHERE id = ?1", params![canonical_id])?;
         if affected > 0 {
+            // The deterministic ID remains recognizable even after metadata
+            // edits. Manual UUID IDs never receive replay tombstones.
+            if is_transcript_id(&canonical_id) {
+                tx.execute(
+                    "INSERT OR IGNORE INTO transcript_tombstones (id) VALUES (?1)",
+                    params![canonical_id],
+                )?;
+            }
             tx.execute(
                 "INSERT INTO index_queue (chunk_id, operation, generation, updated_at)
                  VALUES (?1, 'delete', 1, ?2)
@@ -1042,6 +1152,67 @@ mod tests {
             },
             created_at: now,
             updated_at: now,
+        }
+    }
+
+    #[tokio::test]
+    async fn transcript_tombstone_is_atomic_and_survives_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        let mut chunk = sample_chunk("replay", "external transcript text", Importance::Log);
+        chunk.id = "transcript_0123456789abcdef0123456789abcdef".into();
+        assert!(db.insert_transcript_if_absent(&chunk).unwrap());
+        db.trash_chunk(&chunk.id, &Utc::now().to_rfc3339()).unwrap();
+        assert!(!db.insert_transcript_if_absent(&chunk).unwrap());
+        assert_eq!(db.get_chunk(&chunk.id).unwrap().unwrap().project, "_trash");
+        assert!(db.restore_chunk(&chunk.id).unwrap().is_some());
+        let conn = db.pool.get().unwrap();
+        conn.execute_batch("CREATE TRIGGER fail_tombstone BEFORE INSERT ON transcript_tombstones BEGIN SELECT RAISE(ABORT, 'injected failure'); END;").unwrap();
+        assert!(db.delete_chunk(&chunk.id).is_err());
+        assert!(db.get_chunk(&chunk.id).unwrap().is_some());
+        assert!(!db.transcript_was_purged(&chunk.id).unwrap());
+        conn.execute_batch("DROP TRIGGER fail_tombstone;").unwrap();
+        assert!(db.delete_chunk(&chunk.id).unwrap());
+        drop(conn);
+        drop(db);
+        let db = Database::new(dir.path()).await.unwrap();
+        assert!(db.transcript_was_purged(&chunk.id).unwrap());
+        assert!(!db.insert_transcript_if_absent(&chunk).unwrap());
+        // A stale update may not recreate a hard-deleted event either.
+        assert!(db.insert_chunk(&chunk).is_err());
+        assert!(db.get_chunk(&chunk.id).unwrap().is_none());
+        let manual = sample_chunk("replay", "external transcript text", Importance::Knowledge);
+        db.insert_chunk(&manual).unwrap();
+        db.delete_chunk(&manual.id).unwrap();
+        assert!(!db.transcript_was_purged(&manual.id).unwrap());
+        db.insert_chunk(&manual).unwrap();
+    }
+
+    #[tokio::test]
+    async fn transcript_replay_racing_delete_cannot_resurrect() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = std::sync::Arc::new(Database::new(dir.path()).await.unwrap());
+        for n in 0..10 {
+            let mut chunk = sample_chunk("race", "captured event", Importance::Log);
+            chunk.id = format!("transcript_{n:032x}");
+            db.insert_transcript_if_absent(&chunk).unwrap();
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+            let replay_db = db.clone();
+            let replay_barrier = barrier.clone();
+            let replay_chunk = chunk.clone();
+            let replay = std::thread::spawn(move || {
+                replay_barrier.wait();
+                assert!(
+                    !replay_db
+                        .insert_transcript_if_absent(&replay_chunk)
+                        .unwrap()
+                );
+            });
+            barrier.wait();
+            assert!(db.delete_chunk(&chunk.id).unwrap());
+            replay.join().unwrap();
+            assert!(db.get_chunk(&chunk.id).unwrap().is_none());
+            assert!(db.transcript_was_purged(&chunk.id).unwrap());
         }
     }
 

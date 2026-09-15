@@ -61,7 +61,7 @@ def json_merge(path, mutate, save, finish):
     return True
 
 
-def configure(home, binary, url, force_all):
+def configure(home, binary, url, force_all, autocontext=False):
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     backup_dir = home / ".memnest" / "setup-backups" / stamp
     manifest = backup_dir / "manifest.json"
@@ -133,7 +133,8 @@ def configure(home, binary, url, force_all):
             if not any(item.get("hooks") == expected for item in hooks if isinstance(item, dict)):
                 hooks.append({"hooks": expected})
 
-        json_merge(home / ".claude" / "settings.json", hook, save, finish)
+        if autocontext:
+            json_merge(home / ".claude" / "settings.json", hook, save, finish)
 
     if cursor:
         detected.append("Cursor")
@@ -225,6 +226,7 @@ def main():
     parser.add_argument("--bin", type=pathlib.Path, default=pathlib.Path.home() / ".local/bin/memnest")
     parser.add_argument("--url", default="http://127.0.0.1:3111")
     parser.add_argument("--all", action="store_true", help="configure all known JSON/TOML clients (mainly for validation)")
+    parser.add_argument("--autocontext", action="store_true", help="opt in to Claude Code prompt-time memory injection (existing hooks are preserved)")
     parser.add_argument("--restore", type=pathlib.Path)
     parser.add_argument("--force-restore", action="store_true", help="overwrite client changes made after setup")
     args = parser.parse_args()
@@ -233,7 +235,7 @@ def main():
     if args.restore:
         restore(args.restore.expanduser().resolve(), args.force_restore)
     else:
-        configure(args.home.expanduser().resolve(), args.bin.expanduser().resolve(), args.url.rstrip("/"), args.all)
+        configure(args.home.expanduser().resolve(), args.bin.expanduser().resolve(), args.url.rstrip("/"), args.all, args.autocontext)
 
 
 if __name__ == "__main__":

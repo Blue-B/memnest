@@ -1,8 +1,6 @@
 #!/usr/bin/env node
-// Deterministic hook tests for language-neutral Autocontext.
-//
-// The hook must search every substantive prompt verbatim, regardless of its
-// language or wording, and let the semantic score decide whether to inject.
+// Deterministic tests: opt-in semantic recall and no automatic recall by default.
+// No live service, external model, or language-specific intent classifier is used.
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -32,6 +30,7 @@ function assert(name, cond, msg = "") {
 
 const requests = [];
 let score = 0.5;
+let overrides = {};
 globalThis.fetch = async (_url, init) => {
 	requests.push(JSON.parse(init.body));
 	return new Response(
@@ -39,10 +38,13 @@ globalThis.fetch = async (_url, init) => {
 			project: "ws_workspace_1234",
 			results: [
 				{
+					id: "memory-123",
 					project: "playbook",
 					document: "relevant durable memory",
 					score,
+					timestamp: "2026-01-01T00:00:00Z",
 					chunk_type: "Manual",
+					...overrides,
 				},
 			],
 		}),
@@ -119,6 +121,25 @@ try {
 		"/tmp/workspace",
 	);
 	assert("score gate: threshold result is injected", !!threshold.result?.message?.content);
+	assert("card: shows an ID for memory_get", threshold.result?.message?.content.includes('id="memory-123"'));
+	assert("card: shows creation time, not verified truth", threshold.result?.message?.content.includes("created=2026-01-01T00:00:00Z"));
+
+	for (const [name, invalid] of [
+		["missing ID", { id: undefined }],
+		["missing score", { score: undefined }],
+		["string score", { score: "0.9" }],
+		["nonfinite score", { score: Infinity }],
+		["missing project", { project: undefined }],
+		["superseded decision", { project: "_superseded" }],
+		["other workspace", { project: "other" }],
+		["unfinished transcript", { chunk_type: "AutoLog" }],
+		["empty text", { document: "  " }],
+	]) {
+		overrides = invalid;
+		const rejected = await run("recall the current deployment port decision", "/tmp/workspace");
+		assert(`fail closed: ${name}`, rejected.result === undefined);
+	}
+	overrides = {};
 
 	const noCwd = await run("find any durable context for this substantive request");
 	assert("scope: unknown cwd does not search globally", noCwd.searched === 0);
@@ -138,6 +159,33 @@ try {
 		"substantive: real prompt passes",
 		isSubstantive("please refactor the retry loop in the http client"),
 	);
+
+	// Even a high-scoring but irrelevant memory must not be searched or injected
+	// without explicit opt-in. This tests the policy, not embedding accuracy.
+	score = 0.99;
+	overrides = { document: "an unrelated relay repair and obsolete port" };
+	for (const mode of [undefined, "off", "none", "typo"]) {
+		if (mode === undefined) delete process.env.MEMNEST_AUTOCONTEXT_MODE;
+		else process.env.MEMNEST_AUTOCONTEXT_MODE = mode;
+		const fresh = await import(`${pathToFileURL(outfile).href}?mode=${mode}`);
+		const quietHooks = new Map();
+		assert(`mode ${mode}: disabled`, fresh.installAutocontext({ on: (name, fn) => quietHooks.set(name, fn) }) === false);
+		const count = requests.length;
+		for (const prompt of [
+			"다른 작업이나 파일 변경 없이 PASEO_PI_OK라고만 답하세요.",
+			"rename the local variable to userCount please",
+			"Translate this sentence into Korean without using earlier context.",
+			"현재 배포 포트가 8420으로 바뀌었습니다. 이전 값을 사용하지 마세요.",
+		]) {
+			const response = await quietHooks.get("before_agent_start")?.({ prompt });
+			assert(`mode ${mode}: no unsolicited context`, response === undefined);
+		}
+		assert(`mode ${mode}: no retrieval requests`, requests.length === count);
+	}
+	process.env.MEMNEST_AUTOCONTEXT_MODE = "balanced";
+	process.env.MEMNEST_AUTOCONTEXT_DISABLE = "1";
+	const disabled = await import(`${pathToFileURL(outfile).href}?disabled`);
+	assert("disable flag overrides opt-in", disabled.installAutocontext({ on() { throw new Error("must not register"); } }) === false);
 } catch (error) {
 	console.error(error);
 	fail++;

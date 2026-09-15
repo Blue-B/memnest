@@ -5,6 +5,7 @@ BIN_SRC="${BIN_SRC:-}"
 PORT="${MEMNEST_PORT:-3111}"
 MODE="${MODE:-user}"
 CONFIGURE_CLIENTS=1
+AUTOCONTEXT=0
 VERIFY=1
 validate_port() {
   case "$PORT" in ''|*[!0-9]*) echo "MEMNEST_PORT must be an integer from 1 to 65535" >&2; exit 2 ;; esac
@@ -14,10 +15,11 @@ validate_port() {
 }
 usage() {
   cat <<'EOF'
-Usage: scripts/setup.sh [--bin /path/to/memnest] [--user|--system] [--no-clients] [--no-verify]
+Usage: scripts/setup.sh [--bin /path/to/memnest] [--user|--system] [--no-clients] [--autocontext] [--no-verify]
 
 Installs and starts Memnest, merges configuration for detected clients, starts
 conversation watch, and verifies a scratch remember/search round trip.
+Automatic recall hooks are opt-in (--autocontext); existing hooks are preserved.
 EOF
 }
 while [ "$#" -gt 0 ]; do
@@ -26,14 +28,22 @@ while [ "$#" -gt 0 ]; do
     --user) MODE=user ;;
     --system) MODE=system ;;
     --no-clients) CONFIGURE_CLIENTS=0 ;;
+    --autocontext) AUTOCONTEXT=1 ;;
     --no-verify) VERIFY=0 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage; exit 2 ;;
   esac
   shift
 done
-validate_port
 OS="$(uname -s)"
+if [ "$OS" = Linux ]; then
+  # Resolve before installation so client configuration and probes use the same port.
+  # shellcheck source=linux-service-config.sh
+  source "$ROOT/scripts/linux-service-config.sh"
+  resolve_linux_service_config
+fi
+validate_port
+BASE_URL="http://${MEMNEST_HOST:-127.0.0.1}:$PORT"
 if [ "$CONFIGURE_CLIENTS" = 1 ]; then
   python3 -c 'import tomllib' 2>/dev/null || {
     echo "default setup requires Python 3.11 or newer for safe client-config validation" >&2
@@ -67,12 +77,14 @@ case "$OS" in
 esac
 
 if [ "$CONFIGURE_CLIENTS" = 1 ]; then
-  python3 "$ROOT/scripts/setup-clients.py" --bin "$BIN" --url "http://127.0.0.1:$PORT"
+  client_args=(--bin "$BIN" --url "$BASE_URL")
+  [ "$AUTOCONTEXT" = 0 ] || client_args+=(--autocontext)
+  python3 "$ROOT/scripts/setup-clients.py" "${client_args[@]}"
 fi
 if [ "$VERIFY" = 1 ]; then
-  python3 - "$PORT" <<'PY'
+  python3 - "$BASE_URL" <<'PY'
 import json, sys, time, urllib.request
-base = "http://127.0.0.1:%s" % sys.argv[1]
+base = sys.argv[1]
 marker = "memnest-setup-roundtrip-%d" % time.time_ns()
 def post(path, body):
     request = urllib.request.Request(base + path, json.dumps(body).encode(), {"content-type": "application/json"})
@@ -94,7 +106,7 @@ else
   UNINSTALL="\"$INSTALLED_SCRIPTS/uninstall-macos.sh\""
 fi
 cat <<EOF
-Setup complete. MCP endpoint: http://127.0.0.1:$PORT/mcp
+Setup complete. MCP endpoint: $BASE_URL/mcp
 Rollback client changes: use the exact restore command printed above when setup changed a client file.
 Uninstall: $UNINSTALL
 Data is retained unless --remove-data is explicitly passed to the uninstaller.

@@ -4,64 +4,84 @@
 
 <img src="docs/logo.png" alt="memnest logo" width="440">
 
-[한국어 README](README.ko.md)
+[한국어](README.ko.md) | [Install](#install) | [Use it](#use-it) | [Operations](docs/operations.md)
 
-Save a coding decision through one client and retrieve the same record from another client, with both connected to one local Memnest service. Memnest keeps memories and conversation history on your machine for pi, Claude Code, Codex, and other MCP clients.
+Keep coding decisions and conversation history on your machine, then find them from pi, Claude Code, Codex, or another connected MCP client. Each client queries the same local Memnest service.
 
 [![Latest release](https://img.shields.io/github/v/release/Blue-B/memnest?label=release)](https://github.com/Blue-B/memnest/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-![Rust](https://img.shields.io/badge/core-Rust-orange.svg)
-![Protocol](https://img.shields.io/badge/interface-MCP%20%2B%20HTTP-blue.svg)
 [![npm: pi-memnest](https://img.shields.io/npm/v/pi-memnest?label=npm%20pi-memnest&color=cb3837)](https://www.npmjs.com/package/pi-memnest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## See the exact result
+## What it does
 
-![Earlier real results: two independent MCP clients return the same saved memory ID](docs/demo-result.png)
+- Save decisions, preferences, and corrections across sessions.
+- Capture visible pi, Claude Code, and Codex conversations without LLM summarization.
+- Search by keyword and meaning, within a workspace or across explicitly selected projects.
+- Share rules through `playbook`; keep credentials in a separate encrypted vault.
 
-The image is an earlier MCP-to-MCP run. In the reproducible demo below, a curl process writes a decision through MCP over Streamable HTTP. A second curl process, with no state from the first, finds the same ID and exact text through Memnest's JSON HTTP API. These are real supported client surfaces against one disposable store.
+For a few rules that should load every time, use `CLAUDE.md` or `AGENTS.md`. Memnest is for a growing record that you want to search when needed. It does not import or synchronize ChatGPT's or Claude's built-in memory.
+
+## Release status
+
+| Available now | Not yet released |
+| --- | --- |
+| Core v0.2.1: Linux x86_64 and Arm64 archives | Integrated setup with client configuration and recovery |
+| pi-memnest v0.2.0 on npm | Source pagination and nearby conversation records |
+| Memory tools, local search, and transcript capture | Default-off pi automatic recall and additional source metadata |
+
+macOS installation and Intel/Apple Silicon packaging code are present, but no macOS archive is published in v0.2.1. Native installation, restart, and removal have not been verified. Do not treat macOS as a validated release target yet.
+
+The next-release features below require the updated source, not just the published core or npm package. See the [change summary (Korean)](docs/next-release.ko.md), [core changelog](core/CHANGELOG.md), and [pi changelog](pi-extension/CHANGELOG.md).
+
+## Install
+
+### Published release: new Linux installation
+
+The following installs core v0.2.1 without Rust. It installs the server only; connect a client below and run transcript capture separately.
 
 ```bash
-./docs/run-independent-client-demo.sh /tmp/memnest-demo-evidence
-cat /tmp/memnest-demo-evidence/transcript.txt
-```
-
-The script needs a running service and `memnest` executable but no agent account. It also passes a synthetic fixture in Codex's supported JSONL transcript shape through `memnest watch`. It preserves request and response bodies, a checksum manifest, a plain-text terminal transcript, and an editorially paced ~45-second asciicast. See the [checked-in evidence](docs/demo-evidence/), [terminal cast](docs/demo-evidence/demo.cast), and [full reproduction notes](docs/demo.md).
-
-This proves transport-level persistence and retrieval. It does **not** prove that Claude Code, Codex, pi, or another autonomous agent will choose to save, search, trust, or apply the result. A separate [real-client validation](docs/client-validation.md) passed with pi 0.85.1; Claude Code and Codex were blocked by account access and usage limits before tool use, so no cross-agent success is claimed.
-
-## Quick start
-
-Linux and macOS on x86_64 or Arm64 can install the latest release without a Rust toolchain. The default setup requires Python 3.11 or newer to validate and merge client configuration safely:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.2.1/core/scripts/install.sh \
   -o /tmp/memnest-install.sh
-# Review the script before running it.
-bash /tmp/memnest-install.sh --user
+# Read the script before running it.
+VERSION=v0.2.1 bash /tmp/memnest-install.sh --user
 curl -fsS http://127.0.0.1:3111/health
 ```
 
-The setup starts the local service and transcript watcher, configures detected Claude Code, Codex, and Cursor clients without replacing existing Memnest entries, and runs a remember/search self-test. It backs up every changed client file first. pi still uses the separately installed `pi-memnest` package shown below.
+Do not rerun the old installer over a customized service: it can overwrite service settings. Back up existing data before upgrading and use the [source-build upgrade instructions](docs/operations.md#one-command-setup-from-source).
 
-Windows, WSL, source builds, client-config rollback, uninstall, data backup, and native macOS validation limits are in the [operations guide](docs/operations.md).
+The first write or search downloads the embedding model, about 1.1 GB. Embedding can use about 1.9 GB of RAM. Windows and WSL instructions are in the [operations guide](docs/operations.md).
 
-The first write or search downloads the local embedding model. The default model uses about 1.1 GB on disk and can approach 1.9 GB of memory while embedding.
+### Next version: source build
 
-## Benchmark status
+From a checkout containing the unreleased changes, with Rust and Python 3.11 or newer:
 
-No comparative benchmark currently shows that Memnest retrieves more accurately or runs faster than other memory tools. A pinned [MemoryBench adapter](benchmarks/memorybench/README.md) and Korean retrieval smoke fixture are included. The checked-in Linux result ranked the expected session first for all three fixture questions, with 24.8 ms p50 and 27.4 ms p95 search latency after indexing. Answer accuracy and context-token metrics are deliberately unset because no answering or judge model was called. This tiny smoke result is not a LongMemEval, LoCoMo, or provider comparison.
+```bash
+cargo build --release --locked --manifest-path core/Cargo.toml
+bash core/scripts/setup.sh --user --bin core/target/release/memnest
+```
+
+On Linux, setup starts the server and watcher, adds missing Claude Code, Codex, and Cursor connections, and tests saving and searching. Client files are backed up before changes; existing Memnest entries are left alone. pi is installed separately. Automatic recall hooks are opt-in with `--autocontext`.
+
+Supported existing Linux units retain their settings and port. Custom commands, systemd drop-ins, and external environment files stop automatic setup before changes instead of being guessed at or overwritten. See [upgrade and recovery details](docs/operations.md#linux-service-upgrades).
 
 ## Connect a client
 
 ### pi
 
-Start the core service first, then install the adapter:
+For the published version:
 
 ```bash
-pi install npm:pi-memnest
+pi install npm:pi-memnest@0.2.0
 ```
 
-The adapter registers the memory tools, adds workspace-scoped Autocontext, and provides `/memnest` status. See the [pi extension guide](pi-extension/README.md).
+For the next-version source features, build and install the local extension from the repository root instead:
+
+```bash
+(cd pi-extension && npm ci && npm run build)
+pi install ./pi-extension
+```
+
+Both provide the memory tools and `/memnest` status. The published v0.2.0 enables automatic recall by default; the next version defaults to off. Set `MEMNEST_AUTOCONTEXT_MODE=off` to disable it explicitly, or `balanced` to enable it. See the [pi extension guide](pi-extension/README.md).
 
 ### MCP
 
@@ -75,128 +95,70 @@ Point a Streamable HTTP MCP client at the running service:
 }
 ```
 
-The same service also exposes a JSON HTTP API at `http://127.0.0.1:3111`. Stdio MCP and custom-host examples are in the [adapter guide](adapters/README.md).
-
-## What it does
-
-| Capability | Behavior |
-| --- | --- |
-| Durable memory | Saves decisions, preferences, corrections, facts, and rules across sessions. |
-| Conversation capture | Stores visible user and assistant text after credential redaction, without LLM summarization. |
-| Local search | Combines BM25 keyword matching with multilingual vector similarity. |
-| Workspace scope | Keeps each directory separate, with `playbook` for rules shared everywhere. |
-| Secret vault | Stores credentials in AES-256-GCM ciphertext outside searchable memory. |
-
-A small `CLAUDE.md` or `AGENTS.md` is still the simplest place for rules that should load every time. Memnest is for material that grows across projects and sessions and should be retrieved only when it matches the current query.
-
-The Rust service is the only engine. SQLite is the source of truth, the search indexes are rebuildable, embeddings run locally, and no LLM is called.
+Stdio MCP and JSON HTTP examples are in the [adapter guide](adapters/README.md). Clients must be connected to the same service to share records.
 
 ## Use it
 
-Every host uses the same five memory tools:
-
-```text
-memory_remember
-memory_search
-memory_get
-memory_update
-memory_delete
-```
-
-For example, an agent can save a shared rule and find it in a later session:
+All clients use the same five memory tools: `memory_remember`, `memory_search`, `memory_get`, `memory_update`, and `memory_delete`.
 
 ```text
 memory_remember(text="Use port 5433 for staging.", project="playbook")
 memory_search(query="staging database port", project="playbook")
+memory_get(id="<ID returned by search>")
 ```
 
-Omit `project` when the host supplies the current working directory. That searches the current workspace plus `playbook`. Use `project=all` only for a deliberate cross-project search. Delete moves a memory to trash rather than erasing it immediately.
+When the host provides the current directory, omit `project` to search that workspace plus `playbook`. Use `project=all` only for a deliberate cross-project search. When a fact changes, save its replacement with `supersedes=<old ID>`. Deletion moves the record to trash.
 
-Vault tools are hidden from model-facing clients by default. A trusted process can opt in with `MEMNEST_EXPOSE_SECRET_TOOLS=1`.
+### Read more of a source (next version)
 
-## Automatic recall and capture
+Search keeps its existing 600-character excerpts per result. The experimental total search-text cap was removed.
 
-`memnest hook` gives Claude Code and Codex a small context block before a prompt. It prints nothing if the service or workspace is unavailable, so it never blocks the prompt.
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "memnest hook" }] }
-    ]
-  }
-}
+```text
+memory_get(id="<result ID>", offset=0, max_chars=8000)
+memory_get(id="<same ID>", offset=<next_offset>, max_chars=8000)
+memory_get(id="<transcript ID>", before=1, after=1)
 ```
 
-`memnest watch` follows pi, Claude Code, and Codex transcripts and stores visible conversation text:
+Pagination lets you read beyond the original 8,000-character get limit. Nearby records come from the same captured conversation, not other projects. Capture order is not guaranteed to be the original conversation order. If a page is cut short, follow `next_offset`; clipped neighbors can be fetched by their IDs. See the [source-reading contract](docs/bounded-retrieval.md).
+
+### Capture conversations
 
 ```bash
 memnest watch
 memnest watch --backfill
 ```
 
-It skips system and developer prompts, reasoning, tool traffic, images, and subagent sidechains. Captured transcripts are retained unless deleted. Retention and recovery details are in the [operations guide](docs/operations.md).
+Capture is separate from automatic recall. It skips system/developer prompts, reasoning, tool traffic, images, and subagent sidechains. Captured transcripts remain until deleted. Automatic recall is optional; it can still select an irrelevant memory, so inspect sources before acting on them.
 
-## How search and storage work
+## How it works
 
-![memnest local-first architecture](docs/architecture.png)
+![Memnest architecture](docs/architecture.png)
 
-```mermaid
-flowchart LR
-    W1["remember, HTTP /add, or watch"] --> W2["redact known credential shapes"]
-    W2 --> W3["SQLite transaction"]
-    W3 --> W4["BM25 index"]
-    W3 --> W5["vector index"]
+One Rust service stores records in SQLite and searches with BM25 plus local multilingual embeddings. SQLite is the source of truth; the search indexes can be rebuilt. The next version extends source reading, not the search model or ranking algorithm.
 
-    R1["query and workspace"] --> R2["BM25 candidates"]
-    R1 --> R3["vector candidates"]
-    R2 --> R4["merge and rerank"]
-    R3 --> R4
-    R4 --> R5["results"]
-```
+Memnest makes no generative LLM calls. A connected coding AI still uses its own model to read results and decide what to do. Memnest cannot prove an answer exists or detect that your code made an old memory obsolete.
 
-Every write reaches SQLite before the derived indexes. Interrupted index work is replayed at startup, and missing indexes can be rebuilt from `memory.db`.
+## Evidence and limits
 
-Three behaviors matter when using the results:
+![Two independent MCP clients retrieve the same saved ID](docs/demo-result.png)
 
-- Memnest does not read your code, so it cannot detect that a saved fact became outdated. Save the replacement with `supersedes=<id>` when the fact changes.
-- Search ranks the nearest memories. It cannot prove that the store contains an answer, so verify a result before acting on it.
-- Explicit search includes captured transcripts for questions about earlier conversations. Automatic context only admits deliberate or consolidated memories, so an unfinished “tried X” note cannot silently steer the next prompt.
+The [reproducible demo](docs/demo.md) saves through one connection and retrieves the same ID and text through another. This verifies the shared store, not autonomous cross-agent reasoning. [Real-client validation](docs/client-validation.md) records pi success and the Claude Code/Codex account blockers separately.
 
-## Compared with built-in memory
-
-If you only need one tool to remember earlier chats, start with its built-in memory. Memnest is for retrieving a decision saved through Claude Code from pi or Codex, or keeping a searchable store of memories across workspaces under your own control.
-
-| Option | What it already provides | Why choose Memnest |
-| --- | --- | --- |
-| [ChatGPT memory](https://help.openai.com/en/articles/8590148), [Claude chat memory](https://support.claude.com/en/articles/11817273-use-claude-s-chat-search-and-memory-to-build-on-previous-context) | Reuse prior conversations and memories in later responses within each product. | Let connected coding tools query the same local store, separate from a chat product's own memory. |
-| [Claude Code memory](https://code.claude.com/docs/en/memory), `CLAUDE.md`, `AGENTS.md` | Claude Code already saves auto memory in local Markdown. Instruction files are good for rules that should load every time. | Search growing decisions and transcripts by keyword and meaning, using the same API from different tools. Local storage alone is not unique to Memnest. |
-| [MCP reference Memory Server](https://github.com/modelcontextprotocol/servers/tree/main/src/memory) | Stores entities, relations, and observations in a local knowledge graph. | Retrieve workspace-scoped decisions and conversation text rather than maintain a graph. |
-| Memory layers such as [Mem0](https://docs.mem0.ai/open-source/overview) | Offer self-hosting and configurable LLMs, embeddings, and storage. | Use one Rust service with local embeddings and BM25, no LLM calls, coding-tool adapters, and transcript capture. |
-
-There is no comparative benchmark showing that Memnest retrieves more accurately or runs faster than these alternatives. Its case is the combination of local storage, a shared API, workspace search, and transcript capture. A few short rules, or an existing memory tool that already works for you, do not need another service.
-
-Memnest does not automatically import or synchronize ChatGPT's or Claude's built-in memories. Clients need to be connected. If retrieved text is sent to a cloud model, that provider receives it. You also take on service operation and the local model's disk and RAM costs.
+A [MemoryBench adapter and Korean fixture](benchmarks/memorybench/README.md) are included. Three fixture questions retrieved the expected session first. This is a small retrieval check, not a comparison showing better accuracy or speed than other memory tools. Full benchmark and source-read tests have different scopes.
 
 ## Data and security
 
-The server binds to `127.0.0.1` by default. Do not expose port 3111 directly to the internet.
+The service binds to loopback by default. Do not expose port 3111 directly to the internet. Records stay local, but a cloud AI provider receives any retrieved text sent to its model.
 
-Regular memories are local but are not encrypted at rest. Redaction catches known credential shapes, not every possible secret, so credentials belong in the vault. Deleted records remain recoverable in trash for 30 days and may also exist in archive JSONL. Read [SECURITY.md](SECURITY.md) before storing sensitive material.
+Regular memories are not encrypted at rest. Redaction catches known credential patterns, not every secret. Use the AES-256-GCM vault for credentials; model-facing vault tools are hidden by default. Deleted records remain in trash for 30 days and may also remain in archive JSONL.
 
-Back up `memory.db` together with `master.key`. The database cannot be rebuilt, while the text and vector indexes can.
+Back up `memory.db` together with `master.key` before upgrading. Read [SECURITY.md](SECURITY.md) for the limits and the [operations guide](docs/operations.md) for backup, restore, retention, and uninstall.
 
-## Documentation
+## More documentation
 
-- [Operations](docs/operations.md): install, configuration, retention, backup, restore, and CLI reference
-- [Real client validation](docs/client-validation.md): one pi success and the exact Claude Code/Codex blockers
-- [Security](SECURITY.md): threat model, vault, redaction, deletion, and network binding
-- [Design decisions](docs/design-decisions.md): reasons behind the shipped architecture
-- [pi extension](pi-extension/README.md): pi setup and Autocontext behavior
-- [Adapters](adapters/README.md): MCP, HTTP, and custom-host integration
-- [Contributing](CONTRIBUTING.md): development setup and checks
-
-Memnest is in the `0.2.x` series. Back up the database before upgrading and check the [release notes](https://github.com/Blue-B/memnest/releases) for compatibility changes.
+- [Design decisions](docs/design-decisions.md)
+- [Development and checks](CONTRIBUTING.md)
+- [Release notes](https://github.com/Blue-B/memnest/releases)
 
 ## License
 

@@ -161,7 +161,7 @@ fn tools(crypto_enabled: bool) -> Vec<Value> {
     let mut tools = vec![
         json!({"name":"memory_remember","description":"Save something the next session should still know. Call it without being asked when the user corrects you, states a preference or a decision, or when you learn a config value, port, path, or a fix that took real effort to find. After changing system or local runtime state, save the exact command, backup path, and restore procedure immediately. Skip whatever the next session can re-derive by reading the repo. Pass cwd to store it in that directory's own workspace, which is right for anything specific to one codebase; pass project='playbook' instead when the lesson holds anywhere, because playbook is searched from every workspace while a workspace is not. Pass supersedes=<id> when this replaces an existing memory instead of adding to it. Credentials, tokens and passwords are rejected here; use secret_set.","inputSchema":{"type":"object","properties":{"text":{"type":"string"},"project":{"type":"string"},"cwd":{"type":"string","description":"Absolute workspace path; used only when project is omitted."},"importance":{"type":"string","enum":["log","knowledge","decision","preference"],"default":"knowledge","description":"preference when the user corrects you or states how they want things done, decision for an approach chosen among alternatives, knowledge for a stable fact, log for routine detail."},"memory_kind":{"type":"string","enum":["record","fact","rule","procedure"],"default":"record","description":"fact for stable project or environment knowledge, rule for a preference or guardrail, procedure for a reusable workflow, record for a one-off outcome."},"confidence":{"type":"number","minimum":0,"maximum":1},"source_ids":{"type":"array","items":{"type":"string"}},"supersedes":{"type":"string"},"sensitive":{"type":"boolean","description":"Must be false; use secret_set for sensitive values."}},"required":["text"]}}),
         json!({"name":"memory_search","description":"Hybrid memory search. Search before guessing at a port, path, config value, or an earlier decision: a stored answer beats a plausible one. Pass project explicitly or cwd for the isolated workspace plus playbook. project=all is explicit cross-project search.","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"project":{"type":"string"},"cwd":{"type":"string","description":"Absolute workspace path; used only when project is omitted."},"n_results":{"type":"integer","default":3,"minimum":1,"maximum":50},"recent_first":{"type":"boolean","default":false},"category":{"type":"string"}},"required":["query"]}}),
-        json!({"name":"memory_get","description":"Fetch one memory by id.","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}),
+        json!({"name":"memory_get","description":"Read a redacted memory page and optional same-session transcript neighbors in capture order. max_chars caps total document text; fetch clipped neighbors individually by id.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"offset":{"type":"integer","minimum":0},"max_chars":{"type":"integer","minimum":1,"maximum":30000},"before":{"type":"integer","minimum":0,"maximum":5},"after":{"type":"integer","minimum":0,"maximum":5}},"required":["id"]}}),
         json!({"name":"memory_update","description":"Update one memory in place and refresh its indexes. Use this to fix wording or metadata on a memory that is still correct. When the underlying fact actually changed, prefer memory_remember with supersedes so the earlier version stays auditable.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"project":{"type":"string"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"]},"chunk_type":{"type":"string","enum":["auto_log","manual","filtered","consolidated"]},"sensitive":{"type":"boolean","description":"Must be false; use secret_set for sensitive values."}},"required":["id"]}}),
         json!({"name":"memory_delete","description":"Soft-delete one memory to the internal trash bucket. Use it for something saved in error. When information merely went stale, prefer memory_remember with supersedes instead of deleting.","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}),
     ];
@@ -406,16 +406,9 @@ fn parse_importance(value: &str) -> Result<Importance> {
 
 async fn memory_get(system: Arc<RwLock<MemorySystem>>, args: &Value) -> Result<String> {
     let id = args.get("id").and_then(Value::as_str).unwrap_or("");
-    let c = super::operations::get(system, id).await?;
-    Ok(format!(
-        "id={} project={} type={} importance={} created={}\n{}",
-        c["id"].as_str().unwrap_or(""),
-        c["project"].as_str().unwrap_or(""),
-        c["chunk_type"].as_str().unwrap_or(""),
-        c["importance"].as_str().unwrap_or(""),
-        c["timestamp"].as_str().unwrap_or(""),
-        c["document"].as_str().unwrap_or("")
-    ))
+    let options = serde_json::from_value(args.clone())?;
+    let c = super::operations::get(system, id, options).await?;
+    Ok(serde_json::to_string(&c)?)
 }
 
 pub(crate) async fn memory_search(
@@ -458,7 +451,12 @@ pub(crate) async fn memory_search(
             item.score,
             item.id
         ));
-        lines.push(format!("    {}", item.document));
+        lines.push(format!(
+            "    doc_len={} returned_chars={}\n    {}",
+            item.doc_len,
+            item.document.chars().count(),
+            item.document
+        ));
     }
     Ok(lines.join("\n"))
 }
@@ -731,6 +729,7 @@ mod tests {
             crate::server::api::get_chunk_full(
                 State(system.clone()),
                 axum::extract::Path(id.to_string()),
+                axum::extract::Query(Default::default()),
             )
             .await,
         )
@@ -783,7 +782,7 @@ mod tests {
             .unwrap();
         assert_eq!(stored.project, "_trash");
         assert!(
-            crate::server::operations::get(system.clone(), id)
+            crate::server::operations::get(system.clone(), id, Default::default())
                 .await
                 .is_ok(),
             "soft delete keeps the record addressable by id"

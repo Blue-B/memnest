@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::{IntoResponse, Json, Response},
 };
 use serde::{Deserialize, Serialize};
@@ -352,14 +352,14 @@ pub async fn health(State(system): State<Arc<RwLock<MemorySystem>>>) -> Json<Hea
     })
 }
 
-/// Full (redacted) document for one chunk — the escape hatch for the 600-char
-/// search-result excerpt. The returned document is bounded at 8,000 chars so
-/// agents can read skills and lessons without silently losing content.
+/// Redacted Unicode page and optional adjacent transcript captures. Defaults to
+/// the first 8,000 chars; max_chars bounds all emitted document text together.
 pub async fn get_chunk_full(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Path(id): Path<String>,
+    Query(options): Query<super::operations::GetOptions>,
 ) -> Response {
-    match super::operations::get(system, &id).await {
+    match super::operations::get(system, &id, options).await {
         Ok(value) => Json(value).into_response(),
         Err(error) => operation_error_response(error),
     }
@@ -498,7 +498,9 @@ pub(crate) async fn run_hybrid_search_scope(
             {
                 continue;
             }
-            if super::operations::exclude_project(&c.project, options.exclude_reserved) {
+            if c.metadata.sensitive
+                || super::operations::exclude_project(&c.project, options.exclude_reserved)
+            {
                 continue;
             }
             if let Some(expected) = &cat_filter {
@@ -725,7 +727,17 @@ pub(crate) async fn add_impl(
         let existing = {
             let sys = system.read().await;
             let db = sys.db.read().await;
-            db.get_chunk(id)
+            match db.transcript_was_purged(id) {
+                Ok(true) => {
+                    let mut map = HashMap::new();
+                    map.insert("id".to_string(), id.clone());
+                    map.insert("project".to_string(), project);
+                    map.insert("status".to_string(), "deduplicated".to_string());
+                    return map;
+                }
+                Ok(false) => db.get_chunk(id),
+                Err(error) => Err(error),
+            }
         };
         match existing {
             Ok(Some(chunk)) => {
@@ -903,6 +915,7 @@ pub(crate) async fn persist_chunk_async(
         }
     }
 
+    let transcript = is_transcript_chunk(&metadata);
     let chunk = MemoryChunk {
         id: id.clone(),
         project: project.clone(),
@@ -912,16 +925,19 @@ pub(crate) async fn persist_chunk_async(
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
     };
+    let mut deduplicated = false;
     {
         let db = sys.db.write().await;
         if let Some(superseded_id) = superseded_id {
             db.insert_superseding_chunk(&chunk, &superseded_id)?;
+        } else if transcript {
+            deduplicated = !db.insert_transcript_if_absent(&chunk)?;
         } else {
             db.insert_chunk(&chunk)?;
         }
     }
     sys.sync_pending_indexes().await?;
-    Ok(None)
+    Ok(deduplicated.then_some(id))
 }
 
 pub async fn delete(
@@ -2078,6 +2094,50 @@ mod transcript_tests {
     }
 
     #[tokio::test]
+    async fn purged_transcript_replay_does_not_resurrect() {
+        let (_tmp, system) = super::test_support::build_system().await;
+        let request = || AddRequest {
+            text: "purged transcript replay marker".into(),
+            project: "replay".into(),
+            cwd: None,
+            metadata: Some(metadata("purged-event", 1)),
+            sensitive: None,
+        };
+        let saved = add_impl(system.clone(), request()).await;
+        assert_eq!(saved["status"], "succeeded");
+        super::super::operations::delete(system.clone(), vec![saved["id"].clone()])
+            .await
+            .unwrap();
+        {
+            let sys = system.read().await;
+            let db = sys.db.write().await;
+            let mut chunk = db.get_chunk(&saved["id"]).unwrap().unwrap();
+            chunk.metadata.trashed_at =
+                Some((chrono::Utc::now() - chrono::Duration::days(40)).to_rfc3339());
+            db.insert_chunk(&chunk).unwrap();
+        }
+        assert_eq!(
+            crate::lifecycle::prune_trash(system.clone()).await.unwrap(),
+            1
+        );
+        let replay = add_impl(system.clone(), request()).await;
+        assert_eq!(
+            replay["status"], "deduplicated",
+            "purged event was resurrected"
+        );
+        let sys = system.read().await;
+        assert!(
+            sys.db
+                .read()
+                .await
+                .get_chunk(&saved["id"])
+                .unwrap()
+                .is_none()
+        );
+        assert!(sys.text_search("purged", 10).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn transcript_retry_repairs_indexes_after_partial_store_failure() {
         let (_tmp, system) = super::test_support::build_system().await;
         let metadata = metadata("partial-event", 1);
@@ -2214,6 +2274,100 @@ pub(crate) mod test_support {
         assert_eq!(
             results.first().map(|item| item.id.as_str()),
             Some("target-hit")
+        );
+    }
+
+    /// Characterizes the current conservative fallback policy, not desired recall.
+    /// Controlled embeddings isolate candidate gating from model quality/ranking.
+    #[tokio::test]
+    async fn lexical_distractor_suppresses_even_exact_vector_candidate() {
+        let (_tmp, system) = build_system().await;
+        let query = "scheduler timezone";
+        let embedding = system.read().await.embedder.encode_query(query).unwrap();
+        let now = chrono::Utc::now();
+        let target = MemoryChunk {
+            id: "semantic-target".into(),
+            project: "gate-repro".into(),
+            document: "예약 작업의 시간대는 협정 세계시다".into(),
+            // A perfect candidate by construction; not a claim about this model.
+            embedding: Some(embedding.clone()),
+            metadata: Metadata::default(),
+            created_at: now,
+            updated_at: now,
+        };
+        {
+            let sys = system.read().await;
+            let vector = exact_vector_search(&embedding, std::slice::from_ref(&target), 5);
+            assert_eq!(vector[0].0, target.id);
+            assert!(vector[0].1 <= sys.config.distance_cutoff);
+            assert_eq!(
+                keyword_match_ratio(&target.document, &crate::search::extract_keywords(query, 2)),
+                0.0
+            );
+            sys.db.write().await.insert_chunk(&target).unwrap();
+            sys.add_text_doc(&target.id, &target.project, &target.document)
+                .await
+                .unwrap();
+            assert!(
+                sys.text_search_projects(query, &[target.project.clone()], 5)
+                    .await
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        let before = run_hybrid_search(
+            system.clone(),
+            query,
+            "gate-repro",
+            5,
+            SearchOptions::default(),
+            None,
+        )
+        .await;
+        assert_eq!(
+            before
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            ["semantic-target"]
+        );
+        let distractor = MemoryChunk {
+            id: "lexical-distractor".into(),
+            document: "Timezone is the name of an unused font in a rejected logo sketch.".into(),
+            embedding: Some(embedding.iter().map(|value| -value).collect()),
+            ..target.clone()
+        };
+        {
+            let sys = system.read().await;
+            sys.db.write().await.insert_chunk(&distractor).unwrap();
+            sys.add_text_doc(&distractor.id, &distractor.project, &distractor.document)
+                .await
+                .unwrap();
+            let text = sys
+                .text_search_projects(query, &[target.project.clone()], 5)
+                .await
+                .unwrap();
+            assert_eq!(
+                text.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+                ["lexical-distractor"]
+            );
+        }
+        let after = run_hybrid_search(
+            system,
+            query,
+            "gate-repro",
+            5,
+            SearchOptions::default(),
+            None,
+        )
+        .await;
+        assert_eq!(
+            after
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            ["lexical-distractor"],
+            "existing lexical gate discards perfect vector-only target despite spare result capacity"
         );
     }
 

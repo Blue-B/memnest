@@ -4,6 +4,22 @@ All notable changes to the `memnest` Rust engine are recorded here.
 
 ## Unreleased
 
+### Added
+
+- Paged `memory_get` over HTTP and MCP: Unicode offsets, a shared document-text budget, continuation offsets, and up to five captures before and after a transcript record in the same project, session, source, and cwd.
+- Selected source provenance with a separate 2048-character budget per record, at most 16 source IDs, and an explicit `provenance_truncated` flag. Stored text and metadata are not modified by reading.
+- Linux/macOS setup with client detection, private exact backups, conflict-aware restore, and prerequisite checks. MCP tools and the watcher work without automatic recall; the Claude Code prompt hook requires `--autocontext`, and existing hooks are preserved.
+- macOS launchd installation and release packaging for Intel and Apple Silicon. Native service lifecycle validation still requires a macOS host.
+- A pinned MemoryBench adapter, small Korean retrieval fixture, and reproducible independent-client demo. These are not answer-accuracy or provider-comparison benchmarks.
+
+### Compatibility
+
+- Search ranking and the existing 600-character excerpts are unchanged; there is no aggregate search text cap.
+- MCP `memory_get` now returns JSON text, including continuation and provenance, instead of the former compact header and document. Consumers parsing the old display text need updating.
+- Transcript neighbors follow capture order, not source chronology or final decisions. This change does not require deleting or recapturing an existing store.
+
+See [the next-release comparison](../docs/next-release.ko.md) for user-facing changes since v0.2.1.
+
 ## [0.2.1] - 2026-09-01
 
 ### Fixed

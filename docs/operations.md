@@ -8,9 +8,9 @@ For what memnest is and how to connect an agent, start at the [README](../README
 
 ## Requirements
 
-Running a Linux or macOS release binary needs neither Git nor Rust. The default setup requires Python 3.11 or newer so the standard-library TOML parser can validate Codex configuration before any client file changes. Building from source needs Git and a Rust toolchain with Rust 2024 edition support. The first embedding operation needs internet access so fastembed can download the configured model. Core CI builds and tests on Linux and Windows and builds both native macOS release targets.
+Published core v0.2.1 provides Linux x86_64 and Arm64 binaries, which need neither Git nor Rust. macOS packaging code is present but no macOS archive is published in that release, and native launchd operation remains unverified. The source setup described below is not in v0.2.1; it requires Python 3.11 or newer to validate client configuration. Building from source needs Git and a Rust toolchain with Rust 2024 edition support. The first embedding operation needs internet access to download the configured model. Workflow definitions include macOS builds; that is not evidence of a completed native installation test.
 
-The optional package under `pi-extension/` lists its own runtime requirements in its package README.
+Linux setup requires `systemctl` and `systemd-analyze` from systemd. The latter is used read-only to inspect user or system unit search paths before an upgrade. The optional package under `pi-extension/` lists its own runtime requirements in its package README.
 
 ## Run as a service
 
@@ -21,16 +21,19 @@ cd core
 cargo build --release
 ```
 
-### One-command setup on Linux and macOS
+### One-command setup from source
 
-From an extracted release archive (or from `core/` after building), run:
+These instructions require a checkout containing the unreleased setup changes. From `core/` after building, run:
 
 ```bash
-scripts/setup.sh --user --bin ./memnest              # extracted archive
-scripts/setup.sh --user --bin target/release/memnest # source build
+scripts/setup.sh --user --bin target/release/memnest
 ```
 
-User-mode setup installs and starts the server and conversation watcher; setup detects Claude Code, Codex, Cursor, and pi, and merges only the supported MCP and Claude prompt-hook entries. Existing Memnest client entries are left unchanged. Every changed client file is first copied byte-for-byte to a private timestamped directory. That directory contains the manifest and its own restore script, so uninstalling the service does not remove the rollback tool. A newly created file gets an `ABSENT` marker. Setup finishes by remembering, searching for, and trashing a unique scratch memory. The first round trip can download the embedding model.
+Future archives containing `scripts/setup.sh` can use `scripts/setup.sh --user --bin ./memnest`. Published v0.2.1 does not contain that script. The updated downloader detects this older layout: it permits a fresh Linux server install but refuses to run the legacy installer over an existing service or with `--autocontext`. Install the local pi extension separately when using source-only features; the npm package does not yet include them.
+
+User-mode setup installs and starts the server and conversation watcher; setup detects Claude Code, Codex, Cursor, and pi, and merges the supported MCP entries. Automatic recall is not installed by default: add `--autocontext` to `setup.sh` or `install.sh` to opt in to the Claude Code prompt hook. Existing Memnest client entries are left unchanged. Every changed client file is first copied byte-for-byte to a private timestamped directory. That directory contains the manifest and its own restore script, so uninstalling the service does not remove the rollback tool. A newly created file gets an `ABSENT` marker. Setup finishes by remembering, searching for, and trashing a unique scratch memory. The first round trip can download the embedding model.
+
+For an existing installation, `python3 ~/.local/share/memnest/scripts/setup-clients.py --autocontext` opts in without reinstalling the service. Existing prompt hooks are preserved, not silently disabled on upgrade; remove only the Memnest command from the client's `UserPromptSubmit` configuration if you no longer want it. pi's separate default-off policy is controlled by `MEMNEST_AUTOCONTEXT_MODE` and reported by `/memnest`. Explicit tools and `memnest watch` do not depend on either recall hook.
 
 Setup prints an exact restore command using the timestamped directory. Restore first checks the post-setup SHA-256 for every client file and refuses to overwrite later user or client changes. Review conflicting files before using `--force-restore`, which intentionally replaces those changes with the pre-setup copies.
 
@@ -39,7 +42,7 @@ python3 ~/.memnest/setup-backups/<timestamp>/setup-clients.py \
   --restore ~/.memnest/setup-backups/<timestamp>/manifest.json
 ```
 
-On Linux this uses systemd and stores user data in `~/.memnest`. Use `--system` for `/var/lib/memnest`; system mode intentionally does not run a root transcript watcher, so capture must be run by the desktop user. On macOS it installs both `io.memnest.service` and `io.memnest.watch` in `~/Library/LaunchAgents`, supports Intel and Apple Silicon release archives, and stores logs in `~/Library/Logs/Memnest`.
+On Linux this uses systemd and stores user data in `~/.memnest`. Use `--system` for `/var/lib/memnest`; system mode intentionally does not run a root transcript watcher, so capture must be run by the desktop user. The macOS implementation targets `io.memnest.service` and `io.memnest.watch` in `~/Library/LaunchAgents`, with logs in `~/Library/Logs/Memnest`. It is source-only and unverified on an actual Mac.
 
 The lower-level Linux installer remains available:
 
@@ -47,6 +50,18 @@ The lower-level Linux installer remains available:
 scripts/preflight-linux.sh --user --bin target/release/memnest
 scripts/install-linux.sh --user --bin target/release/memnest
 ```
+
+### Linux service upgrades
+
+The source installer keeps the existing server and watcher units instead of replacing them with templates. For a supported packaged layout, custom `Environment=` entries, logging, permissions, and other directives remain intact. When `MEMNEST_HOST` and `MEMNEST_PORT` are omitted, setup reads the installed endpoint and uses it for service probes, new client entries, and the scratch round trip. Existing client entries are deliberately not rewritten; if you intentionally change the endpoint, update those entries separately.
+
+To explicitly change a supported endpoint assignment, pass the value to setup, for example `MEMNEST_PORT=3222 scripts/setup.sh --user --bin target/release/memnest`. Before modifying a unit, the installer writes a private `*.backup.*` copy beside it and prints the exact restore command. Unchanged units are not rewritten. System-mode staging uses a unique private temporary directory, not a shared `/tmp/memnest.service` file.
+
+This is not a general systemd configuration editor. It requires the packaged `ExecStart` and standalone, unquoted `Environment=MEMNEST_HOST=...` / `Environment=MEMNEST_PORT=...` assignments. It stops before changes for custom commands, external environment files, ambiguous endpoint assignments, conflicting watcher ports, symlink units, or detected drop-ins. Packaged setup supports IPv4 loopback (`127.0.0.1` or `localhost`); other binds need manual configuration. These refusals preserve existing settings rather than silently resetting them.
+
+For an unsupported customization, back up the database and service configuration, stop the relevant service, and replace only the binary at the path in your reviewed `ExecStart`. Leave the units and drop-ins intact, restart the service, then check its actual endpoint. Do not remove custom configuration just to make setup proceed. To roll back an intentional unit change, stop the affected services, run the printed restore commands for both changed units, reload systemd, and restart them. Unit backups do not replace a backup of the previous binary and database.
+
+`python3 core/scripts/test-install-linux.py` checks user/system file effects and setup endpoint agreement in disposable paths. Its service manager, privilege command, and HTTP probe are test doubles, not a native system-level installation.
 
 ### Rollback and uninstall
 
@@ -59,7 +74,7 @@ Restore client configuration before using `--remove-data`, because setup manifes
 
 Pass `--remove-data` only when the retained store and setup backups should be permanently deleted. Uninstall does not guess which shared client entries the user still wants; use the exact manifest restore command first to roll those back.
 
-Validate an installed macOS service with `scripts/validate-installed-macos.sh`. This repository's Linux environment can syntax- and contract-check launchd files, but only a logged-in macOS host can exercise `launchctl`, launch persistence, restart, reinstall, uninstall, and native x86_64/arm64 execution. The release workflow builds and runs each native binary, but it does not execute the launchd lifecycle. macOS archives are not code-signed or notarized, so downloaded artifacts may require an explicit Gatekeeper approval until signing is added.
+Validate an installed macOS service with `scripts/validate-installed-macos.sh`. This repository's Linux environment can syntax- and contract-check launchd files, but only a logged-in macOS host can exercise `launchctl`, launch persistence, restart, reinstall, uninstall, and native x86_64/arm64 execution. The release workflow is configured to build and run native binaries, but does not test the launchd lifecycle. That configuration is not a claim that the current changes have run in hosted CI. The macOS packaging code does not add signing or notarization; a future downloaded artifact may require Gatekeeper approval.
 
 ### WSL
 
@@ -210,3 +225,77 @@ scripts/verify-contract.sh http://127.0.0.1:3150 ./target/release/memnest /tmp/m
 Core tests run serially because environment-variable and vault lifecycle tests share process-global state and interfere with one another under the default parallel Rust test runner. CI uses the same flag.
 
 A smoke test writes into whichever store answers the URL it is given. Never point one at the store you actually use; see [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+## Read-only first-use diagnosis (source-only)
+
+Build this checkout, then target the endpoint explicitly. This flag is not in the
+published core v0.2.1; matching version strings alone do not prove compatibility.
+
+```bash
+core/target/debug/memnest --host 127.0.0.1 --port 3111 status --diagnose
+# If authentication is configured, supply the existing MEMNEST_TOKEN privately
+# in the environment; do not paste it into logs, URLs, or shell history.
+```
+
+This performs only `GET /health` and MCP `tools/list` (POST `/mcp`), with a five-second
+combined HTTP budget, 256 KiB per-response limit, no redirects or proxies, and no
+DB/index/model initialization. Exit 0 means healthy contract + advertised scoped
+search/paged-get fields, **not** successful embedding or complete client compatibility.
+Exit 1 distinguishes transport/unreachable, HTTP 401/403 authentication failure,
+invalid/old capability contracts, oversized replies and timeout. It never sends
+memory text, invokes a memory tool, changes client settings, or prints the token.
+Use only an endpoint you trust: explicit non-loopback HTTP sends the bearer token
+without TLS. The flag uses `--host`/`--port`, not `MEMNEST_URL`.
+
+Embedding readiness, index backlog/failures, and remote capture are reported
+**unknown**, not inferred from health. Existing `memnest --data-dir <watcher-state-dir>
+status` reads local watcher heartbeat/last stored time (may differ from server data).
+A fresh heartbeat is not proof that every transcript was indexed. Diagnostic mode
+does not read that state file. Existing `--doctor` is **not** this read-only path:
+it writes a test file and opens indexes; do not use it as a non-mutating live probe.
+
+Recovery: unreachable → check the intended endpoint and service logs; authentication
+failure → compare the server/client token configuration without printing it;
+capability mismatch → use matching source core/client builds or released features.
+Do not delete the DB or reinstall client settings to fix a token/schema mismatch.
+For data recovery, use the offline backup/restore procedure above, retaining the
+previous binary and complete data directory; a client-config backup is not a memory backup.
+
+### Disposable first-memory / retrieval check
+
+For a **temporary demo**, not an install or import of your real conversations:
+
+```bash
+cd core && cargo build --offline && cd ..
+python3 scripts/test-status-diagnostic.py
+python3 scripts/evaluate-coding-memory.py --output /tmp/memnest-evaluation.json
+```
+
+The evaluation requires the already populated `core/target/test-model-cache`; it
+refuses a missing cache and blocks model downloads. It creates a new temporary DB,
+a random loopback endpoint and a disposable token, checks service identity before
+writes, stores the explicit fixture, searches it, and removes only its own data and
+child process. JSON results and the neighboring `.daemon.log` remain at the output
+path. No real installation is probed. Actual retained user data belongs in the
+configured service data directory, never this temporary demo. Setup's separate
+scratch roundtrip *does* write to its configured service before trashing the probe.
+Automatic recall remains opt-in; evaluation does not install capture or recall.
+
+`scripts/preflight.sh` remains a legacy release check,
+not this safe demo: it uses fixed/shared defaults and may download a model. Do not
+use it for isolated no-download validation. See the fixed fixture and measured
+limitations in [the product plan](product-upgrade-plan.ko.md).
+
+Diagnostic exit status is machine-readable: **0** for the two advertised contracts,
+**1** for a diagnostic failure. Failure categories currently use human-readable fixed
+messages, not distinct numeric codes or JSON. HTTP response strings (including
+`version`, errors and tool descriptions) are not echoed: they may contain credentials,
+server-local paths or terminal escapes. The explicitly requested endpoint is printed;
+the local `--data-dir` and remote health `data_dir` are not. Use ordinary `status` for
+the CLI version/local capture report. The stored evaluation JSON retains its original
+pre-hardening diagnostic transcript rather than rewriting measured evidence.
+
+Search scores are composite ranking scores, **not relevance probabilities**. The
+fixture's negative-empty rate measures direct search, not automatic-context injection
+abstention. Optional pi recall has separate scope/type/score gates and is off by
+default; this evaluation does not prove how often those gates inject or abstain.

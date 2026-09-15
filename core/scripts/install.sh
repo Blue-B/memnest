@@ -4,11 +4,12 @@ set -euo pipefail
 REPO="${REPO:-https://github.com/Blue-B/memnest}"
 VERSION="${VERSION:-latest}"
 MODE="${MODE:-user}"
+AUTOCONTEXT=0
 
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/install.sh [--user|--system]
+  scripts/install.sh [--user|--system] [--autocontext]
 
 Downloads a release archive and runs the idempotent Linux systemd or macOS
 launchd setup, including detected client configuration and a scratch round trip.
@@ -23,6 +24,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
   --user) MODE="user" ;;
   --system) MODE="system" ;;
+  --autocontext) AUTOCONTEXT=1 ;;
   -h | --help)
     usage
     exit 0
@@ -98,5 +100,32 @@ tar -xzf "$TMP_DIR/$ARCHIVE" -C "$TMP_DIR"
 
 (
   cd "$TMP_DIR"
-  scripts/setup.sh "--${MODE}" --bin "$TMP_DIR/memnest"
+  args=("--${MODE}" --bin "$TMP_DIR/memnest")
+  [ "$AUTOCONTEXT" = 0 ] || args+=(--autocontext)
+  if [ -f scripts/setup.sh ]; then
+    scripts/setup.sh "${args[@]}"
+  else
+    # v0.2.1 predates setup.sh. Do not run its overwriting installer on an upgrade.
+    [ "$OS" = linux ] && [ "$AUTOCONTEXT" = 0 ] || {
+      echo "Release $VERSION does not provide setup for these options; use a source build." >&2
+      exit 1
+    }
+    unit_paths="$(systemd-analyze "--$MODE" unit-paths)" || {
+      echo "Cannot inspect systemd unit paths; use a manual/source upgrade." >&2; exit 1;
+    }
+    [ -n "$unit_paths" ] || { echo "Empty systemd unit path; refusing legacy install." >&2; exit 1; }
+    while IFS= read -r unit_dir; do
+      [ ! -d "$unit_dir" ] || { [ -r "$unit_dir" ] && [ -x "$unit_dir" ]; } || {
+        echo "Cannot inspect systemd path: $unit_dir" >&2; exit 1;
+      }
+      for entry in memnest.service memnest-watch.service memnest.service.d memnest-watch.service.d memnest-.service.d service.d; do
+        if [ -e "$unit_dir/$entry" ] || [ -L "$unit_dir/$entry" ]; then
+          echo "Legacy release installer cannot preserve existing service settings; use the source-build upgrade path." >&2
+          exit 1
+        fi
+      done
+    done <<< "$unit_paths"
+    echo "Legacy release: installs the Linux server only. Configure clients and capture separately."
+    scripts/install-linux.sh "--${MODE}" --bin "$TMP_DIR/memnest"
+  fi
 )

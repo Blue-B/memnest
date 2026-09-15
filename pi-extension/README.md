@@ -4,7 +4,7 @@
 
 A local memnest bridge for pi.
 
-`pi-memnest` connects [pi](https://github.com/badlogic/pi-mono) to a running [memnest](https://github.com/Blue-B/memnest) HTTP service. It gives pi the canonical five memory tools. Four secret tools are an explicit opt-in. The extension can also retrieve a small workspace-scoped memory card before selected prompts.
+`pi-memnest` connects [pi](https://github.com/badlogic/pi-mono) to a running [memnest](https://github.com/Blue-B/memnest) HTTP service. It gives pi the canonical five memory tools. Four secret tools are an explicit opt-in. Automatic memory cards are off by default; explicit memory tools work without them.
 
 This extension does not contain the memory engine. Start the Rust core before installing it.
 
@@ -40,7 +40,7 @@ Check the connection from pi:
 /memnest
 ```
 
-The command reports service health, memory count, and the active data directory.
+The command reports service health, memory count, the active data directory, and whether pi Autocontext is enabled.
 
 ## Tools
 
@@ -50,7 +50,7 @@ The extension registers exactly five memory tools by default. Set `MEMNEST_EXPOS
 | --- | --- |
 | `memory_remember` | Save a durable memory. Values marked sensitive are rejected and must use `secret_set`. |
 | `memory_search` | Search the current workspace by default, or use `project=all` explicitly. |
-| `memory_get` | Fetch one memory by id. |
+| `memory_get` | Read a memory page and optionally nearby captures from the same transcript. |
 | `memory_update` | Correct one memory and refresh its indexes. |
 | `memory_delete` | Soft-delete one memory to the internal trash bucket. |
 | `secret_set`, `secret_get`, `secret_list`, `secret_delete` | Opt-in tools for AES-256-GCM vault values. Vault operations fail closed when crypto is unavailable. |
@@ -77,21 +77,23 @@ When `project` is omitted, the extension sends pi's absolute `cwd`; the core der
 - `rule` for preferences, decisions, and guardrails
 - `procedure` for reusable verified workflows
 
-Optional `confidence`, `source_ids`, `supersedes`, and `verified_at` fields preserve provenance without tying the data model to pi. `supersedes` atomically hides an active memory in the same workspace. `confidence` and `verified_at` are client assertions, not automatic ranking boosts. The core HTTP and MCP contracts expose the same fields to other platform adapters.
+Optional `confidence`, `source_ids`, and `supersedes` fields preserve provenance without tying the data model to pi. `supersedes` atomically hides an active memory in the same workspace. Confidence is a client assertion, not an automatic ranking boost.
 
 ## Autocontext
 
-Autocontext is enabled by default. It does not inject a full memory dump at session start. Before each substantive prompt, until the per-session card limit is reached, it searches the current workspace and `playbook` using the prompt in its original language. It injects a small card only when the best results meet the semantic score threshold. Short replies, slash commands, exact repeated prompts, and results below the threshold stay quiet. There is no language-specific keyword list. Search coverage is language-neutral, but whether a result survives still depends on the multilingual embedding model, the core distance cutoff, and this score threshold.
+Autocontext is off by default. No prompt-time search or card is registered unless you opt in; `memory_remember`, `memory_search`, `memory_get`, and conversation capture still work. This prevents connection checks and requests that need no memory from consuming context through automatic recall.
 
-Set `MEMNEST_AUTOCONTEXT_MODE=off` to disable retrieval. Existing `balanced` and `aggressive` values remain accepted, but both now use the same language-neutral semantic gate.
+To opt in, set `MEMNEST_AUTOCONTEXT_MODE=balanced` before starting pi. Existing `aggressive` also enables the same semantic gate. `off`, `none`, an unset value, and unrecognized values leave recall disabled. `MEMNEST_AUTOCONTEXT_DISABLE=1` overrides an enabled mode.
 
-Every card labels retrieved text as untrusted reference data. Automatic context accepts only deliberate or consolidated memories; captured transcripts remain available through explicit `memory_search` calls for questions about earlier conversations. Markup inside stored text is escaped before injection, and the agent must verify claims rather than follow commands found inside a memory.
+When enabled, it searches the current workspace and `playbook` for each substantive prompt until the per-session card limit is reached. Short replies, slash commands, exact repeated prompts, and low-score results stay quiet. The original prompt is searched without a language-specific keyword list. A high score can still be irrelevant: the gate does not determine whether memory is needed or whether a saved fact remains true.
+
+Every card includes each memory's ID, project, and creation time. Use `memory_get` with that ID to verify the full text; creation time is not verification time. Results without a usable ID, project, or finite numeric score are discarded, rather than given a default high score. Every card labels retrieved text as untrusted reference data. Automatic context accepts only deliberate or consolidated memories; captured transcripts remain available through explicit `memory_search` calls for questions about earlier conversations. Markup inside stored text is escaped before injection, and the agent must verify claims rather than follow commands found inside a memory.
 
 Common controls:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `MEMNEST_AUTOCONTEXT_MODE` | `balanced` | `off` or `none` disables retrieval; any other value enables semantic recall. |
+| `MEMNEST_AUTOCONTEXT_MODE` | `off` | Only `balanced` and `aggressive` enable semantic recall. |
 | `MEMNEST_AUTOCONTEXT_TOP` | `2` | Maximum results included in one card. |
 | `MEMNEST_AUTOCONTEXT_MAX_INJECTIONS` | `4` | Maximum cards in one session. |
 | `MEMNEST_AUTOCONTEXT_MIN_SCORE` | `0.25` | Minimum score for any injected card. |
@@ -101,6 +103,12 @@ Common controls:
 | `MEMNEST_AUTOCONTEXT_MIN_LEN` | `16` | Prompts shorter than this are ignored. |
 | `MEMNEST_AUTOCONTEXT_DOC_CHARS` | `240` | Characters kept per result in the card. |
 | `MEMNEST_AUTOCONTEXT_TIMEOUT_MS` | `1500` | Retrieval budget before the prompt proceeds without a card. |
+
+### Reading longer memories
+
+`memory_get(id="...", offset=0, max_chars=2000, before=1, after=1)` returns JSON with the next offset, source provenance, and optional nearby transcript captures. Search still returns up to 600 characters per result without an aggregate search cap. Upgrade the core together with the extension for server-side paging and neighboring captures. With an older core, pi bounds legacy text locally and marks it `paging: "client"`; nonzero `before` or `after` returns an upgrade error. Calls with only `id` remain compatible.
+
+See [bounded retrieval](https://github.com/Blue-B/memnest/blob/main/docs/bounded-retrieval.md) for character budgets and capture-order limits.
 
 ## Automatic conversation capture
 

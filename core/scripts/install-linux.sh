@@ -7,13 +7,6 @@ HOST="${MEMNEST_HOST:-127.0.0.1}"
 PORT="${MEMNEST_PORT:-3111}"
 BIN_SRC="${BIN_SRC:-}"
 
-validate_port() {
-  case "$PORT" in ''|*[!0-9]*) echo "MEMNEST_PORT must be an integer from 1 to 65535" >&2; exit 2 ;; esac
-  [ "${#PORT}" -le 5 ] && [ "$((10#$PORT))" -ge 1 ] && [ "$((10#$PORT))" -le 65535 ] || {
-    echo "MEMNEST_PORT must be an integer from 1 to 65535" >&2; exit 2;
-  }
-}
-
 usage() {
   cat <<'EOF'
 Usage: scripts/install-linux.sh [--user|--system] [--bin /path/to/memnest]
@@ -21,8 +14,10 @@ Usage: scripts/install-linux.sh [--user|--system] [--bin /path/to/memnest]
 Installs Memnest as a systemd service on Linux.
 
 Environment:
-  MEMNEST_HOST  default 127.0.0.1
-  MEMNEST_PORT  default 3111
+  MEMNEST_HOST  preserve installed value; default 127.0.0.1 for new installs
+  MEMNEST_PORT  preserve installed value; default 3111 for new installs
+Explicit values update supported endpoint assignments; other unit settings are retained.
+Custom commands, drop-ins or external environment files require a manual upgrade.
 EOF
 }
 
@@ -36,22 +31,12 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
-validate_port
+# shellcheck source=linux-service-config.sh
+source "$ROOT/scripts/linux-service-config.sh"
+resolve_linux_service_config
 
 if ! command -v systemctl >/dev/null 2>&1; then
   echo "systemd is required for this installer" >&2
-  exit 1
-fi
-
-is_local_host() {
-  case "$1" in
-    127.0.0.1|localhost|::1) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-if ! is_local_host "$HOST"; then
-  echo "install-linux.sh only supports local service binds. Use 127.0.0.1 for packaged installs; configure remote access manually with MEMNEST_TOKEN and a reviewed network policy." >&2
   exit 1
 fi
 
@@ -72,20 +57,30 @@ if [ -z "$BIN_SRC" ]; then
   fi
 fi
 
-patch_service_env() {
-  local service_file="$1"
-  local runner="${2:-}"
-  if [ -n "$runner" ]; then
-    $runner sed -i \
-      -e "s/^Environment=MEMNEST_HOST=.*/Environment=MEMNEST_HOST=${HOST}/" \
-      -e "s/^Environment=MEMNEST_PORT=.*/Environment=MEMNEST_PORT=${PORT}/" \
-      "$service_file"
-  else
-    sed -i \
-      -e "s/^Environment=MEMNEST_HOST=.*/Environment=MEMNEST_HOST=${HOST}/" \
-      -e "s/^Environment=MEMNEST_PORT=.*/Environment=MEMNEST_PORT=${PORT}/" \
-      "$service_file"
+STAGING="$(mktemp -d)"
+trap 'rm -f "$STAGING/memnest.service" "$STAGING/memnest-watch.service"; rmdir "$STAGING"' EXIT
+PRIV=()
+[ "$MODE" != system ] || PRIV=(sudo)
+
+render_service() {
+  local template="$1" dest="$2" tmp backup mode=0644
+  tmp="$STAGING/$(basename "$dest")"
+  # Upgrade the binary, not the user's unit. Only endpoint lines may change.
+  [ ! -e "$dest" ] || template="$dest"
+  sed \
+    -e "s/^Environment=MEMNEST_HOST=.*/Environment=MEMNEST_HOST=${HOST}/" \
+    -e "s/^Environment=MEMNEST_PORT=.*/Environment=MEMNEST_PORT=${PORT}/" \
+    "$template" >"$tmp"
+  if [ -e "$dest" ]; then
+    cmp -s "$tmp" "$dest" && return 0
+    mode="$(stat -c '%a' "$dest")"
+    backup="$("${PRIV[@]}" mktemp "$dest.backup.XXXXXX")"
+    "${PRIV[@]}" install -m 0600 "$dest" "$backup"
+    printf 'Service backup: %s\nRestore: ' "$backup"
+    printf '%q ' "${PRIV[@]}" install -m "$mode" "$backup" "$dest"
+    printf '\n'
   fi
+  "${PRIV[@]}" install -m "$mode" "$tmp" "$dest"
 }
 
 wait_for_health() {
@@ -107,29 +102,25 @@ wait_for_health() {
 }
 
 if [ "$MODE" = "system" ]; then
+  sudo install -d /usr/local/bin /var/lib/memnest /usr/local/share/memnest/scripts
   if ! [ "$BIN_SRC" -ef /usr/local/bin/memnest ]; then
     sudo install -m 0755 "$BIN_SRC" /usr/local/bin/memnest
   fi
-  sudo mkdir -p /var/lib/memnest /usr/local/share/memnest
-  sudo install -d /usr/local/share/memnest/scripts
   sudo install -m 0755 "$ROOT/scripts/setup-clients.py" "$ROOT/scripts/uninstall-linux.sh" /usr/local/share/memnest/scripts/
-  sudo install -m 0644 "$ROOT/packaging/systemd/memnest.service" /etc/systemd/system/memnest.service
-  patch_service_env /etc/systemd/system/memnest.service sudo
+  render_service "$ROOT/packaging/systemd/memnest.service" "$SERVICE_DIR/memnest.service"
   sudo systemctl daemon-reload
   sudo systemctl enable memnest.service
   sudo systemctl restart memnest.service
   sudo systemctl status memnest.service --no-pager -l
   echo "System installs do not run a root transcript watcher; run memnest watch as the desktop user if capture is wanted."
 else
-  install -d "$HOME/.local/bin" "$HOME/.local/share/memnest/scripts" "$HOME/.config/systemd/user" "$HOME/.memnest"
+  install -d "$HOME/.local/bin" "$HOME/.local/share/memnest/scripts" "$SERVICE_DIR" "$HOME/.memnest"
   if ! [ "$BIN_SRC" -ef "$HOME/.local/bin/memnest" ]; then
     install -m 0755 "$BIN_SRC" "$HOME/.local/bin/memnest"
   fi
   install -m 0755 "$ROOT/scripts/setup-clients.py" "$ROOT/scripts/uninstall-linux.sh" "$HOME/.local/share/memnest/scripts/"
-  install -m 0644 "$ROOT/packaging/systemd/memnest-user.service" "$HOME/.config/systemd/user/memnest.service"
-  install -m 0644 "$ROOT/packaging/systemd/memnest-watch-user.service" "$HOME/.config/systemd/user/memnest-watch.service"
-  patch_service_env "$HOME/.config/systemd/user/memnest.service"
-  sed -i "s/^Environment=MEMNEST_PORT=.*/Environment=MEMNEST_PORT=${PORT}/" "$HOME/.config/systemd/user/memnest-watch.service"
+  render_service "$ROOT/packaging/systemd/memnest-user.service" "$SERVICE_DIR/memnest.service"
+  render_service "$ROOT/packaging/systemd/memnest-watch-user.service" "$SERVICE_DIR/memnest-watch.service"
   systemctl --user daemon-reload
   systemctl --user enable memnest.service memnest-watch.service
   systemctl --user restart memnest.service memnest-watch.service
