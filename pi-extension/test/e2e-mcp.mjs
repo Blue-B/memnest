@@ -7,8 +7,11 @@ import { fileURLToPath } from "node:url";
 
 const bin = process.env.MEMNEST_BIN ?? "memnest";
 const data = mkdtempSync(join(tmpdir(), "memnest-contract-e2e-"));
-const modelCache = process.env.MEMNEST_MODEL_CACHE ?? fileURLToPath(new URL("../../core/target/test-model-cache", import.meta.url));
-if (existsSync(modelCache)) symlinkSync(modelCache, join(data, "models"), "dir");
+const modelCache =
+	process.env.MEMNEST_MODEL_CACHE ??
+	fileURLToPath(new URL("../../core/target/test-model-cache", import.meta.url));
+if (existsSync(modelCache))
+	symlinkSync(modelCache, join(data, "models"), "dir");
 const child = spawn(bin, ["--mcp", "--data-dir", data], {
 	stdio: ["pipe", "pipe", "pipe"],
 	env: { ...process.env, MEMNEST_EXPOSE_SECRET_TOOLS: "1" },
