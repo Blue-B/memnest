@@ -238,11 +238,24 @@ pub struct LifecycleInfo {
 }
 
 #[derive(Serialize)]
+pub struct EmbeddingInfo {
+    loaded: bool,
+}
+
+#[derive(Serialize)]
+pub struct IndexInfo {
+    pending_operations: Option<usize>,
+    rebuild_required: Option<bool>,
+}
+
+#[derive(Serialize)]
 pub struct HealthResponse {
     status: String,
     version: String,
     data_dir: String,
     embed_model: String,
+    embedding: EmbeddingInfo,
+    index: IndexInfo,
     lifecycle: LifecycleInfo,
 }
 
@@ -337,11 +350,27 @@ fn operation_error_response(error: super::operations::OperationError) -> Respons
 pub async fn health(State(system): State<Arc<RwLock<MemorySystem>>>) -> Json<HealthResponse> {
     let sys = system.read().await;
     let status = sys.lifecycle_status.read().await;
+    let (pending_operations, rebuild_required) = {
+        let db = sys.db.read().await;
+        (
+            db.pending_index_ops()
+                .ok()
+                .map(|operations| operations.len()),
+            db.index_rebuild_required().ok(),
+        )
+    };
     Json(HealthResponse {
         status: "ok".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         data_dir: sys.config.data_dir.display().to_string(),
         embed_model: sys.config.embed_model.clone(),
+        embedding: EmbeddingInfo {
+            loaded: sys.embedder.is_loaded(),
+        },
+        index: IndexInfo {
+            pending_operations,
+            rebuild_required,
+        },
         lifecycle: LifecycleInfo {
             last_run: status.last_run.map(|dt| dt.to_rfc3339()),
             last_deleted: status.last_deleted,
@@ -465,12 +494,11 @@ pub(crate) async fn run_hybrid_search_scope(
 
     let keywords = crate::search::extract_keywords(query, 2);
     let distance_cutoff = sys.config.distance_cutoff;
-    let lexical_available = !text_results.is_empty();
     let allow_semantic_fallback = keywords.len() >= 2;
-    let vector_only_budget = if lexical_available || !allow_semantic_fallback {
-        0
-    } else {
+    let vector_only_budget = if allow_semantic_fallback {
         sys.config.low_relevance_fallback
+    } else {
+        0
     };
     let mut vector_only_used = 0usize;
     let mut items: Vec<(SearchResultItem, Vec<f32>)> = Vec::new();
@@ -517,7 +545,8 @@ pub(crate) async fn run_hybrid_search_scope(
             let vector_hit = vector_distance_by_id
                 .get(&id)
                 .is_some_and(|distance| *distance <= distance_cutoff);
-            if !text_hit && keyword_ratio <= 0.0 {
+            let lexical_match = text_hit && keyword_ratio > 0.0;
+            if !lexical_match {
                 if vector_hit && vector_only_used < vector_only_budget {
                     vector_only_used += 1;
                 } else {
@@ -1094,7 +1123,7 @@ pub(crate) async fn update_impl(
         let previous = match db.get_chunk(&canonical_id) {
             Ok(Some(chunk)) => chunk,
             Ok(None) => {
-                out.insert("status".to_string(), serde_json::json!("error"));
+                out.insert("status".to_string(), serde_json::json!("not_found"));
                 out.insert(
                     "message".to_string(),
                     serde_json::json!(format!("superseded memory not found: {requested}")),
@@ -1111,7 +1140,7 @@ pub(crate) async fn update_impl(
             || previous.project != chunk.project
             || is_internal_project(&previous.project)
         {
-            out.insert("status".to_string(), serde_json::json!("error"));
+            out.insert("status".to_string(), serde_json::json!("conflict"));
             out.insert(
                 "message".to_string(),
                 serde_json::json!("superseded memory must be active in the same project"),
@@ -2214,8 +2243,10 @@ pub(crate) mod test_support {
 
     pub(crate) async fn build_system() -> (tempfile::TempDir, Arc<RwLock<MemorySystem>>) {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let mut cfg = Config::default();
-        cfg.data_dir = tmp.path().to_path_buf();
+        let cfg = Config {
+            data_dir: tmp.path().to_path_buf(),
+            ..Default::default()
+        };
         let mut sys = MemorySystem::new(cfg)
             .await
             .expect("MemorySystem::new failed (offline and no cached model?)");
@@ -2277,10 +2308,9 @@ pub(crate) mod test_support {
         );
     }
 
-    /// Characterizes the current conservative fallback policy, not desired recall.
-    /// Controlled embeddings isolate candidate gating from model quality/ranking.
+    /// Controlled embeddings isolate candidate admission from model quality and ranking.
     #[tokio::test]
-    async fn lexical_distractor_suppresses_even_exact_vector_candidate() {
+    async fn lexical_distractor_does_not_suppress_exact_vector_candidate() {
         let (_tmp, system) = build_system().await;
         let query = "scheduler timezone";
         let embedding = system.read().await.embedder.encode_query(query).unwrap();
@@ -2309,7 +2339,7 @@ pub(crate) mod test_support {
                 .await
                 .unwrap();
             assert!(
-                sys.text_search_projects(query, &[target.project.clone()], 5)
+                sys.text_search_projects(query, std::slice::from_ref(&target.project), 5)
                     .await
                     .unwrap()
                     .is_empty()
@@ -2344,7 +2374,7 @@ pub(crate) mod test_support {
                 .await
                 .unwrap();
             let text = sys
-                .text_search_projects(query, &[target.project.clone()], 5)
+                .text_search_projects(query, std::slice::from_ref(&target.project), 5)
                 .await
                 .unwrap();
             assert_eq!(
@@ -2361,14 +2391,38 @@ pub(crate) mod test_support {
             None,
         )
         .await;
-        assert_eq!(
-            after
-                .iter()
-                .map(|item| item.id.as_str())
-                .collect::<Vec<_>>(),
-            ["lexical-distractor"],
-            "existing lexical gate discards perfect vector-only target despite spare result capacity"
+        assert!(
+            after.iter().any(|item| item.id == "semantic-target"),
+            "a lexical distractor must not discard a strong semantic candidate when capacity remains"
         );
+    }
+
+    #[tokio::test]
+    async fn common_question_words_are_not_relevance_evidence() {
+        let (_tmp, system) = build_system().await;
+        super::super::operations::remember(
+            system.clone(),
+            super::super::operations::RememberInput {
+                text: "This is the archived draft of an unrelated note.".to_string(),
+                project: "common-words".to_string(),
+                cwd: None,
+                metadata: None,
+                sensitive: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        let found = run_hybrid_search(
+            system,
+            "What is the?",
+            "common-words",
+            5,
+            SearchOptions::default(),
+            None,
+        )
+        .await;
+        assert!(found.is_empty());
     }
 
     #[test]

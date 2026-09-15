@@ -2,23 +2,34 @@
 
 All notable changes to the `memnest` Rust engine are recorded here.
 
-## Unreleased
+## [0.3.0] - 2026-09-15
 
 ### Added
 
 - Paged `memory_get` over HTTP and MCP: Unicode offsets, a shared document-text budget, continuation offsets, and up to five captures before and after a transcript record in the same project, session, source, and cwd.
 - Selected source provenance with a separate 2048-character budget per record, at most 16 source IDs, and an explicit `provenance_truncated` flag. Stored text and metadata are not modified by reading.
-- Linux/macOS setup with client detection, private exact backups, conflict-aware restore, and prerequisite checks. MCP tools and the watcher work without automatic recall; the Claude Code prompt hook requires `--autocontext`, and existing hooks are preserved.
-- macOS launchd installation and release packaging for Intel and Apple Silicon. Native service lifecycle validation still requires a macOS host.
-- A pinned MemoryBench adapter, small Korean retrieval fixture, and reproducible independent-client demo. These are not answer-accuracy or provider-comparison benchmarks.
+- Linux setup with client detection, private exact backups, conflict-aware restore, prerequisite checks, watcher startup, and a scratch remember/search round trip. Automatic recall remains opt-in.
+- Read-only `status --diagnose` checks bounded health and MCP capability contracts. Health now reports embedding load state and index queue/rebuild state without initializing the model.
+- A pinned MemoryBench adapter, small Korean retrieval fixture, expanded fixed retrieval evaluation, and reproducible independent-client demo. These are not answer-accuracy or provider-comparison benchmarks.
+
+### Changed
+
+- A lexical result no longer removes all vector-only candidates when result capacity remains. Common English question words are not treated as keyword evidence. The embedding model and learned ranking were not changed.
+- Permanently deleted identified transcript events leave content-free tombstones so watcher replay does not recreate them after garbage collection or index rebuild.
+
+### Fixed
+
+- Missing or inactive `supersedes` targets now return a specific 404 or 409 instead of a redacted internal-error 500, without hiding the current record.
+- Server logs stay on stderr so stdio MCP stdout remains valid JSON.
 
 ### Compatibility
 
-- Search ranking and the existing 600-character excerpts are unchanged; there is no aggregate search text cap.
+- Search still returns at most 600 characters per result and has no aggregate search text cap, but candidate admission can include a strong semantic result that older versions discarded.
 - MCP `memory_get` now returns JSON text, including continuation and provenance, instead of the former compact header and document. Consumers parsing the old display text need updating.
-- Transcript neighbors follow capture order, not source chronology or final decisions. This change does not require deleting or recapturing an existing store.
+- Transcript neighbors follow capture order, not source chronology or final decisions. Existing stores do not need deletion or recapture.
+- macOS launchd and packaging code remains source-only until native installation, restart, and removal are validated.
 
-See [the next-release comparison](../docs/next-release.ko.md) for user-facing changes since v0.2.1.
+See [the v0.3.0 summary](../docs/next-release.ko.md) for user-facing changes since v0.2.1.
 
 ## [0.2.1] - 2026-09-01
 

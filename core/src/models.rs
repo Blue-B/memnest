@@ -267,8 +267,10 @@ mod tests {
 
     #[test]
     fn metadata_pinned_true_round_trips() {
-        let mut meta = Metadata::default();
-        meta.pinned = true;
+        let meta = Metadata {
+            pinned: true,
+            ..Default::default()
+        };
         let json = serde_json::to_string(&meta).unwrap();
         let meta2: Metadata = serde_json::from_str(&json).unwrap();
         assert!(meta2.pinned);

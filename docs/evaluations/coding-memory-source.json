@@ -11,10 +11,10 @@
       ],
       "service": [
         "port",
+        "test",
         "auth",
         "noise1",
-        "test",
-        "noise2"
+        "retry"
       ],
       "keyword": [
         "port",
@@ -23,13 +23,13 @@
         "retry",
         "migration"
       ],
-      "latency_ms": 30.471,
+      "latency_ms": 35.671,
       "scores": [
-        0.05833324,
-        0.03877238,
-        0.017590497,
-        0.020022385,
-        -0.0012924783
+        0.10333315,
+        0.042522285,
+        0.04252238,
+        0.010090496,
+        0.009644178
       ]
     },
     {
@@ -41,15 +41,19 @@
       ],
       "service": [
         "korean",
-        "port"
+        "port",
+        "cache",
+        "auth"
       ],
       "keyword": [
         "korean"
       ],
-      "latency_ms": 30.064,
+      "latency_ms": 35.599,
       "scores": [
         0.020833246,
-        0.0038933498
+        0.0038932574,
+        -0.034127075,
+        -0.033871062
       ]
     },
     {
@@ -60,7 +64,10 @@
         "port"
       ],
       "service": [
-        "port"
+        "port",
+        "test",
+        "cache",
+        "auth"
       ],
       "keyword": [
         "port",
@@ -69,9 +76,12 @@
         "migration",
         "cache"
       ],
-      "latency_ms": 25.601,
+      "latency_ms": 35.84,
       "scores": [
-        0.13333325
+        0.13333316,
+        -0.033606745,
+        -0.034127075,
+        -0.033871062
       ]
     },
     {
@@ -82,14 +92,20 @@
         "port"
       ],
       "service": [
-        "port"
+        "port",
+        "noise3",
+        "test",
+        "cache"
       ],
       "keyword": [
         "port"
       ],
-      "latency_ms": 24.687,
+      "latency_ms": 35.698,
       "scores": [
-        0.13333325
+        0.13333316,
+        -0.03387097,
+        -0.033606745,
+        -0.034127075
       ]
     },
     {
@@ -101,9 +117,9 @@
       ],
       "service": [
         "test",
+        "migration",
         "noise2",
         "noise3",
-        "noise1",
         "auth"
       ],
       "keyword": [
@@ -113,13 +129,13 @@
         "noise1",
         "noise2"
       ],
-      "latency_ms": 28.256,
+      "latency_ms": 33.056,
       "scores": [
-        0.06904754,
-        0.0019065216,
-        0.0034306198,
-        0.0013392866,
-        0.0019646105
+        0.13333316,
+        0.019013554,
+        -0.019522052,
+        -0.017997954,
+        -0.019464055
       ]
     },
     {
@@ -131,16 +147,22 @@
       ],
       "service": [
         "korean",
-        "test"
+        "test",
+        "timezone",
+        "noise3",
+        "port"
       ],
       "keyword": [
         "test",
         "korean"
       ],
-      "latency_ms": 29.101,
+      "latency_ms": 34.871,
       "scores": [
-        0.04306002,
-        0.013060019
+        0.042786792,
+        0.013333146,
+        -0.034127075,
+        -0.034375,
+        -0.033871155
       ]
     },
     {
@@ -153,17 +175,19 @@
       "service": [
         "auth",
         "port",
-        "test"
+        "noise3",
+        "logs"
       ],
       "keyword": [
         "auth",
         "port"
       ],
-      "latency_ms": 26.743,
+      "latency_ms": 32.818,
       "scores": [
-        0.04333324,
-        0.012522378,
-        -0.0050747204
+        0.08333316,
+        -0.017477712,
+        -0.034126982,
+        -0.033606652
       ]
     },
     {
@@ -174,7 +198,10 @@
         "auth"
       ],
       "service": [
-        "auth"
+        "auth",
+        "retry",
+        "cache",
+        "port"
       ],
       "keyword": [
         "auth",
@@ -183,9 +210,12 @@
         "migration",
         "cache"
       ],
-      "latency_ms": 30.13,
+      "latency_ms": 36.228,
       "scores": [
-        0.13333325
+        0.13333316,
+        -0.033871062,
+        -0.034127075,
+        -0.033606745
       ]
     },
     {
@@ -198,17 +228,19 @@
       "service": [
         "retry",
         "noise1",
-        "auth"
+        "noise3",
+        "logs"
       ],
       "keyword": [
         "retry",
         "noise1"
       ],
-      "latency_ms": 27.764,
+      "latency_ms": 36.422,
       "scores": [
-        0.026190393,
-        0.0029735304,
-        -0.012946519
+        0.043333147,
+        -0.018455043,
+        -0.03360656,
+        -0.033871062
       ]
     },
     {
@@ -224,9 +256,9 @@
         "korean"
       ],
       "keyword": [],
-      "latency_ms": 30.223,
+      "latency_ms": 40.339,
       "scores": [
-        -0.033333424,
+        -0.033333518,
         -0.033606652,
         -0.033871062
       ]
@@ -240,21 +272,23 @@
       ],
       "service": [
         "migration",
-        "noise1",
         "test",
-        "auth"
+        "noise1",
+        "noise3",
+        "cache"
       ],
       "keyword": [
         "migration",
         "test",
         "noise1"
       ],
-      "latency_ms": 29.245,
+      "latency_ms": 33.007,
       "scores": [
-        0.047618963,
-        0.0025278963,
-        0.003950954,
-        -0.013646147
+        0.07333325,
+        0.012522285,
+        -0.018900678,
+        -0.03387097,
+        -0.034127075
       ]
     },
     {
@@ -265,7 +299,10 @@
         "migration"
       ],
       "service": [
-        "migration"
+        "migration",
+        "noise3",
+        "port",
+        "test"
       ],
       "keyword": [
         "migration",
@@ -274,9 +311,12 @@
         "retry",
         "cache"
       ],
-      "latency_ms": 27.177,
+      "latency_ms": 32.408,
       "scores": [
-        0.13333325
+        0.13333325,
+        -0.03387097,
+        -0.03412717,
+        -0.033606745
       ]
     },
     {
@@ -288,10 +328,9 @@
       ],
       "service": [
         "cache",
-        "noise1",
-        "noise3",
         "noise2",
-        "retry"
+        "noise1",
+        "noise3"
       ],
       "keyword": [
         "cache",
@@ -300,13 +339,12 @@
         "auth",
         "retry"
       ],
-      "latency_ms": 30.547,
+      "latency_ms": 36.013,
       "scores": [
-        0.05833324,
-        0.019758064,
-        0.020286884,
-        -0.0006710999,
-        -0.00071396254
+        0.07333325,
+        -0.0194211,
+        -0.017741937,
+        -0.017213117
       ]
     },
     {
@@ -322,7 +360,7 @@
         "korean"
       ],
       "keyword": [],
-      "latency_ms": 27.958,
+      "latency_ms": 33.45,
       "scores": [
         -0.033333424,
         -0.033606652,
@@ -337,14 +375,20 @@
         "korean"
       ],
       "service": [
-        "korean"
+        "korean",
+        "noise2",
+        "noise3",
+        "timezone"
       ],
       "keyword": [
         "korean"
       ],
-      "latency_ms": 28.754,
+      "latency_ms": 35.622,
       "scores": [
-        0.07333325
+        0.07333325,
+        -0.034126982,
+        -0.03387097,
+        -0.033606652
       ]
     },
     {
@@ -355,11 +399,11 @@
         "korean"
       ],
       "service": [
+        "migration",
         "noise1",
         "logs",
-        "migration",
         "port",
-        "noise2"
+        "noise3"
       ],
       "keyword": [
         "port",
@@ -367,13 +411,13 @@
         "logs",
         "noise1"
       ],
-      "latency_ms": 31.688,
+      "latency_ms": 37.871,
       "scores": [
-        0.007851627,
-        -0.0038240436,
-        -0.0048500816,
-        -0.004345379,
-        -0.021438263
+        0.011513461,
+        0.010578901,
+        -0.01746041,
+        -0.017981743,
+        -0.03333333
       ]
     },
     {
@@ -384,14 +428,20 @@
         "timezone"
       ],
       "service": [
-        "timezone"
+        "timezone",
+        "logs",
+        "korean",
+        "retry"
       ],
       "keyword": [
         "timezone"
       ],
-      "latency_ms": 29.749,
+      "latency_ms": 32.736,
       "scores": [
-        0.07333325
+        0.07333325,
+        -0.034127075,
+        -0.033606652,
+        -0.033871155
       ]
     },
     {
@@ -404,17 +454,17 @@
       "service": [
         "test",
         "port",
-        "migration"
+        "timezone"
       ],
       "keyword": [
         "port",
         "test"
       ],
-      "latency_ms": 29.117,
+      "latency_ms": 33.943,
       "scores": [
-        0.02565266,
-        0.0027472016,
-        -0.012946519
+        -0.017477712,
+        -0.018408144,
+        -0.033333424
       ]
     },
     {
@@ -428,8 +478,7 @@
         "logs",
         "noise1",
         "noise3",
-        "cache",
-        "retry"
+        "cache"
       ],
       "keyword": [
         "logs",
@@ -438,13 +487,12 @@
         "migration",
         "cache"
       ],
-      "latency_ms": 29.72,
+      "latency_ms": 33.304,
       "scores": [
-        0.047618963,
-        0.024402108,
-        0.003182605,
-        0.003174514,
-        0.0029421267
+        0.05833324,
+        -0.018455137,
+        -0.018245969,
+        -0.018254152
       ]
     },
     {
@@ -455,15 +503,19 @@
         "beta-port"
       ],
       "service": [
-        "beta-port"
+        "beta-port",
+        "beta-retry",
+        "beta-test"
       ],
       "keyword": [
         "beta-port",
         "beta-retry"
       ],
-      "latency_ms": 27.149,
+      "latency_ms": 30.029,
       "scores": [
-        0.13333325
+        0.13333325,
+        -0.033606652,
+        -0.033871062
       ]
     },
     {
@@ -474,14 +526,18 @@
         "beta-test"
       ],
       "service": [
-        "beta-test"
+        "beta-test",
+        "beta-retry",
+        "beta-port"
       ],
       "keyword": [
         "beta-test"
       ],
-      "latency_ms": 27.075,
+      "latency_ms": 31.769,
       "scores": [
-        0.05833324
+        0.13333325,
+        -0.033871062,
+        -0.033606652
       ]
     },
     {
@@ -492,14 +548,18 @@
         "beta-retry"
       ],
       "service": [
-        "beta-retry"
+        "beta-retry",
+        "beta-test",
+        "beta-port"
       ],
       "keyword": [
         "beta-retry"
       ],
-      "latency_ms": 28.898,
+      "latency_ms": 33.765,
       "scores": [
-        0.09583326
+        0.09583326,
+        -0.033606652,
+        -0.033871062
       ]
     },
     {
@@ -510,9 +570,7 @@
       "service": [
         "port",
         "noise3",
-        "noise2",
-        "noise1",
-        "auth"
+        "noise2"
       ],
       "keyword": [
         "port",
@@ -521,13 +579,11 @@
         "noise2",
         "noise3"
       ],
-      "latency_ms": 32.43,
+      "latency_ms": 33.456,
       "scores": [
-        0.003968072,
-        0.0039510466,
-        0.0025278963,
-        0.001794342,
-        0.0022049036
+        -0.017460594,
+        -0.017477527,
+        -0.01890077
       ]
     },
     {
@@ -541,10 +597,10 @@
         "retry"
       ],
       "keyword": [],
-      "latency_ms": 28.832,
+      "latency_ms": 33.631,
       "scores": [
         -0.033333424,
-        -0.033606652,
+        -0.033606745,
         -0.033871155
       ]
     },
@@ -555,7 +611,7 @@
       "relevant": [],
       "service": [],
       "keyword": [],
-      "latency_ms": 3.485,
+      "latency_ms": 5.001,
       "scores": []
     },
     {
@@ -564,16 +620,497 @@
       "query": "What is our iOS signing certificate renewal policy?",
       "relevant": [],
       "service": [
+        "beta-retry",
+        "beta-port",
+        "beta-test"
+      ],
+      "keyword": [],
+      "latency_ms": 33.365,
+      "scores": [
+        -0.033333424,
+        -0.033606652,
+        -0.033871062
+      ]
+    },
+    {
+      "id": "absent-ci-timeout",
+      "project": "atlas",
+      "query": "What timeout do the integration tests use?",
+      "relevant": [],
+      "service": [
+        "test",
+        "noise1",
+        "auth",
+        "noise2",
+        "noise3"
+      ],
+      "keyword": [
+        "test",
+        "auth",
+        "noise1",
+        "noise2",
+        "noise3"
+      ],
+      "latency_ms": 34.203,
+      "scores": [
+        0.09583316,
+        0.017658643,
+        0.018276332,
+        -0.019522145,
+        -0.018246062
+      ]
+    },
+    {
+      "id": "absent-db-pool",
+      "project": "atlas",
+      "query": "What is the maximum SQLite connection pool size?",
+      "relevant": [],
+      "service": [
+        "test",
+        "retry",
+        "migration",
+        "noise1",
+        "noise3"
+      ],
+      "keyword": [
+        "port",
+        "test",
+        "auth",
+        "retry",
+        "migration"
+      ],
+      "latency_ms": 34.22,
+      "scores": [
+        0.012795513,
+        0.0127866985,
+        0.011753847,
+        -0.019697063,
+        -0.01899048
+      ]
+    },
+    {
+      "id": "absent-log-days",
+      "project": "atlas",
+      "query": "How many days are request logs retained?",
+      "relevant": [],
+      "service": [
+        "logs",
+        "noise1",
+        "retry",
+        "auth"
+      ],
+      "keyword": [
+        "logs",
+        "noise1"
+      ],
+      "latency_ms": 34.874,
+      "scores": [
+        0.04333324,
+        -0.01890077,
+        -0.033606745,
+        -0.033871155
+      ]
+    },
+    {
+      "id": "absent-metrics-port",
+      "project": "atlas",
+      "query": "Which port does the metrics server use?",
+      "relevant": [],
+      "service": [
+        "port",
+        "auth",
+        "noise1",
+        "test",
+        "noise2"
+      ],
+      "keyword": [
+        "port",
+        "auth",
+        "test",
+        "noise1",
+        "noise2"
+      ],
+      "latency_ms": 35.251,
+      "scores": [
+        0.058333054,
+        0.0577867,
+        0.017809898,
+        0.019757787,
+        -0.02004257
+      ]
+    },
+    {
+      "id": "absent-payment-account",
+      "project": "atlas",
+      "query": "What is the payment processor account ID?",
+      "relevant": [],
+      "service": [
+        "retry",
+        "noise3",
+        "logs",
+        "noise2",
+        "port"
+      ],
+      "keyword": [
+        "port",
+        "auth",
+        "retry",
+        "noise1",
+        "noise2"
+      ],
+      "latency_ms": 35.262,
+      "scores": [
+        0.058333147,
+        0.01925394,
+        0.019766368,
+        -0.019585349,
+        -0.017981837
+      ]
+    },
+    {
+      "id": "absent-review-count",
+      "project": "atlas",
+      "query": "How many code review approvals are required?",
+      "relevant": [],
+      "service": [
+        "logs",
+        "noise1",
+        "noise3",
+        "cache"
+      ],
+      "keyword": [
+        "noise1"
+      ],
+      "latency_ms": 36.52,
+      "scores": [
+        0.012539496,
+        -0.018455137,
+        -0.033333424,
+        -0.033606745
+      ]
+    },
+    {
+      "id": "absent-feature-flags",
+      "project": "atlas",
+      "query": "Which service stores production feature flags?",
+      "relevant": [],
+      "service": [
+        "test",
+        "noise1",
+        "noise3"
+      ],
+      "keyword": [],
+      "latency_ms": 33.954,
+      "scores": [
+        -0.03333361,
+        -0.033606652,
+        -0.033871062
+      ]
+    },
+    {
+      "id": "absent-backup-days",
+      "project": "atlas",
+      "query": "How many days are database backups retained?",
+      "relevant": [],
+      "service": [
+        "noise1",
+        "migration",
+        "retry"
+      ],
+      "keyword": [
+        "noise1"
+      ],
+      "latency_ms": 34.683,
+      "scores": [
+        -0.01924892,
+        -0.033333518,
+        -0.033606745
+      ]
+    },
+    {
+      "id": "absent-region-ko",
+      "project": "atlas",
+      "query": "아틀라스 운영 서버 리전은 어디인가?",
+      "relevant": [],
+      "service": [
+        "korean",
+        "port",
+        "timezone",
+        "cache"
+      ],
+      "keyword": [
+        "korean"
+      ],
+      "latency_ms": 39.427,
+      "scores": [
+        0.013333146,
+        -0.03360684,
+        -0.033871155,
+        -0.03412717
+      ]
+    },
+    {
+      "id": "absent-tls-ko",
+      "project": "atlas",
+      "query": "TLS 인증서는 며칠마다 갱신하나?",
+      "relevant": [],
+      "service": [
+        "korean",
+        "timezone",
+        "retry"
+      ],
+      "keyword": [],
+      "latency_ms": 37.093,
+      "scores": [
+        -0.033333518,
+        -0.033606745,
+        -0.033871155
+      ]
+    },
+    {
+      "id": "absent-slack-ko",
+      "project": "atlas",
+      "query": "배포 알림을 보내는 슬랙 채널 이름은?",
+      "relevant": [],
+      "service": [
+        "korean",
+        "port",
+        "timezone",
+        "noise3"
+      ],
+      "keyword": [
+        "korean"
+      ],
+      "latency_ms": 36.024,
+      "scores": [
+        0.008333151,
+        -0.03412726,
+        -0.033606745,
+        -0.033871062
+      ]
+    },
+    {
+      "id": "absent-node-ko",
+      "project": "atlas",
+      "query": "프론트엔드가 사용하는 Node.js 버전은?",
+      "relevant": [],
+      "service": [
+        "timezone",
+        "noise3",
+        "korean"
+      ],
+      "keyword": [],
+      "latency_ms": 38.465,
+      "scores": [
+        -0.033333518,
+        -0.033606652,
+        -0.033871155
+      ]
+    },
+    {
+      "id": "absent-mobile-ko",
+      "project": "atlas",
+      "query": "모바일 앱 번들 ID는 무엇인가?",
+      "relevant": [],
+      "service": [
+        "retry",
+        "timezone",
+        "korean"
+      ],
+      "keyword": [],
+      "latency_ms": 33.276,
+      "scores": [
+        0.0038931647,
+        -0.033333518,
+        -0.033871155
+      ]
+    },
+    {
+      "id": "absent-pager-ko",
+      "project": "atlas",
+      "query": "장애 대응 당번은 몇 주마다 바뀌나?",
+      "relevant": [],
+      "service": [
+        "korean",
+        "timezone",
+        "retry"
+      ],
+      "keyword": [],
+      "latency_ms": 34.668,
+      "scores": [
+        -0.033333518,
+        -0.033606745,
+        -0.03387125
+      ]
+    },
+    {
+      "id": "absent-redis-ko",
+      "project": "beacon",
+      "query": "Beacon Redis 제거 정책은 무엇인가?",
+      "relevant": [],
+      "service": [
         "beta-port",
         "beta-retry",
         "beta-test"
       ],
-      "keyword": [],
-      "latency_ms": 29.519,
+      "keyword": [
+        "beta-port",
+        "beta-test",
+        "beta-retry"
+      ],
+      "latency_ms": 32.7,
       "scores": [
-        -0.0148566505,
-        -0.033333424,
-        -0.033871062
+        0.013333146,
+        0.012522378,
+        0.012522285
+      ]
+    },
+    {
+      "id": "absent-registry-ko",
+      "project": "beacon",
+      "query": "Beacon 컨테이너 이미지는 어느 레지스트리에 올리나?",
+      "relevant": [],
+      "service": [
+        "beta-port",
+        "beta-test",
+        "beta-retry"
+      ],
+      "keyword": [
+        "beta-port",
+        "beta-test",
+        "beta-retry"
+      ],
+      "latency_ms": 36.568,
+      "scores": [
+        0.008333151,
+        0.0077866996,
+        0.0072579724
+      ]
+    },
+    {
+      "id": "absent-ci-provider",
+      "project": "beacon",
+      "query": "Which CI provider runs the pnpm tests?",
+      "relevant": [],
+      "service": [
+        "beta-test",
+        "beta-retry",
+        "beta-port"
+      ],
+      "keyword": [
+        "beta-test"
+      ],
+      "latency_ms": 36.665,
+      "scores": [
+        0.043333147,
+        -0.033871062,
+        -0.033606745
+      ]
+    },
+    {
+      "id": "absent-postgres-version",
+      "project": "beacon",
+      "query": "Which PostgreSQL major version do integration tests use?",
+      "relevant": [],
+      "service": [
+        "beta-test",
+        "beta-retry",
+        "beta-port"
+      ],
+      "keyword": [
+        "beta-test"
+      ],
+      "latency_ms": 39.356,
+      "scores": [
+        0.08333316,
+        -0.033606745,
+        -0.033871155
+      ]
+    },
+    {
+      "id": "absent-webhook-timeout",
+      "project": "beacon",
+      "query": "What is the payment webhook request timeout?",
+      "relevant": [],
+      "service": [
+        "beta-retry",
+        "beta-test",
+        "beta-port"
+      ],
+      "keyword": [
+        "beta-retry"
+      ],
+      "latency_ms": 36.391,
+      "scores": [
+        0.058333147,
+        -0.033606745,
+        -0.033871155
+      ]
+    },
+    {
+      "id": "absent-stage-url",
+      "project": "beacon",
+      "query": "What is the Beacon staging URL?",
+      "relevant": [],
+      "service": [
+        "beta-port",
+        "beta-test",
+        "beta-retry"
+      ],
+      "keyword": [
+        "beta-port",
+        "beta-test",
+        "beta-retry"
+      ],
+      "latency_ms": 32.35,
+      "scores": [
+        0.033333156,
+        0.0327867,
+        0.03225788
+      ]
+    },
+    {
+      "id": "absent-owner",
+      "project": "beacon",
+      "query": "Who owns the Beacon API service?",
+      "relevant": [],
+      "service": [
+        "beta-port",
+        "beta-retry",
+        "beta-test"
+      ],
+      "keyword": [
+        "beta-port",
+        "beta-test",
+        "beta-retry"
+      ],
+      "latency_ms": 36.654,
+      "scores": [
+        0.058333147,
+        0.01975788,
+        0.0202867
+      ]
+    },
+    {
+      "id": "absent-license",
+      "project": "beacon",
+      "query": "Which license applies to the Beacon repository?",
+      "relevant": [],
+      "service": [
+        "beta-test",
+        "beta-port",
+        "beta-retry"
+      ],
+      "keyword": [
+        "beta-port",
+        "beta-test",
+        "beta-retry"
+      ],
+      "latency_ms": 41.703,
+      "scores": [
+        0.020559927,
+        0.020559927,
+        0.01975788
       ]
     }
   ],
@@ -581,30 +1118,48 @@
     "service": {
       "positive_cases": 22,
       "hit_at_1": 0.8181818181818182,
-      "recall_at_5": 0.9090909090909091,
-      "mrr_at_5": 0.8636363636363636,
-      "negative_cases": 4,
-      "negative_empty_rate": 0.25
+      "recall_at_5": 0.9545454545454546,
+      "mrr_at_5": 0.8787878787878788,
+      "negative_cases": 26,
+      "negative_empty_rate": 0.038461538461538464
     },
     "keyword": {
       "positive_cases": 22,
       "hit_at_1": 0.7727272727272727,
       "recall_at_5": 0.7727272727272727,
       "mrr_at_5": 0.7727272727272727,
-      "negative_cases": 4,
-      "negative_empty_rate": 0.75
+      "negative_cases": 26,
+      "negative_empty_rate": 0.3076923076923077
     }
   },
   "latency_ms": {
-    "p50": 29.101,
-    "p95": 31.688
+    "p50": 34.874,
+    "p95": 39.427
   },
-  "rss_after_queries": "VmRSS:\t 1734620 kB",
-  "health": {
-    "version": "0.2.1",
-    "embed_model": "intfloat/multilingual-e5-base"
+  "rss_after_queries": "VmRSS:\t 1721344 kB",
+  "health_before_writes": {
+    "version": "0.3.0",
+    "embed_model": "intfloat/multilingual-e5-base",
+    "embedding": {
+      "loaded": false
+    },
+    "index": {
+      "pending_operations": 0,
+      "rebuild_required": false
+    }
   },
-  "diagnostic": "endpoint: http://localhost:42803\nhealth: ok; core version: 0.2.1\ncapabilities: scoped search and paged get advertised (not an execution test)\nembedding readiness / index backlog / remote capture: unknown (not exposed by these contracts)\nlocal capture: not inspected; use `status` with the watcher's --data-dir for its local heartbeat\n",
-  "unauthorized": "endpoint: http://localhost:42803\nembedding readiness / index backlog / remote capture: unknown (not exposed by these contracts)\ndiagnostic: authentication failure at /health; check MEMNEST_TOKEN (not printed)\nlocal capture: not inspected; use `status` with the watcher's --data-dir for its local heartbeat\n",
-  "limitations": "26 authored cases, 16 records, single ordered warm run. No paid LLM, competitor, answer-generation or general superiority evaluation. Token baseline has no morphology/stopword/ranking tuning."
+  "health_after_queries": {
+    "version": "0.3.0",
+    "embed_model": "intfloat/multilingual-e5-base",
+    "embedding": {
+      "loaded": true
+    },
+    "index": {
+      "pending_operations": 0,
+      "rebuild_required": false
+    }
+  },
+  "diagnostic": "endpoint: http://localhost:36253\nhealth: ok (response body omitted)\nembedding: lazy (loads on first search or write)\nindex: 0 pending operation(s), rebuild_required=false\ncapabilities: scoped search and paged get advertised (not an execution test)\nremote capture: unknown (not exposed by the service health contract)\nlocal capture: not inspected; use `status` with the watcher's --data-dir for its local heartbeat\n",
+  "unauthorized": "endpoint: http://localhost:36253\nremote capture: unknown (not exposed by the service health contract)\ndiagnostic: authentication failure at /health; check MEMNEST_TOKEN (not printed)\nlocal capture: not inspected; use `status` with the watcher's --data-dir for its local heartbeat\n",
+  "limitations": "48 authored cases, 16 records, single ordered warm run. No paid LLM, competitor, answer-generation or general superiority evaluation. Token baseline has no morphology/stopword/ranking tuning."
 }

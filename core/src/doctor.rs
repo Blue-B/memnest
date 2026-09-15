@@ -314,6 +314,26 @@ pub async fn diagnose_service(base: &str) -> i32 {
         // Do not echo response strings: even version/error fields may contain
         // credentials, server-local paths, or terminal control sequences.
         println!("health: ok (response body omitted)");
+        match health
+            .pointer("/embedding/loaded")
+            .and_then(|v| v.as_bool())
+        {
+            Some(true) => println!("embedding: loaded"),
+            Some(false) => println!("embedding: lazy (loads on first search or write)"),
+            None => println!("embedding: unknown (older health contract)"),
+        }
+        let pending = health
+            .pointer("/index/pending_operations")
+            .and_then(|v| v.as_u64());
+        let rebuild = health
+            .pointer("/index/rebuild_required")
+            .and_then(|v| v.as_bool());
+        match (pending, rebuild) {
+            (Some(pending), Some(rebuild)) => {
+                println!("index: {pending} pending operation(s), rebuild_required={rebuild}")
+            }
+            _ => println!("index: unknown (older health contract)"),
+        }
         let tools = diagnostic_json(
             &client,
             base,
@@ -347,9 +367,7 @@ pub async fn diagnose_service(base: &str) -> i32 {
         Ok::<(), anyhow::Error>(())
     })
     .await;
-    println!(
-        "embedding readiness / index backlog / remote capture: unknown (not exposed by these contracts)"
-    );
+    println!("remote capture: unknown (not exposed by the service health contract)");
     match result {
         Ok(Ok(())) => 0,
         Ok(Err(error)) => {

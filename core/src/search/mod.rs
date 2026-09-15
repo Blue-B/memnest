@@ -1,3 +1,15 @@
+const ENGLISH_STOPWORDS: &[&str] = &[
+    "a", "an", "and", "are", "as", "at", "be", "by", "do", "does", "for", "from", "how", "in",
+    "is", "it", "of", "on", "or", "our", "should", "the", "this", "to", "was", "what", "when",
+    "where", "which", "who", "why", "with",
+];
+
+fn is_english_stopword(token: &str) -> bool {
+    ENGLISH_STOPWORDS
+        .iter()
+        .any(|word| token.eq_ignore_ascii_case(word))
+}
+
 pub fn strip_korean_particles(token: &str) -> String {
     let particles = [
         "에서", "부터", "까지", "으로", "처럼", "이나", "은", "는", "이", "가", "에", "의", "로",
@@ -26,6 +38,7 @@ pub fn extract_keywords(query: &str, min_len: usize) -> Vec<String> {
         .filter(|t| t.chars().count() >= min_len)
         .map(strip_korean_particles)
         .filter(|t| t.chars().count() >= min_len)
+        .filter(|t| !is_english_stopword(t))
         .map(|t| t.to_string())
         .collect()
 }
@@ -39,6 +52,14 @@ mod keyword_tests {
         assert_eq!(
             extract_keywords("끝난 다음 처리할 일", 2),
             ["끝난", "다음", "처리할"]
+        );
+    }
+
+    #[test]
+    fn english_question_words_are_not_search_evidence() {
+        assert_eq!(
+            extract_keywords("What is the payment processor account ID?", 2),
+            ["payment", "processor", "account", "ID"]
         );
     }
 }

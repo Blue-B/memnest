@@ -67,6 +67,10 @@ impl Embedder {
         &self.model_name
     }
 
+    pub fn is_loaded(&self) -> bool {
+        self.model.lock().is_ok_and(|model| model.is_some())
+    }
+
     pub fn encode(&self, text: &str) -> Result<Vec<f32>> {
         self.encode_document(text)
     }

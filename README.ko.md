@@ -29,53 +29,47 @@ pi, Claude Code, Codex의 보이는 대화 텍스트를 로컬에 저장하고, 
 
 ## 설치
 
-### 공개 버전: Linux에 새로 설치
+### Linux 배포판
 
-Rust 없이 코어 v0.2.1을 설치하는 명령입니다. 이 버전의 설치기는 서버만 설치합니다. 클라이언트는 아래에서 연결하고, 대화 저장은 별도로 실행하세요.
+Rust 없이 코어 v0.3.0을 설치합니다. 내려받은 스크립트를 읽은 뒤 실행하세요. setup은 서버와 대화 감시기를 설치하고 시작하며, Claude Code, Codex, Cursor의 빠진 연결을 추가한 뒤 임시 기억의 저장과 검색을 확인합니다.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.2.1/core/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.3.0/core/scripts/install.sh \
   -o /tmp/memnest-install.sh
-# 실행하기 전에 스크립트를 읽어보세요.
-VERSION=v0.2.1 bash /tmp/memnest-install.sh --user
-curl -fsS http://127.0.0.1:3111/health
+VERSION=v0.3.0 bash /tmp/memnest-install.sh --user
 ```
 
-기존 서비스를 직접 설정해 두었다면 이 옛 설치기를 다시 실행하지 마세요. 서비스 설정을 덮어쓸 수 있습니다. 업그레이드 전에는 데이터를 백업하고 [소스 빌드 업그레이드 절차](docs/operations.md#one-command-setup-from-source)를 확인하세요.
+클라이언트 파일과 지원되는 서비스 변경은 수정 전에 백업하고, setup이 정확한 복구 명령을 출력합니다. 기존 Memnest 연결, 직접 바꾼 서비스 실행 명령, systemd 추가 설정과 외부 환경 파일은 추측해 덮어쓰지 않습니다. 자동 회상 hook은 `--autocontext`를 추가한 경우에만 설정합니다.
 
-처음 저장하거나 검색할 때 약 1.1 GB의 임베딩 모델을 내려받습니다. 임베딩 중에는 RAM을 약 1.9 GB까지 사용할 수 있습니다. Windows와 WSL 설치 방법은 [운영 문서](docs/operations.md)에 있습니다.
+처음 저장하거나 검색할 때 약 1.1 GB의 임베딩 모델을 내려받습니다. 임베딩 중에는 RAM을 약 1.9 GB까지 사용할 수 있습니다. 업그레이드 전에는 `memory.db`와 `master.key`를 백업하세요. Windows, WSL, 업그레이드와 복구 방법은 [운영 문서](docs/operations.md)에 있습니다.
 
-### 다음 버전: 소스에서 빌드
+### 소스에서 빌드
 
-미출시 변경이 포함된 저장소에서 실행합니다. Rust와 Python 3.11 이상이 필요합니다.
+Rust와 Python 3.11 이상이 필요합니다.
 
 ```bash
 cargo build --release --locked --manifest-path core/Cargo.toml
 bash core/scripts/setup.sh --user --bin core/target/release/memnest
 ```
 
-Linux에서 setup은 서버와 대화 감시기를 시작하고, Claude Code, Codex, Cursor의 연결 설정을 추가한 뒤 저장과 검색을 확인합니다. 변경할 클라이언트 파일은 먼저 백업하며, 기존 Memnest 연결 항목은 유지합니다. pi는 별도로 설치합니다. 자동 회상 hook이 필요할 때만 `--autocontext`를 추가하세요.
-
-지원하는 형식의 기존 Linux 서비스는 설정과 포트를 보존합니다. 실행 명령을 바꿨거나 systemd 추가 설정 파일, 외부 환경 파일을 사용한다면 임의로 덮어쓰지 않고 변경 전에 중단합니다. 이런 경우의 수동 업그레이드와 복구는 [운영 문서](docs/operations.md#linux-service-upgrades)를 참고하세요.
+pi는 별도로 설치합니다. 기존 Linux 서비스의 업그레이드와 복구는 [운영 문서](docs/operations.md#linux-service-upgrades)를 참고하세요.
 
 ## 클라이언트 연결
 
 ### pi
 
-공개 버전은 다음과 같이 설치합니다.
-
 ```bash
-pi install npm:pi-memnest@0.2.0
+pi install npm:pi-memnest@0.3.0
 ```
 
-다음 버전의 소스 기능을 쓰려면 저장소 루트에서 로컬 확장을 빌드하고 설치합니다.
+저장소 소스를 직접 쓰려면 루트에서 로컬 확장을 빌드하고 설치합니다.
 
 ```bash
 (cd pi-extension && npm ci && npm run build)
 pi install ./pi-extension
 ```
 
-둘 다 기억 도구와 `/memnest` 상태 명령을 제공합니다. 공개 v0.2.0은 자동 회상이 기본으로 켜져 있고, 다음 버전은 기본으로 꺼져 있습니다. 명시적으로 끄려면 `MEMNEST_AUTOCONTEXT_MODE=off`, 켜려면 `balanced`를 설정하세요. 자세한 설정은 [pi 확장 문서](pi-extension/README.md)에 있습니다.
+확장은 기억 도구 5개와 `/memnest` 상태 명령을 제공합니다. v0.3.0의 자동 회상은 기본으로 꺼져 있습니다. 켜려면 `MEMNEST_AUTOCONTEXT_MODE=balanced`를 설정하세요. 자세한 설정은 [pi 확장 문서](pi-extension/README.md)에 있습니다.
 
 ### MCP
 
@@ -103,7 +97,7 @@ memory_get(id="<검색 결과의 ID>")
 
 호스트가 현재 디렉터리를 전달한다면 `project`를 생략해 현재 작업공간과 `playbook`을 함께 검색할 수 있습니다. 전체 프로젝트를 검색하려는 경우에만 `project=all`을 사용하세요. 사실이 바뀌면 `supersedes=<이전 ID>`로 새 기억을 저장합니다. 삭제한 기록은 휴지통으로 이동합니다.
 
-### 원문 더 읽기 (다음 버전)
+### 원문 더 읽기
 
 검색은 기존처럼 결과마다 최대 600자를 보여줍니다. 시험적으로 추가했던 검색 전체 글자 수 제한은 제거했습니다.
 
@@ -126,23 +120,19 @@ memnest watch --backfill
 
 ## 호환성과 배포 상태
 
-| 지금 설치할 수 있는 버전 | v0.3.0에 포함할 후보 |
-| --- | --- |
-| 코어 v0.2.1: Linux x86_64와 Arm64 압축 파일 | 클라이언트 연결과 설정 복구를 포함한 통합 setup |
-| npm의 pi-memnest v0.2.0 | 긴 원문 이어 읽기와 주변 대화 조회 |
-| 기억 도구, 로컬 검색, 대화 저장 | pi 자동 회상 기본 꺼짐과 추가 출처 정보 |
+v0.3.0은 Linux x86_64와 Arm64 코어 압축 파일, npm의 `pi-memnest` 0.3.0을 제공합니다. 통합 setup, 긴 원문 이어 읽기, 같은 대화의 주변 기록, 제한된 출처 정보, 더 명확한 정정 오류와 pi 자동 회상 기본 꺼짐이 포함됩니다.
 
-현재 소스는 v0.3.0 후보이지만 패키지 버전, 태그와 릴리스는 아직 바꾸지 않았습니다. 이번 범위는 안전한 통합 설치와 원문 근거 조회에 한정합니다. 새 검색 순위 알고리즘, 그래프, 관리 화면이나 팀 서비스는 포함하지 않습니다.
+이번 범위는 안전한 설치와 원문 근거 조회에 집중합니다. 그래프, 관리 화면, 팀 서비스나 검색 결과가 질문에 완전히 답하는지 판정하는 모델은 포함하지 않습니다.
 
-macOS 설치 코드와 Intel/Apple Silicon 패키징 코드는 있습니다. 다만 v0.2.1에는 macOS 배포 파일이 없으며, 실제 Mac에서 설치, 재시작, 제거를 검증하지 못했습니다. 아직 검증된 지원 환경으로 보지 마세요.
+macOS 설치와 패키징 코드는 있지만 실제 설치, 재시작과 제거를 검증하지 못했습니다. 아직 검증된 배포 대상으로 보지 마세요.
 
-계획된 기능은 수정된 소스가 필요합니다. 공개 코어나 npm 패키지만 설치해서는 사용할 수 없습니다. 자세한 변경점은 [다음 출시 요약](docs/next-release.ko.md), [코어 변경 이력](core/CHANGELOG.md), [pi 변경 이력](pi-extension/CHANGELOG.md)에 있습니다.
+자세한 변경점은 [v0.3.0 요약](docs/next-release.ko.md), [코어 변경 이력](core/CHANGELOG.md), [pi 변경 이력](pi-extension/CHANGELOG.md)에 있습니다.
 
 ## 동작 구조
 
 ![Memnest 아키텍처](docs/architecture.ko.png)
 
-Rust 서비스 하나가 SQLite에 기록을 저장하고, BM25와 로컬 다국어 임베딩으로 검색합니다. SQLite가 원본이고 검색 색인은 다시 만들 수 있습니다. 다음 버전에서 보완한 것은 원문 조회이지, 검색 모델이나 순위 알고리즘이 아닙니다.
+Rust 서비스 하나가 SQLite에 기록을 저장하고, BM25와 로컬 다국어 임베딩으로 검색합니다. SQLite가 원본이고 검색 색인은 다시 만들 수 있습니다. v0.3.0은 임베딩 모델을 유지하면서 후보 결합 오류를 보수적으로 고쳤으며, 새 학습 순위 모델은 추가하지 않았습니다.
 
 Memnest 자체는 생성형 LLM을 호출하지 않습니다. 연결한 코딩 AI가 검색 결과를 읽고 판단할 때는 그 AI의 모델을 사용합니다. Memnest는 저장소에 답이 있는지 증명하거나, 코드 변경으로 옛 기억이 틀렸는지 자동 판별하지 못합니다.
 

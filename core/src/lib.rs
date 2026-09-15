@@ -273,8 +273,10 @@ mod tests {
     #[tokio::test]
     async fn startup_repairs_queued_sqlite_write_without_vector_duplication() -> Result<()> {
         let temp = tempfile::tempdir()?;
-        let mut config = config::Config::default();
-        config.data_dir = temp.path().to_path_buf();
+        let config = config::Config {
+            data_dir: temp.path().to_path_buf(),
+            ..Default::default()
+        };
 
         {
             let system = MemorySystem::new(config.clone()).await?;

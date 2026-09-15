@@ -10,6 +10,15 @@ for plist in "$ROOT"/packaging/launchd/*.plist; do
   grep -q '__MEMNEST_BIN__' "$plist"
   grep -q '__MEMNEST_DATA__' "$plist"
 done
-grep -q 'x86_64-apple-darwin' "$ROOT/../.github/workflows/core-release.yml"
-grep -q 'aarch64-apple-darwin' "$ROOT/../.github/workflows/core-release.yml"
+# The scripts stay source-checked, but v0.3.0 must not publish unverified
+# macOS archives from the tag-triggered workflow.
+release_workflow="$ROOT/../.github/workflows/core-release.yml"
+if [ ! -f "$release_workflow" ]; then
+  echo "missing core release workflow: $release_workflow" >&2
+  exit 1
+fi
+if grep -q 'apple-darwin' "$release_workflow"; then
+  echo "macOS release target found before native lifecycle validation" >&2
+  exit 1
+fi
 echo verify_macos_packaging_ok

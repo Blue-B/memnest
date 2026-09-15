@@ -2,7 +2,7 @@
 
 All notable changes to `pi-memnest` are recorded here.
 
-## Unreleased
+## [0.3.0] - 2026-09-15
 
 ### Changed
 

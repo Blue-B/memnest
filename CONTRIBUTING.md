@@ -11,10 +11,9 @@ For anything larger than a bug fix, open an issue first and describe the problem
 you hit. That avoids the case where a change is finished before we find out it
 does not fit the design. Small fixes can go straight to a pull request.
 
-Public core binary release v0.2.1 and npm extension v0.2.0 exist. This checkout
-also contains unreleased capabilities: do not assume a published install matches
-source tests or docs marked source-only. No crates.io publication is implied.
-Expect the layout and the interfaces to still move.
+Core v0.3.0 and pi extension v0.3.0 are versioned together. No crates.io
+publication is implied. Source-only macOS support remains unverified, and the
+layout and interfaces may still move before 1.0.
 
 ## Repository layout
 

@@ -29,53 +29,47 @@ For a few rules that should load every time, use `CLAUDE.md` or `AGENTS.md`. Mem
 
 ## Install
 
-### Published release: new Linux installation
+### Linux release
 
-The following installs core v0.2.1 without Rust. It installs the server only; connect a client below and run transcript capture separately.
+This installs core v0.3.0 without Rust. Read the downloaded script before running it. Setup installs and starts the server and conversation watcher, adds missing Claude Code, Codex, and Cursor connections, and verifies a scratch save/search round trip.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.2.1/core/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.3.0/core/scripts/install.sh \
   -o /tmp/memnest-install.sh
-# Read the script before running it.
-VERSION=v0.2.1 bash /tmp/memnest-install.sh --user
-curl -fsS http://127.0.0.1:3111/health
+VERSION=v0.3.0 bash /tmp/memnest-install.sh --user
 ```
 
-Do not rerun the old installer over a customized service: it can overwrite service settings. Back up existing data before upgrading and use the [source-build upgrade instructions](docs/operations.md#one-command-setup-from-source).
+Client files and supported service changes are backed up before modification, and setup prints exact restore commands. Existing Memnest client entries, custom service commands, drop-ins, and external environment files are not guessed at or overwritten. Automatic recall hooks remain opt-in with `--autocontext`.
 
-The first write or search downloads the embedding model, about 1.1 GB. Embedding can use about 1.9 GB of RAM. Windows and WSL instructions are in the [operations guide](docs/operations.md).
+The first write or search downloads the embedding model, about 1.1 GB. Embedding can use about 1.9 GB of RAM. Back up `memory.db` and `master.key` before an upgrade. Windows, WSL, upgrade, and recovery instructions are in the [operations guide](docs/operations.md).
 
-### Next version: source build
+### Build from source
 
-From a checkout containing the unreleased changes, with Rust and Python 3.11 or newer:
+From a checkout, with Rust and Python 3.11 or newer:
 
 ```bash
 cargo build --release --locked --manifest-path core/Cargo.toml
 bash core/scripts/setup.sh --user --bin core/target/release/memnest
 ```
 
-On Linux, setup starts the server and watcher, adds missing Claude Code, Codex, and Cursor connections, and tests saving and searching. Client files are backed up before changes; existing Memnest entries are left alone. pi is installed separately. Automatic recall hooks are opt-in with `--autocontext`.
-
-Supported existing Linux units retain their settings and port. Custom commands, systemd drop-ins, and external environment files stop automatic setup before changes instead of being guessed at or overwritten. See [upgrade and recovery details](docs/operations.md#linux-service-upgrades).
+pi is installed separately. See [upgrade and recovery details](docs/operations.md#linux-service-upgrades).
 
 ## Connect a client
 
 ### pi
 
-For the published version:
-
 ```bash
-pi install npm:pi-memnest@0.2.0
+pi install npm:pi-memnest@0.3.0
 ```
 
-For the next-version source features, build and install the local extension from the repository root instead:
+To use a local checkout instead, build and install the extension from the repository root:
 
 ```bash
 (cd pi-extension && npm ci && npm run build)
 pi install ./pi-extension
 ```
 
-Both provide the memory tools and `/memnest` status. The published v0.2.0 enables automatic recall by default; the next version defaults to off. Set `MEMNEST_AUTOCONTEXT_MODE=off` to disable it explicitly, or `balanced` to enable it. See the [pi extension guide](pi-extension/README.md).
+The extension provides the five memory tools and `/memnest` status. Automatic recall is off by default in v0.3.0. Set `MEMNEST_AUTOCONTEXT_MODE=balanced` to enable it. See the [pi extension guide](pi-extension/README.md).
 
 ### MCP
 
@@ -103,7 +97,7 @@ memory_get(id="<ID returned by search>")
 
 When the host provides the current directory, omit `project` to search that workspace plus `playbook`. Use `project=all` only for a deliberate cross-project search. When a fact changes, save its replacement with `supersedes=<old ID>`. Deletion moves the record to trash.
 
-### Read more of a source (next version)
+### Read more of a source
 
 Search keeps its existing 600-character excerpts per result. The experimental total search-text cap was removed.
 
@@ -126,23 +120,19 @@ Capture is separate from automatic recall. It skips system/developer prompts, re
 
 ## Compatibility and release status
 
-| Available now | Planned for v0.3.0 |
-| --- | --- |
-| Core v0.2.1: Linux x86_64 and Arm64 archives | Integrated setup with client configuration and recovery |
-| pi-memnest v0.2.0 on npm | Source pagination and nearby conversation records |
-| Memory tools, local search, and transcript capture | Default-off pi automatic recall and additional source metadata |
+v0.3.0 provides Linux x86_64 and Arm64 core archives and `pi-memnest` 0.3.0 on npm. It includes integrated setup, long-source pagination, nearby conversation records, bounded provenance, safer correction errors, and default-off pi automatic recall.
 
-The current source is the v0.3.0 candidate, but its package versions, tag, and release have not been changed. The scope is intentionally limited to safer setup and source-backed reading. It does not include a new ranking algorithm, graph, dashboard, or team service.
+The scope is intentionally limited to safer setup and source-backed reading. It does not include a graph, dashboard, team service, or a model that decides whether a source fully answers a question.
 
-macOS installation and Intel/Apple Silicon packaging code are present, but no macOS archive is published in v0.2.1. Native installation, restart, and removal have not been verified. Do not treat macOS as a validated release target yet.
+macOS installation and packaging code are present, but native installation, restart, and removal have not been verified. Do not treat macOS as a validated release target yet.
 
-The planned features require the updated source, not just the published core or npm package. See the [change summary (Korean)](docs/next-release.ko.md), [core changelog](core/CHANGELOG.md), and [pi changelog](pi-extension/CHANGELOG.md).
+See the [v0.3.0 summary (Korean)](docs/next-release.ko.md), [core changelog](core/CHANGELOG.md), and [pi changelog](pi-extension/CHANGELOG.md).
 
 ## How it works
 
 ![Memnest architecture](docs/architecture.png)
 
-One Rust service stores records in SQLite and searches with BM25 plus local multilingual embeddings. SQLite is the source of truth; the search indexes can be rebuilt. The next version extends source reading, not the search model or ranking algorithm.
+One Rust service stores records in SQLite and searches with BM25 plus local multilingual embeddings. SQLite is the source of truth; the search indexes can be rebuilt. v0.3.0 keeps the same embedding model and adds a conservative candidate-combination fix, not a new learned ranker.
 
 Memnest makes no generative LLM calls. A connected coding AI still uses its own model to read results and decide what to do. Memnest cannot prove an answer exists or detect that your code made an old memory obsolete.
 

@@ -8,7 +8,7 @@ For what memnest is and how to connect an agent, start at the [README](../README
 
 ## Requirements
 
-Published core v0.2.1 provides Linux x86_64 and Arm64 binaries, which need neither Git nor Rust. macOS packaging code is present but no macOS archive is published in that release, and native launchd operation remains unverified. The source setup described below is not in v0.2.1; it requires Python 3.11 or newer to validate client configuration. Building from source needs Git and a Rust toolchain with Rust 2024 edition support. The first embedding operation needs internet access to download the configured model. Workflow definitions include macOS builds; that is not evidence of a completed native installation test.
+Core v0.3.0 provides Linux x86_64 and Arm64 binaries, which need neither Git nor Rust. Its integrated setup requires Python 3.11 or newer to validate client configuration. Building from source also needs Git and a Rust toolchain with Rust 2024 edition support. The first embedding operation needs internet access to download the configured model. macOS installation and packaging code is present, but native launchd installation, restart, and removal remain unverified.
 
 Linux setup requires `systemctl` and `systemd-analyze` from systemd. The latter is used read-only to inspect user or system unit search paths before an upgrade. The optional package under `pi-extension/` lists its own runtime requirements in its package README.
 
@@ -21,15 +21,23 @@ cd core
 cargo build --release
 ```
 
-### One-command setup from source
+### One-command setup
 
-These instructions require a checkout containing the unreleased setup changes. From `core/` after building, run:
+For the v0.3.0 Linux release, download and review the installer before running it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.3.0/core/scripts/install.sh \
+  -o /tmp/memnest-install.sh
+VERSION=v0.3.0 bash /tmp/memnest-install.sh --user
+```
+
+From a source checkout, run this from `core/` after building:
 
 ```bash
 scripts/setup.sh --user --bin target/release/memnest
 ```
 
-Future archives containing `scripts/setup.sh` can use `scripts/setup.sh --user --bin ./memnest`. Published v0.2.1 does not contain that script. The updated downloader detects this older layout: it permits a fresh Linux server install but refuses to run the legacy installer over an existing service or with `--autocontext`. Install the local pi extension separately when using source-only features; the npm package does not yet include them.
+The downloader still recognizes the older v0.2.1 archive layout, but refuses to run that legacy installer over an existing service or with `--autocontext`.
 
 User-mode setup installs and starts the server and conversation watcher; setup detects Claude Code, Codex, Cursor, and pi, and merges the supported MCP entries. Automatic recall is not installed by default: add `--autocontext` to `setup.sh` or `install.sh` to opt in to the Claude Code prompt hook. Existing Memnest client entries are left unchanged. Every changed client file is first copied byte-for-byte to a private timestamped directory. That directory contains the manifest and its own restore script, so uninstalling the service does not remove the rollback tool. A newly created file gets an `ABSENT` marker. Setup finishes by remembering, searching for, and trashing a unique scratch memory. The first round trip can download the embedding model.
 
@@ -226,10 +234,9 @@ Core tests run serially because environment-variable and vault lifecycle tests s
 
 A smoke test writes into whichever store answers the URL it is given. Never point one at the store you actually use; see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-## Read-only first-use diagnosis (source-only)
+## Read-only first-use diagnosis
 
-Build this checkout, then target the endpoint explicitly. This flag is not in the
-published core v0.2.1; matching version strings alone do not prove compatibility.
+Target the endpoint explicitly:
 
 ```bash
 core/target/debug/memnest --host 127.0.0.1 --port 3111 status --diagnose
@@ -247,12 +254,16 @@ memory text, invokes a memory tool, changes client settings, or prints the token
 Use only an endpoint you trust: explicit non-loopback HTTP sends the bearer token
 without TLS. The flag uses `--host`/`--port`, not `MEMNEST_URL`.
 
-Embedding readiness, index backlog/failures, and remote capture are reported
-**unknown**, not inferred from health. Existing `memnest --data-dir <watcher-state-dir>
-status` reads local watcher heartbeat/last stored time (may differ from server data).
-A fresh heartbeat is not proof that every transcript was indexed. Diagnostic mode
-does not read that state file. Existing `--doctor` is **not** this read-only path:
-it writes a test file and opens indexes; do not use it as a non-mutating live probe.
+The v0.3.0 health contract reports whether the embedding model is currently loaded,
+the number of pending index operations, and whether a rebuild is required. An unloaded
+model is normally lazy, not failed: the first write or search initializes it. Older
+health contracts are shown as unknown. Remote capture remains unknown because service
+health does not expose the watcher's state. `memnest --data-dir <watcher-state-dir>
+status` reads that local heartbeat and last stored time, which may differ from the
+server data directory. A fresh heartbeat is not proof that every transcript was
+indexed. Diagnostic mode does not read the watcher state file. Existing `--doctor` is
+**not** this read-only path: it writes a test file and opens indexes; do not use it as
+a non-mutating live probe.
 
 Recovery: unreachable → check the intended endpoint and service logs; authentication
 failure → compare the server/client token configuration without printing it;
@@ -272,7 +283,9 @@ python3 scripts/evaluate-coding-memory.py --output /tmp/memnest-evaluation.json
 ```
 
 The evaluation requires the already populated `core/target/test-model-cache`; it
-refuses a missing cache and blocks model downloads. It creates a new temporary DB,
+refuses a missing cache and blocks model downloads. The current fixture has 16 records
+and 48 authored questions, including 26 questions whose requested fact is absent. It
+creates a new temporary DB,
 a random loopback endpoint and a disposable token, checks service identity before
 writes, stores the explicit fixture, searches it, and removes only its own data and
 child process. JSON results and the neighboring `.daemon.log` remain at the output

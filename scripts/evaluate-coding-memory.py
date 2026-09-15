@@ -46,7 +46,10 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     fixture_path = ROOT / "scripts/fixtures/coding-memory.json"
-    fixture = json.loads(fixture_path.read_text())
+    try:
+        fixture = json.loads(fixture_path.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(f"could not read evaluation fixture: {error}") from error
     cache = ROOT / "core/target/test-model-cache"
     assert (cache / "models--intfloat--multilingual-e5-base/refs/main").is_file(), (
         "existing cache required"
@@ -84,7 +87,12 @@ def main():
                 },
             )
             with opener.open(req, timeout=60) as response:
-                return json.load(response)
+                try:
+                    return json.load(response)
+                except json.JSONDecodeError as error:
+                    raise RuntimeError(
+                        f"invalid JSON from disposable service path {path}"
+                    ) from error
 
         log_path = args.output.with_suffix(".daemon.log")
         args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -179,7 +187,10 @@ def main():
                         for r in records
                         if r["project"] == case["project"] and r["key"] not in obsolete
                     ]
-                    assert set(found) <= {r["key"] for r in eligible}, (case, found)
+                    if not set(found) <= {r["key"] for r in eligible}:
+                        raise AssertionError(
+                            f"search escaped expected scope/current rows: {case!r}, {found!r}"
+                        )
                     # Transparent lexical/file baseline: Unicode token intersection count,
                     # ties by fixed fixture order, zero-overlap abstention, same visibility/scope.
                     scored = [
@@ -208,6 +219,7 @@ def main():
                     ),
                     "unavailable",
                 )
+                health_after_queries = request("/health")
                 output = {
                     "fixture": str(fixture_path.relative_to(ROOT)),
                     "records": len(records),
@@ -220,10 +232,17 @@ def main():
                         "p95": latencies[int(len(latencies) * 0.95)],
                     },
                     "rss_after_queries": rss,
-                    "health": {k: health[k] for k in ["version", "embed_model"]},
+                    "health_before_writes": {
+                        k: health[k]
+                        for k in ["version", "embed_model", "embedding", "index"]
+                    },
+                    "health_after_queries": {
+                        k: health_after_queries[k]
+                        for k in ["version", "embed_model", "embedding", "index"]
+                    },
                     "diagnostic": diagnostic.stdout,
                     "unauthorized": unauthorized.stdout,
-                    "limitations": "26 authored cases, 16 records, single ordered warm run. No paid LLM, competitor, answer-generation or general superiority evaluation. Token baseline has no morphology/stopword/ranking tuning.",
+                    "limitations": f"{len(fixture['cases'])} authored cases, {len(records)} records, single ordered warm run. No paid LLM, competitor, answer-generation or general superiority evaluation. Token baseline has no morphology/stopword/ranking tuning.",
                 }
                 args.output.write_text(
                     json.dumps(output, ensure_ascii=False, indent=2) + "\n"

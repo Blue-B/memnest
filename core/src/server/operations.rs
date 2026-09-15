@@ -153,6 +153,28 @@ pub async fn remember(
         "default".to_string()
     };
     validate_write_project(&project)?;
+    if let Some(requested) = input
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.supersedes.as_deref())
+    {
+        let sys = system.read().await;
+        let db = sys.db.read().await;
+        let canonical_id = db
+            .canonical_chunk_id(requested)
+            .map_err(|error| OperationError::internal(error.to_string()))?;
+        let previous = db
+            .get_chunk(&canonical_id)
+            .map_err(|error| OperationError::internal(error.to_string()))?
+            .ok_or_else(|| {
+                OperationError::not_found(format!("superseded memory not found: {requested}"))
+            })?;
+        if previous.project != project || is_internal_project(&previous.project) {
+            return Err(OperationError::conflict(
+                "superseded memory must be active in the same project",
+            ));
+        }
+    }
     if input.sensitive || input.metadata.as_ref().is_some_and(|m| m.sensitive) {
         return Err(OperationError::bad(
             "sensitive memory is not supported; use secret_set",
@@ -426,7 +448,16 @@ pub async fn update(
     let map = api::update_impl(system, req).await;
     match map.get("status").and_then(Value::as_str) {
         Some("ok") => Ok(map),
-        Some("not_found") => Err(OperationError::not_found("memory not found")),
+        Some("not_found") => Err(OperationError::not_found(
+            map.get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("memory not found"),
+        )),
+        Some("conflict") => Err(OperationError::conflict(
+            map.get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("memory update conflict"),
+        )),
         _ => Err(OperationError::internal(
             map.get("message")
                 .and_then(Value::as_str)

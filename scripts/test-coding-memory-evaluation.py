@@ -43,10 +43,16 @@ class EvaluationTests(unittest.TestCase):
         )
 
     def test_judgments_are_visible_and_project_local(self):
-        fixture = json.loads((HERE / "fixtures/coding-memory.json").read_text())
+        fixture_path = HERE / "fixtures/coding-memory.json"
+        try:
+            fixture = json.loads(fixture_path.read_text())
+        except (OSError, json.JSONDecodeError) as error:
+            self.fail(f"could not load fixed evaluation fixture: {error}")
         records = {r["key"]: r for r in fixture["records"]}
         self.assertEqual(len(records), len(fixture["records"]))
-        self.assertEqual(len({c["id"] for c in fixture["cases"]}), 26)
+        self.assertEqual(len({c["id"] for c in fixture["cases"]}), 48)
+        self.assertEqual(sum(bool(c["relevant"]) for c in fixture["cases"]), 22)
+        self.assertEqual(sum(not c["relevant"] for c in fixture["cases"]), 26)
         obsolete = {r["supersedes"] for r in records.values() if "supersedes" in r}
         for case in fixture["cases"]:
             for key in case["relevant"]:

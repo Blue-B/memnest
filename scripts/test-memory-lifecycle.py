@@ -57,7 +57,7 @@ def local_request(base, token, path, body=None):
         },
     )
     try:
-        with opener.open(req, timeout=60) as response:
+        with opener.open(req, timeout=60) as response:  # noqa: S310 - validated loopback URL
             return response.status, json.load(response)
     except urllib.error.HTTPError as error:
         return error.code, json.load(error)
@@ -136,20 +136,23 @@ def run():
 
             def start(rebuild=False):
                 nonlocal child
-                child = subprocess.Popen(
-                    [
-                        str(BINARY),
-                        "--data-dir",
-                        str(data),
-                        "--host",
-                        "127.0.0.1",
-                        "--port",
-                        str(port),
-                    ],
-                    env=dict(env, MEMNEST_REBUILD_INDEXES=str(int(rebuild))),
-                    stdout=log,
-                    stderr=log,
-                )
+                try:
+                    child = subprocess.Popen(
+                        [
+                            str(BINARY),
+                            "--data-dir",
+                            str(data),
+                            "--host",
+                            "127.0.0.1",
+                            "--port",
+                            str(port),
+                        ],
+                        env=dict(env, MEMNEST_REBUILD_INDEXES=str(int(rebuild))),
+                        stdout=log,
+                        stderr=log,
+                    )
+                except OSError as error:
+                    raise AssertionError(f"failed to start disposable daemon: {error}") from error
                 for _ in range(60):
                     assert child.poll() is None, "daemon exited"
                     try:
@@ -239,10 +242,25 @@ def run():
                     "memory_search", {"query": "truthmarker", "project": "alpha"}
                 )
                 # Invalid corrections never hide the current row or create a replacement.
-                for target, project in [
-                    ("missing-id", "alpha"),
-                    (current, "beta"),
-                    (old, "alpha"),
+                for target, project, expected_status, expected_error in [
+                    (
+                        "missing-id",
+                        "alpha",
+                        404,
+                        "superseded memory not found: missing-id",
+                    ),
+                    (
+                        current,
+                        "beta",
+                        409,
+                        "superseded memory must be active in the same project",
+                    ),
+                    (
+                        old,
+                        "alpha",
+                        409,
+                        "superseded memory must be active in the same project",
+                    ),
                 ]:
                     status, rejected = request(
                         "/add",
@@ -252,7 +270,8 @@ def run():
                             "metadata": {"supersedes": target},
                         },
                     )
-                    assert status >= 400, rejected
+                    assert status == expected_status, rejected
+                    assert rejected["error"] == expected_error, rejected
                     assert ids("truthmarker", "alpha") == {current}
                 mcp(
                     "memory_update",
@@ -288,9 +307,11 @@ def run():
                     assert time.monotonic() < deadline, "scheduled trash GC timeout"
                     time.sleep(1)
                 with sqlite3.connect(data / "memory.db") as conn:
-                    assert conn.execute(
+                    tombstones = conn.execute(
                         "SELECT id FROM transcript_tombstones"
-                    ).fetchall() == [(captured_id,)]
+                    ).fetchall()
+                    if tombstones != [(captured_id,)]:
+                        raise AssertionError(f"unexpected transcript tombstones: {tombstones}")
                 backfill(3)
                 assert request("/chunk/" + captured_id)[0] == 404
                 assert ids("purgetoken", "all") == set()

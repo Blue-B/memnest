@@ -36,7 +36,12 @@ def main():
                 self.reply()
 
             def do_POST(self):
-                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                try:
+                    length = int(self.headers["Content-Length"])
+                    body = json.loads(self.rfile.read(length))
+                except (TypeError, ValueError):
+                    self.send_error(400)
+                    return
                 assert body["method"] == "tools/list", body
                 self.reply()
 
@@ -60,6 +65,11 @@ def main():
                         "status": "ok",
                         "version": private_body + token,
                         "data_dir": server_path,
+                        "embedding": {"loaded": False},
+                        "index": {
+                            "pending_operations": 2,
+                            "rebuild_required": True,
+                        },
                     }
                     if self.path == "/health"
                     else {
@@ -130,6 +140,9 @@ def main():
                 seen.clear()
                 result = invoke(server.server_port)
                 assert result.returncode == code and expected in result.stdout, result
+                if mode == "ok":
+                    assert "embedding: lazy" in result.stdout, result
+                    assert "index: 2 pending operation(s), rebuild_required=true" in result.stdout, result
                 assert all(
                     path in ["/health", "/mcp"] and auth == f"Bearer {token}"
                     for _, path, auth in seen
