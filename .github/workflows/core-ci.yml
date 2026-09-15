@@ -67,15 +67,10 @@ jobs:
       - name: Third-party notices are current
         run: python3 scripts/generate-third-party-notices.py --check
 
-  macos-packaging:
-    strategy:
-      matrix:
-        include:
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-          - os: macos-14
-            target: aarch64-apple-darwin
-    runs-on: ${{ matrix.os }}
+  # Source-only compile coverage on the native target supported by ort.
+  # This does not claim an installed macOS lifecycle is validated or published.
+  macos-source-check:
+    runs-on: macos-14
     defaults:
       run:
         working-directory: core
@@ -86,9 +81,9 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-apple-darwin
       - name: Native release build
-        run: cargo build --release --locked --target "${{ matrix.target }}"
+        run: cargo build --release --locked --target aarch64-apple-darwin
       - name: Installer and launchd contract checks
         run: bash scripts/verify-macos-packaging.sh
 
