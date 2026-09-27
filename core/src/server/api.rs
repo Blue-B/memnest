@@ -493,6 +493,14 @@ pub(crate) async fn run_hybrid_search_scope(
         crate::index::hybrid::rrf_fusion(&vector_results, &text_results, 60.0).unwrap_or_default();
 
     let keywords = crate::search::extract_keywords(query, 2);
+    let has_korean = query.chars().any(|ch| ('가'..='힣').contains(&ch));
+    let identifiers: Vec<_> = keywords
+        .iter()
+        .filter(|word| {
+            has_korean && word.is_ascii() && word.bytes().any(|ch| ch.is_ascii_alphabetic())
+        })
+        .collect();
+    let mut identifier_matches = std::collections::HashSet::new();
     let distance_cutoff = sys.config.distance_cutoff;
     let allow_semantic_fallback = keywords.len() >= 2;
     let vector_only_budget = if allow_semantic_fallback {
@@ -553,6 +561,12 @@ pub(crate) async fn run_hybrid_search_scope(
                     continue;
                 }
             }
+            if identifiers
+                .iter()
+                .any(|term| contains_latin_term(&c.document, term))
+            {
+                identifier_matches.insert(id);
+            }
             let final_score = score
                 + keyword_bonus_from_ratio(keyword_ratio, sys.config.keyword_max_bonus)
                 + importance_bonus(&c.metadata.importance)
@@ -589,6 +603,12 @@ pub(crate) async fn run_hybrid_search_scope(
                 break;
             }
         }
+    }
+    // In mixed Korean/Latin questions, explicit names are stronger evidence than
+    // shared conversational words. Do not pad named matches with off-topic hits.
+    // With no named match, leave the existing semantic fallback intact.
+    if !identifier_matches.is_empty() {
+        items.retain(|(item, _)| identifier_matches.contains(&item.id));
     }
     items.sort_by(|a, b| {
         b.0.score
@@ -1733,6 +1753,16 @@ pub async fn stats(State(system): State<Arc<RwLock<MemorySystem>>>) -> Json<Stat
     })
 }
 
+fn contains_latin_term(document: &str, term: &str) -> bool {
+    let document = document.to_ascii_lowercase();
+    let term = term.to_ascii_lowercase();
+    document.match_indices(&term).any(|(start, _)| {
+        let end = start + term.len();
+        (start == 0 || !document.as_bytes()[start - 1].is_ascii_alphanumeric())
+            && (end == document.len() || !document.as_bytes()[end].is_ascii_alphanumeric())
+    })
+}
+
 fn keyword_match_ratio(document: &str, keywords: &[String]) -> f32 {
     if keywords.is_empty() {
         return 0.0;
@@ -2252,6 +2282,95 @@ pub(crate) mod test_support {
             .expect("MemorySystem::new failed (offline and no cached model?)");
         sys.secret_tools_enabled = true;
         (tmp, Arc::new(RwLock::new(sys)))
+    }
+
+    #[test]
+    fn latin_terms_have_boundaries_and_allow_korean_particles() {
+        assert!(contains_latin_term("@scope/pi-task-panel task도", "TASK"));
+        assert!(contains_latin_term("Redis를 설정", "redis"));
+        assert!(!contains_latin_term("API pipeline", "pi"));
+        assert!(!contains_latin_term("multitasking", "task"));
+    }
+
+    #[tokio::test]
+    async fn named_matches_avoid_padding_but_keep_old_records_and_semantic_fallback() {
+        let (_tmp, system) = build_system().await;
+        let query = "지금 Redis 설정이 뭐야";
+        let embedding = system.read().await.embedder.encode_query(query).unwrap();
+        let now = chrono::Utc::now();
+        let semantic = MemoryChunk {
+            id: "semantic-only".into(),
+            project: "named-lookup".into(),
+            document: "캐시 서버의 설정은 기본값이다".into(),
+            // Controlled vectors test filtering, not embedding-model accuracy.
+            embedding: Some(embedding.clone()),
+            metadata: Metadata::default(),
+            created_at: now,
+            updated_at: now,
+        };
+        {
+            let sys = system.read().await;
+            sys.db.write().await.insert_chunk(&semantic).unwrap();
+            sys.add_text_doc(&semantic.id, &semantic.project, &semantic.document)
+                .await
+                .unwrap();
+        }
+        let fallback = run_hybrid_search(
+            system.clone(),
+            query,
+            &semantic.project,
+            5,
+            SearchOptions::default(),
+            None,
+        )
+        .await;
+        assert_eq!(
+            fallback[0].id, semantic.id,
+            "no named match must preserve semantic fallback"
+        );
+        let old = now - chrono::Duration::days(200);
+        let named = MemoryChunk {
+            id: "old-named-record".into(),
+            // Match the whole record, not only the 600-character returned excerpt.
+            document: format!("{} Redis 설정은 별도로 보관", "긴 배경 설명 ".repeat(100)),
+            metadata: Metadata {
+                chunk_type: ChunkType::AutoLog,
+                importance: Importance::Log,
+                ..Metadata::default()
+            },
+            created_at: old,
+            updated_at: old,
+            ..semantic.clone()
+        };
+        let noise = MemoryChunk {
+            id: "shared-question-word".into(),
+            document: "지금 게임 설정이 필요하다".into(),
+            ..semantic.clone()
+        };
+        {
+            let sys = system.read().await;
+            for chunk in [&named, &noise] {
+                sys.db.write().await.insert_chunk(chunk).unwrap();
+                sys.add_text_doc(&chunk.id, &chunk.project, &chunk.document)
+                    .await
+                    .unwrap();
+            }
+        }
+        let results = run_hybrid_search(
+            system,
+            query,
+            &semantic.project,
+            5,
+            SearchOptions::default(),
+            None,
+        )
+        .await;
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, named.id);
+        assert!(
+            results[0].score < 0.0,
+            "age must not turn into a relevance cutoff"
+        );
     }
 
     #[tokio::test]
