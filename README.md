@@ -114,7 +114,12 @@ Pagination lets you read beyond the original 8,000-character get limit. Nearby r
 ```bash
 memnest watch
 memnest watch --backfill
+# Replay even a previously tracked file, using the same original absolute path.
+memnest watch --path /absolute/path/session.jsonl --backfill --once --dry-run
+memnest watch --path /absolute/path/session.jsonl --backfill --once
 ```
+
+Normal watch skips the existing prefix of newly discovered files. Continuous `--backfill` does not rewind tracked files either. Use `--backfill --once` to import selected history from the start without changing the live watch cursor. `--dry-run` counts eligible conversation chunks, not missing DB records. See [history import](docs/history-import.md) for duplicate/deletion handling and source-path limitations.
 
 Capture is separate from automatic recall. It skips system/developer prompts, reasoning, tool traffic, images, and subagent sidechains. Captured transcripts remain until deleted. Automatic recall is optional; it can still select an irrelevant memory, so inspect sources before acting on them.
 

@@ -668,20 +668,23 @@ pub fn status_message(state_dir: &Path, now: DateTime<Utc>) -> String {
         .map(|at| at.to_rfc3339())
         .unwrap_or_else(|| "unknown".to_string());
     format!(
-        "capture: {} (heartbeat {}; last stored {})",
+        "capture: {} (heartbeat {}; last stored {}; past-history completeness not checked)",
         if active { "active" } else { "WARNING stale" },
         heartbeat.to_rfc3339(),
         last_stored
     )
 }
 
-enum Sent {
-    Stored(usize),
+#[derive(Default)]
+struct Sent {
+    new_chunks: usize,
+    skipped_chunks: usize,
 }
 
 async fn post_event(client: &reqwest::Client, base_url: &str, event: &Event) -> Result<Sent> {
     let documents = event.documents();
     let total = documents.len() as i64;
+    let mut sent = Sent::default();
     for (index, document) in documents.into_iter().enumerate() {
         let metadata = Metadata {
             chunk_type: ChunkType::AutoLog,
@@ -725,8 +728,14 @@ async fn post_event(client: &reqwest::Client, base_url: &str, event: &Event) -> 
                 "service /add returned HTTP {http_status} status={add_status:?}"
             ));
         }
+        if add_status == "succeeded" {
+            sent.new_chunks += 1;
+        } else {
+            // Includes existing, trashed, superseded, and purged event IDs.
+            sent.skipped_chunks += 1;
+        }
     }
-    Ok(Sent::Stored(total as usize))
+    Ok(sent)
 }
 
 /// Send one file's pending turns, advancing the offset only past turns that
@@ -742,7 +751,7 @@ async fn drain_file(
     for item in pending {
         if let Some(event) = &item.event {
             match post_event(client, base_url, event).await {
-                Ok(Sent::Stored(parts)) => stored += parts,
+                Ok(sent) => stored += sent.new_chunks + sent.skipped_chunks,
                 Err(e) => return Err(e),
             }
         }
@@ -788,7 +797,110 @@ async fn sweep(
     stored
 }
 
-/// Entry point for the `watch` subcommand.
+/// Explicit one-shot history replay. Never reads or writes the live watch cursor.
+/// Retry from the start after a failure; the service deduplicates stable event IDs.
+pub async fn import_history(url: Option<&str>, paths: &[String], dry_run: bool) -> Result<Value> {
+    if paths.is_empty() {
+        return Err(anyhow!(
+            "history import requires --path to select the source explicitly"
+        ));
+    }
+    let mut files = Vec::new();
+    for path in paths {
+        if !Path::new(path).is_absolute() {
+            return Err(anyhow!(
+                "history import requires an absolute --path; use the original capture path"
+            ));
+        }
+        for entry in walkdir::WalkDir::new(path).follow_links(false) {
+            let entry = entry.with_context(|| format!("discover history in {path}"))?;
+            if entry.file_type().is_file()
+                && entry.path().extension().is_some_and(|ext| ext == "jsonl")
+            {
+                files.push(entry.into_path());
+            }
+        }
+    }
+    files.sort();
+    files.dedup();
+    if files.is_empty() {
+        return Err(anyhow!(
+            "no transcript JSONL files found in the selected paths"
+        ));
+    }
+    // Bound this run to complete lines present before import, even in live files.
+    let files = files
+        .into_iter()
+        .map(|path| {
+            let end = final_complete_line_offset(&path)?;
+            Ok((path, end))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let client = if dry_run {
+        None
+    } else {
+        Some(
+            reqwest::Client::builder()
+                .timeout(Duration::from_secs(120))
+                .redirect(reqwest::redirect::Policy::none())
+                .build()?,
+        )
+    };
+    let base_url = crate::hook::resolve_url(url);
+    let mut reports = Vec::new();
+    let (mut total_eligible, mut total_new, mut total_skipped) = (0, 0, 0);
+    for (path, end) in files {
+        let mut state = FileState::default();
+        let (mut turns, mut eligible, mut new_chunks, mut skipped_chunks) = (0, 0, 0, 0);
+        while state.offset < end {
+            if std::fs::metadata(&path)?.len() < end {
+                return Err(anyhow!(
+                    "history file shrank during import; retry: {}",
+                    path.display()
+                ));
+            }
+            let before = state.offset;
+            for item in read_pending(&path, &mut state)? {
+                if item.end_offset > end {
+                    break;
+                }
+                if let Some(event) = item.event {
+                    turns += 1;
+                    eligible += event.documents().len();
+                    if let Some(client) = &client {
+                        let sent = post_event(client, &base_url, &event).await
+                            .context("history import stopped; earlier chunks may be stored; retrying the same source is safe")?;
+                        new_chunks += sent.new_chunks;
+                        skipped_chunks += sent.skipped_chunks;
+                    }
+                }
+                state.offset = item.end_offset;
+            }
+            if state.offset == before {
+                return Err(anyhow!(
+                    "history file changed during import; retry: {}",
+                    path.display()
+                ));
+            }
+        }
+        total_eligible += eligible;
+        total_new += new_chunks;
+        total_skipped += skipped_chunks;
+        reports.push(json!({
+            "path": path, "scanned_bytes": end, "eligible_turns": turns,
+            "eligible_chunks": eligible, "new_chunks": new_chunks,
+            "skipped_chunks": skipped_chunks
+        }));
+    }
+    Ok(json!({
+        "mode": if dry_run { "preview" } else { "import" },
+        "files": reports, "eligible_chunks": total_eligible,
+        "new_chunks": total_new, "skipped_chunks": total_skipped,
+        "note": "eligible is not missing; skipped includes existing and deleted memories; live watch cursors are unchanged"
+    }))
+}
+
+/// Entry point for the continuous/incremental `watch` subcommand.
 pub async fn run(
     url: Option<&str>,
     paths: &[String],
@@ -1467,6 +1579,93 @@ mod tests {
         assert_eq!(state.offset, std::fs::metadata(&path).unwrap().len());
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         server.abort();
+    }
+
+    #[tokio::test]
+    async fn history_preview_and_replay_are_complete_and_fail_closed() {
+        use axum::{Json, Router, routing::post};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        let calls = Arc::new(AtomicUsize::new(0));
+        let received = calls.clone();
+        let app = Router::new().route(
+            "/add",
+            post(move || {
+                let attempt = received.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    Json(json!({"status": match attempt {
+                        0 => "failed", 1 => "succeeded", _ => "deduplicated"
+                    }}))
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.jsonl");
+        write_lines(
+            &path,
+            &[
+                claude_line("user", "앞부분 질문"),
+                json!({"ignored": "x".repeat(MAX_BYTES_PER_CYCLE as usize)}).to_string(),
+                claude_line("assistant", "뒷부분 해결 기록"),
+            ],
+        );
+        // Do not consume a concurrently written, incomplete final record.
+        write!(
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .unwrap(),
+            "{{unfinished"
+        )
+        .unwrap();
+        let paths = vec![path.to_string_lossy().to_string()];
+        let preview = import_history(Some(&url), &paths, true).await.unwrap();
+        assert_eq!(preview["mode"], "preview");
+        assert_eq!(preview["eligible_chunks"], 2);
+        assert_eq!(preview["files"][0]["eligible_turns"], 2);
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "preview must never contact the server"
+        );
+        assert!(import_history(Some(&url), &paths, false).await.is_err());
+        let imported = import_history(Some(&url), &paths, false).await.unwrap();
+        assert_eq!(
+            imported["eligible_chunks"], 2,
+            "replay must continue beyond one 4MiB cycle"
+        );
+        assert_eq!(imported["new_chunks"], 1);
+        assert_eq!(imported["skipped_chunks"], 1);
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert!(!dir.path().join(STATE_FILE).exists());
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn history_import_requires_explicit_existing_absolute_paths() {
+        assert!(import_history(None, &[], true).await.is_err());
+        assert!(
+            import_history(None, &["relative.jsonl".into()], true)
+                .await
+                .is_err()
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir
+            .path()
+            .join("missing.jsonl")
+            .to_string_lossy()
+            .to_string();
+        assert!(import_history(None, &[missing], true).await.is_err());
+        assert!(
+            import_history(None, &[dir.path().to_string_lossy().to_string()], true)
+                .await
+                .is_err()
+        );
     }
 
     #[test]

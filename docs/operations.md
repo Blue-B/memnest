@@ -191,6 +191,8 @@ Common options: `--host`, `--port`, `--data-dir`, `--backup-dir`, `--restore-dir
 
 `hook` reads a host's hook payload on stdin and writes the reply on stdout, choosing the shape from the payload unless `--format` pins it. It never blocks a prompt: an unreachable service means no output and exit 0. `watch` is the single automatic capture path for Claude Code, pi, and Codex transcripts. It keeps a byte offset per file in `<data-dir>/watch-state.json`, follows new files from the end unless `--backfill` asks for existing history, and advances only after storage succeeds or an idempotent retry is confirmed. Both talk to the service over HTTP and take `--url`, falling back to `MEMNEST_URL`.
 
+For previously tracked history, use `memnest watch --path /absolute/original/session.jsonl --backfill --once --dry-run` to preview, then remove `--dry-run` to import. This explicit replay ignores but never changes live watch cursors, processes complete history across bounded read batches, and reports new versus skipped chunks. A failed import exits nonzero; retrying the same original source uses existing deduplication and deletion tombstones. Preview counts eligible text, not DB omissions. See [history import](history-import.md) for the validation plan and identity limitations.
+
 `--viewer-port` is deprecated. Every endpoint is served on `--port`.
 
 ## Configuration

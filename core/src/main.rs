@@ -86,15 +86,18 @@ enum CliCommand {
         /// Claude Code, pi, and Codex locations.
         #[arg(long = "path")]
         paths: Vec<String>,
-        /// Make one pass and exit instead of following.
+        /// Exit after one pass; with --backfill, replay all selected history without changing watch cursors.
         #[arg(long)]
         once: bool,
         /// Seconds between passes.
         #[arg(long, default_value_t = 5)]
         interval: u64,
-        /// Import existing history instead of following from the end.
+        /// Read new files from the start. With --once, replay even previously tracked files (explicit absolute --path required).
         #[arg(long)]
         backfill: bool,
+        /// Preview eligible history without HTTP requests or state changes (not a DB coverage audit).
+        #[arg(long, requires_all = ["backfill", "once"])]
+        dry_run: bool,
     },
 }
 
@@ -152,16 +155,23 @@ async fn main() -> anyhow::Result<()> {
                 once,
                 interval,
                 backfill,
+                dry_run,
             } => {
-                memnest::watch::run(
-                    url.as_deref(),
-                    paths,
-                    &config.data_dir,
-                    *once,
-                    *interval,
-                    *backfill,
-                )
-                .await?;
+                if *once && *backfill {
+                    let report =
+                        memnest::watch::import_history(url.as_deref(), paths, *dry_run).await?;
+                    println!("{report}");
+                } else {
+                    memnest::watch::run(
+                        url.as_deref(),
+                        paths,
+                        &config.data_dir,
+                        *once,
+                        *interval,
+                        *backfill,
+                    )
+                    .await?;
+                }
             }
             CliCommand::Status { diagnose } => {
                 if *diagnose {
@@ -734,6 +744,15 @@ mod tests {
         assert!(restore_data_dir(&source, &target, false).is_err());
         restore_data_dir(&source, &target, true).unwrap();
         assert_eq!(read_test_marker(&target), "new");
+    }
+
+    #[test]
+    fn history_preview_requires_one_shot_backfill() {
+        assert!(Cli::try_parse_from(["memnest", "watch", "--dry-run"]).is_err());
+        assert!(Cli::try_parse_from(["memnest", "watch", "--backfill", "--dry-run"]).is_err());
+        assert!(
+            Cli::try_parse_from(["memnest", "watch", "--backfill", "--once", "--dry-run"]).is_ok()
+        );
     }
 
     #[test]

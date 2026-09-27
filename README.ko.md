@@ -114,7 +114,12 @@ memory_get(id="<대화 기록 ID>", before=1, after=1)
 ```bash
 memnest watch
 memnest watch --backfill
+# 이미 감시하던 과거 파일도 가져오려면, 같은 원본 절대 경로를 선택합니다.
+memnest watch --path /absolute/path/session.jsonl --backfill --once --dry-run
+memnest watch --path /absolute/path/session.jsonl --backfill --once
 ```
+
+기본 감시는 처음 발견한 파일의 기존 내용을 건너뜁니다. 연속 `--backfill`도 이미 감시하던 파일의 읽기 위치를 되돌리지는 않습니다. `--backfill --once`는 선택한 기록을 처음부터 가져오며, 실행 중인 감시 상태는 바꾸지 않습니다. `--dry-run`은 저장 가능한 대화 수를 보여줄 뿐 DB 누락 수를 뜻하지 않습니다. 중복과 삭제 처리, 경로에 따른 제한은 [과거 기록 가져오기](docs/history-import.md)를 참고하세요.
 
 대화 저장과 자동 회상은 별개입니다. 시스템과 개발자 프롬프트, 추론 내용, 도구 입출력, 이미지, 서브에이전트 대화는 저장하지 않습니다. 수집한 대화는 삭제할 때까지 보관합니다. 자동 회상은 선택 기능이며, 관련 없는 기억을 고를 수도 있으므로 원문을 확인한 뒤 사용하세요.
 

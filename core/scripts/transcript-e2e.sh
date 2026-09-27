@@ -85,9 +85,10 @@ PY
 
 run_watch
 assert_two
-printf '{"version":2,"files":{}}\n' >"$data/watch-state.json"
+test ! -e "$data/watch-state.json"
 run_watch
 assert_two
+test ! -e "$data/watch-state.json"
 
 echo "TRANSCRIPT_E2E_DISTINCT=2"
 echo "TRANSCRIPT_E2E_RETRY_TOTAL=2"

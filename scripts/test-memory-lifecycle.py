@@ -210,9 +210,8 @@ def run():
                     timeout=90,
                 )
                 assert result.returncode == 0, result.stdout[-2000:]
-                assert "stored 1 transcript chunk" in result.stdout, result.stdout[
-                    -2000:
-                ]
+                report = json.loads(result.stdout)
+                assert report["new_chunks"] + report["skipped_chunks"] == 1, report
 
             try:
                 start()
