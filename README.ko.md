@@ -2,36 +2,37 @@
 
 <!-- markdownlint-disable MD013 MD033 -->
 
-<img src="docs/logo.png" alt="memnest 로고" width="440">
+<img src="docs/logo.png" alt="memnest 로고" width="220">
 
 [English](README.md) | [설치](#설치) | [사용법](#사용법) | [운영 문서](docs/operations.md)
 
-지난주 Claude Code가 설정을 바꾼 이유를 오늘 Codex에서 찾습니다. Memnest는 AI가 다시 작성한 요약 대신 내 컴퓨터에 수집된 당시 기록을 검색하게 해줍니다.
+코딩 AI와 전에 무엇을 했고, 왜 그렇게 결정했는지 다시 찾는 로컬 메모리입니다.
 
-pi, Claude Code, Codex의 보이는 대화 텍스트를 로컬에 저장하고, 하나의 저장소를 MCP와 HTTP로 함께 제공합니다. Memnest 자체는 생성형 LLM을 호출하지 않으며 클라우드 계정도 필요하지 않습니다.
+Memnest는 pi, Claude Code, Codex의 대화 텍스트를 내 컴퓨터에 저장합니다. 연결한 AI는 세션이 바뀌어도 그 기록을 검색하고 원문을 읽을 수 있습니다. 여러 클라이언트에서 쓰려면 같은 Memnest 서비스에 연결하면 됩니다.
 
 [![최신 릴리스](https://img.shields.io/github/v/release/Blue-B/memnest?label=release)](https://github.com/Blue-B/memnest/releases/latest)
 [![npm: pi-memnest](https://img.shields.io/npm/v/pi-memnest?label=npm%20pi-memnest&color=cb3837)](https://www.npmjs.com/package/pi-memnest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-[![독립된 한 클라이언트가 저장하고 다른 클라이언트가 같은 ID와 내용을 찾은 결과](docs/demo-result.ko.png)](docs/demo.md)
+## 사용 장면
 
-저장소에 포함된 [재현 데모](docs/demo.md)는 서로 상태를 공유하지 않는 두 클라이언트 프로세스에서 실제 요청을 보내고, 저장 ID와 검색한 원문이 같은지 검사합니다. LLM이 스스로 도구를 골랐다고 과장하지 않고 공유 저장소와 대화 파서가 동작한다는 범위만 입증합니다. [실제 클라이언트 검증](docs/client-validation.md)에는 별도로 확인한 pi 경로와 Claude Code, Codex의 계정 차단을 구분해 기록했습니다.
+이런 질문을 할 때 쌓인 기록을 찾아보는 용도입니다.
 
-## Memnest를 쓰는 이유
+> 전에 쓰던 작업 관리 도구를 왜 바꿨지? 당시 기록을 찾아줘.
+>
+> 이 프로젝트에서 마지막으로 정한 배포 방법과 이유를 확인해줘.
+>
+> 지난번 같은 오류가 났을 때 무엇을 시도했는지 찾아줘.
 
-- **원문 근거를 확인할 수 있습니다.** 검색 결과에는 안정적인 기록 ID가 있습니다. 현재 소스 빌드에서는 긴 기록을 이어 읽고 가능한 세션과 수집 출처 정보도 확인할 수 있습니다.
-- **여러 클라이언트가 같은 기록을 봅니다.** pi, Claude Code, Codex와 다른 MCP 클라이언트가 따로 기억 사본을 관리하지 않고 하나의 로컬 서비스를 조회합니다.
-- **기억을 생성형 AI로 다시 쓰지 않습니다.** 대화 저장 과정에서 LLM 요약을 만들지 않습니다. 검색에는 로컬 키워드 색인과 다국어 임베딩을 사용합니다.
-- **공개 도구가 다섯 개뿐입니다.** 저장, 검색, 조회, 정정, 삭제에 집중합니다. 삭제한 기록은 휴지통으로 이동하고, 바뀐 사실은 이전 기록을 남긴 채 대체할 수 있습니다.
+AI가 기억을 검색하고, 관련된 기록의 원문을 읽은 뒤 답하는 흐름입니다. 검색 결과에는 출처 ID가 있어 답변의 근거를 다시 확인할 수 있습니다. 위 문장은 사용 예시이며, 자동 실행 데모나 정답 보장을 뜻하지 않습니다.
 
-매번 읽어야 하는 짧은 규칙이라면 `CLAUDE.md`나 `AGENTS.md`가 더 간단합니다. Memnest는 계속 쌓이는 기록을 필요할 때 찾아보려는 경우에 적합합니다. ChatGPT나 Claude의 내장 메모리를 가져오거나 동기화하는 도구는 아닙니다.
+매번 적용할 짧은 규칙은 `AGENTS.md`나 `CLAUDE.md`에 두는 편이 간단합니다. Memnest는 계속 쌓이는 대화와 결정 기록을 필요할 때 찾아보는 쪽에 맞습니다.
 
 ## 설치
 
-### Linux 배포판
+Linux x86_64와 Arm64 배포 파일을 제공합니다. Rust는 필요하지 않습니다. 처음 저장하거나 검색할 때 약 1.1GB의 임베딩 모델을 내려받고, 임베딩 중에는 RAM을 약 1.9GB까지 사용할 수 있습니다.
 
-Rust 없이 코어 v0.3.1을 설치합니다. 내려받은 스크립트를 읽은 뒤 실행하세요. setup은 서버와 대화 감시기를 설치하고 시작하며, Claude Code, Codex, Cursor의 빠진 연결을 추가한 뒤 임시 기억의 저장과 검색을 확인합니다.
+내려받은 스크립트를 확인한 뒤 실행하세요. 기존 설치를 업그레이드한다면 먼저 `memory.db`와 `master.key`를 함께 백업하세요.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.3.1/core/scripts/install.sh \
@@ -39,134 +40,53 @@ curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.3.1/core/scripts/
 VERSION=v0.3.1 bash /tmp/memnest-install.sh --user
 ```
 
-클라이언트 파일과 지원되는 서비스 변경은 수정 전에 백업하고, setup이 정확한 복구 명령을 출력합니다. 기존 Memnest 연결, 직접 바꾼 서비스 실행 명령, systemd 추가 설정과 외부 환경 파일은 추측해 덮어쓰지 않습니다. 자동 회상 hook은 `--autocontext`를 추가한 경우에만 설정합니다.
+설치기는 서버와 대화 감시기를 시작하고, 지원되는 Claude Code, Codex, Cursor 설정에 빠진 연결을 추가합니다. 기존 설정 변경 전 백업하고 복구 명령을 안내합니다.
 
-처음 저장하거나 검색할 때 약 1.1 GB의 임베딩 모델을 내려받습니다. 임베딩 중에는 RAM을 약 1.9 GB까지 사용할 수 있습니다. 업그레이드 전에는 `memory.db`와 `master.key`를 백업하세요. Windows, WSL, 업그레이드와 복구 방법은 [운영 문서](docs/operations.md)에 있습니다.
+### pi 연결
 
-### 소스에서 빌드
-
-Rust와 Python 3.11 이상이 필요합니다.
+코어를 실행한 상태에서 같은 버전의 확장을 설치합니다.
 
 ```bash
-cargo build --release --locked --manifest-path core/Cargo.toml
-bash core/scripts/setup.sh --user --bin core/target/release/memnest
+pi install npm:pi-memnest@0.3.1
 ```
 
-pi는 별도로 설치합니다. 기존 Linux 서비스의 업그레이드와 복구는 [운영 문서](docs/operations.md#linux-service-upgrades)를 참고하세요.
+다른 경로의 Memnest 확장이 이미 등록돼 있다면 먼저 그 등록을 제거해 중복 로드를 피하세요. 연결 상태는 pi의 `/memnest`에서 확인합니다. [확장 설정](pi-extension/README.md)
 
-## 클라이언트 연결
-
-### pi
-
-npm에는 아직 0.2.0이 있습니다. 0.3.1은 태그 소스와 [GitHub 릴리스의 패키지 파일](https://github.com/Blue-B/memnest/releases/tag/v0.3.1)로 제공합니다. 기존 소스를 건드리지 않고 빌드된 확장을 불러오려면 다음과 같이 설치합니다.
-
-```bash
-git clone --depth 1 --branch v0.3.1 https://github.com/Blue-B/memnest.git ~/.local/share/memnest-v0.3.1
-pi install ~/.local/share/memnest-v0.3.1/pi-extension
-```
-
-이미 npm이나 다른 로컬 경로에서 Memnest를 불러오고 있다면 먼저 그 패키지 등록을 제거해 도구 중복을 피하세요.
-
-저장소 소스를 직접 쓰려면 루트에서 로컬 확장을 빌드하고 설치합니다.
-
-```bash
-(cd pi-extension && npm ci && npm run build)
-pi install ./pi-extension
-```
-
-확장은 기억 도구 5개와 `/memnest` 상태 명령을 제공합니다. v0.3.0의 자동 회상은 기본으로 꺼져 있습니다. 켜려면 `MEMNEST_AUTOCONTEXT_MODE=balanced`를 설정하세요. 자세한 설정은 [pi 확장 문서](pi-extension/README.md)에 있습니다.
-
-### MCP
-
-Streamable HTTP MCP 클라이언트를 실행 중인 서비스에 연결합니다.
-
-```json
-{
-  "mcpServers": {
-    "memnest": { "url": "http://127.0.0.1:3111/mcp" }
-  }
-}
-```
-
-stdio MCP와 JSON HTTP 예시는 [어댑터 문서](adapters/README.md)에 있습니다. 기록을 공유하려는 클라이언트는 같은 서비스에 연결해야 합니다.
+다른 MCP 클라이언트는 `http://127.0.0.1:3111/mcp`에 연결합니다. [연결 예시](adapters/README.md), [다른 환경과 소스 설치](docs/operations.md), [업그레이드와 복구](docs/operations.md#linux-service-upgrades)를 참고하세요. macOS는 소스 설치만 제공하며 실제 설치와 제거는 검증하지 못했습니다.
 
 ## 사용법
 
-모든 클라이언트에서 같은 기억 도구 5개를 사용합니다. `memory_remember`, `memory_search`, `memory_get`, `memory_update`, `memory_delete`입니다.
+연결한 AI에 과거 기록을 찾아달라고 요청하세요. 자동 회상은 기본으로 꺼져 있으며, 필요할 때 검색을 요청하는 방식으로 시작할 수 있습니다. 자동 회상을 원하면 [확장 설정](pi-extension/README.md)을 참고하세요.
+
+직접 도구를 호출하는 클라이언트에서는 다음 흐름을 사용합니다.
 
 ```text
-memory_remember(text="staging에서는 5433 포트를 사용한다.", project="playbook")
-memory_search(query="staging 데이터베이스 포트", project="playbook")
+memory_search(query="작업 관리 도구를 바꾼 이유")
 memory_get(id="<검색 결과의 ID>")
 ```
 
-호스트가 현재 디렉터리를 전달한다면 `project`를 생략해 현재 작업공간과 `playbook`을 함께 검색할 수 있습니다. 전체 프로젝트를 검색하려는 경우에만 `project=all`을 사용하세요. 사실이 바뀌면 `supersedes=<이전 ID>`로 새 기억을 저장합니다. 삭제한 기록은 휴지통으로 이동합니다.
+도구는 저장, 검색, 원문 조회, 정정, 삭제의 다섯 가지입니다. 중요한 결정을 `memory_remember`로 명시적으로 남길 수 있습니다. 바뀐 사실은 `supersedes=<이전 ID>`로 새 기록을 저장해 이전 기록과 연결합니다.
 
-### 원문 더 읽기
+현재 작업 경로가 전달되면 해당 작업공간과 공통 `playbook`을 검색합니다. 다른 프로젝트까지 찾으려는 경우 `project=all`을 지정합니다. 긴 원문과 주변 대화를 읽는 방법은 [원문 조회 문서](docs/bounded-retrieval.md)에 있습니다.
 
-검색은 기존처럼 결과마다 최대 600자를 보여줍니다. 시험적으로 추가했던 검색 전체 글자 수 제한은 제거했습니다.
+설치 전의 대화는 자동으로 모두 가져오지 않습니다. 필요한 원본 파일을 선택해 [과거 기록 가져오기](docs/history-import.md)로 추가하세요.
 
-```text
-memory_get(id="<검색 결과 ID>", offset=0, max_chars=8000)
-memory_get(id="<같은 ID>", offset=<next_offset>, max_chars=8000)
-memory_get(id="<대화 기록 ID>", before=1, after=1)
-```
+## 알아둘 점
 
-이전에는 조회해도 앞 8,000자까지만 볼 수 있었지만, 이제 뒷부분을 이어 읽을 수 있습니다. 주변 기록은 다른 프로젝트가 아니라 같은 대화에서 가져옵니다. 저장된 순서가 실제 대화 순서와 항상 같지는 않습니다. 원문이 잘렸다면 `next_offset`부터 다시 읽고, 주변 기록은 해당 ID로 따로 조회할 수 있습니다. 자세한 동작은 [원문 조회 문서](docs/bounded-retrieval.md)에 있습니다.
+- **기록 검색이지 사실 판정은 아닙니다.** 필요한 기록을 놓칠 수 있고, 옛 결정이 지금도 맞는지 자동으로 판별하지 못합니다. 후속 기록 안내도 검증된 답변 관계를 뜻하지 않습니다.
+- **모든 대화를 저장하지는 않습니다.** 보이는 대화 텍스트를 수집하며, 추론 내용, 도구 입출력, 이미지와 서브에이전트 대화는 제외합니다. ChatGPT나 Claude의 내장 메모리도 가져오지 않습니다.
+- **저장은 로컬, 답변은 연결한 AI가 담당합니다.** Memnest 자체는 생성형 LLM을 호출하지 않습니다. 클라우드 AI에 검색 결과를 전달하면 해당 제공자가 그 내용을 받습니다.
+- **일반 기억은 암호화되지 않습니다.** 알려진 비밀값 형태를 가리는 처리가 모든 유출을 막지는 못합니다. 3111 포트를 인터넷에 직접 노출하지 마세요.
+- **삭제 직후 완전히 사라지지는 않습니다.** 휴지통에 30일 남으며 보관용 JSONL에도 남을 수 있습니다. [보안과 삭제 범위](SECURITY.md)를 확인하세요.
 
-### 대화 저장
+## 문서와 검증
 
-```bash
-memnest watch
-memnest watch --backfill
-# 이미 감시하던 과거 파일도 가져오려면, 같은 원본 절대 경로를 선택합니다.
-memnest watch --path /absolute/path/session.jsonl --backfill --once --dry-run
-memnest watch --path /absolute/path/session.jsonl --backfill --once
-```
+Memnest는 Rust 서비스 하나에서 SQLite 원문을 관리하고, BM25와 로컬 다국어 임베딩으로 검색합니다. 검색 색인은 원문에서 다시 만들 수 있습니다.
 
-기본 감시는 처음 발견한 파일의 기존 내용을 건너뜁니다. 연속 `--backfill`도 이미 감시하던 파일의 읽기 위치를 되돌리지는 않습니다. `--backfill --once`는 선택한 기록을 처음부터 가져오며, 실행 중인 감시 상태는 바꾸지 않습니다. `--dry-run`은 저장 가능한 대화 수를 보여줄 뿐 DB 누락 수를 뜻하지 않습니다. 중복과 삭제 처리, 경로에 따른 제한은 [과거 기록 가져오기](docs/history-import.md)를 참고하세요.
-
-대화 저장과 자동 회상은 별개입니다. 시스템과 개발자 프롬프트, 추론 내용, 도구 입출력, 이미지, 서브에이전트 대화는 저장하지 않습니다. 수집한 대화는 삭제할 때까지 보관합니다. 자동 회상은 선택 기능이며, 관련 없는 기억을 고를 수도 있으므로 원문을 확인한 뒤 사용하세요.
-
-## 호환성과 배포 상태
-
-v0.3.1은 Linux x86_64와 Arm64 코어 압축 파일, GitHub의 pi 확장 패키지를 제공합니다. 선택한 과거 대화 가져오기, 이름을 포함한 검색에서 무관한 결과 채우기 감소, 검색된 질문의 후속 답변 출처 안내가 추가됐습니다. npm 출시는 인증 대기 상태이며 최신 버전은 아직 0.2.0입니다.
-
-이번 범위는 안전한 설치와 원문 근거 조회에 집중합니다. 그래프, 관리 화면, 팀 서비스나 검색 결과가 질문에 완전히 답하는지 판정하는 모델은 포함하지 않습니다.
-
-macOS 설치와 패키징 코드는 있지만 실제 설치, 재시작과 제거를 검증하지 못했습니다. 아직 검증된 배포 대상으로 보지 마세요.
-
-자세한 변경점은 [v0.3.1 변경 이력](core/CHANGELOG.md#031---2026-09-28), [v0.3.0 요약](docs/next-release.ko.md), [코어 변경 이력](core/CHANGELOG.md), [pi 변경 이력](pi-extension/CHANGELOG.md)에 있습니다.
-
-## 동작 구조
-
-![Memnest 아키텍처](docs/architecture.ko.png)
-
-Rust 서비스 하나가 SQLite에 기록을 저장하고, BM25와 로컬 다국어 임베딩으로 검색합니다. SQLite가 원본이고 검색 색인은 다시 만들 수 있습니다. v0.3.0은 임베딩 모델을 유지하면서 후보 결합 오류를 보수적으로 고쳤으며, 새 학습 순위 모델은 추가하지 않았습니다.
-
-Memnest 자체는 생성형 LLM을 호출하지 않습니다. 연결한 코딩 AI가 검색 결과를 읽고 판단할 때는 그 AI의 모델을 사용합니다. Memnest는 저장소에 답이 있는지 증명하거나, 코드 변경으로 옛 기억이 틀렸는지 자동 판별하지 못합니다.
-
-## 검증과 한계
-
-![독립된 두 MCP 클라이언트에서 같은 저장 ID를 찾은 결과](docs/demo-result.ko.png)
-
-[재현 데모](docs/demo.md)는 한 연결에서 저장한 기록을 다른 연결에서 같은 ID와 내용으로 찾습니다. 공유 저장소의 동작을 확인한 것이며, 서로 다른 AI의 자율적인 판단을 입증한 것은 아닙니다. [실제 클라이언트 검증](docs/client-validation.md)에는 pi 성공과 Claude Code, Codex의 계정 차단을 구분해 기록했습니다.
-
-[MemoryBench 어댑터와 한국어 시험 데이터](benchmarks/memorybench/README.md)도 제공합니다. 세 질문에서 기대한 세션을 1위로 찾았지만, 작은 검색 검사일 뿐 다른 도구보다 정확하거나 빠르다는 비교 결과는 아닙니다. 전체 벤치마크와 원문 조회 검사는 검증 범위가 다릅니다.
-
-## 데이터와 보안
-
-서비스는 기본적으로 내 컴퓨터 안에서만 연결할 수 있습니다. 3111 포트를 인터넷에 직접 노출하지 마세요. 기록은 로컬에 보관하지만, 검색 결과를 클라우드 AI에 보내면 그 내용은 해당 모델 제공자에게 전달됩니다.
-
-일반 기억은 암호화되지 않습니다. 알려진 자격 증명 형태를 가릴 뿐 모든 비밀 값을 찾아내지는 못합니다. 자격 증명은 AES-256-GCM 금고에 보관하세요. 금고 도구는 기본적으로 모델에 노출되지 않습니다. 삭제한 기록은 30일 동안 휴지통에서 복구할 수 있고, 보관용 JSONL 파일에도 남을 수 있습니다.
-
-업그레이드 전에 `memory.db`와 `master.key`를 함께 백업하세요. 보안 한계는 [SECURITY.md](SECURITY.md), 백업과 복구, 보존, 제거 절차는 [운영 문서](docs/operations.md)에 있습니다.
-
-## 더 읽기
-
-- [설계 결정](docs/design-decisions.md)
-- [개발 환경과 검사](CONTRIBUTING.md)
-- [릴리스 노트](https://github.com/Blue-B/memnest/releases)
+- [실제 클라이언트 검증](docs/client-validation.md)과 [공유 저장소 재현 데모](docs/demo.md)
+- [후속 기록 조회 검사와 한계](docs/following-capture.md), [검색 평가](benchmarks/memorybench/README.md)
+- [설계 결정](docs/design-decisions.md), [운영과 백업](docs/operations.md), [개발 안내](CONTRIBUTING.md)
+- [최신 릴리스](https://github.com/Blue-B/memnest/releases/latest)와 [변경 이력](core/CHANGELOG.md)
 
 ## 라이선스
 

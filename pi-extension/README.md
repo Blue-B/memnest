@@ -16,16 +16,13 @@ This extension does not contain the memory engine. Start the Rust core before in
 
 ## Install
 
-Start the [memnest core service](https://github.com/Blue-B/memnest#install). Version 0.3.1 is available from the tagged source and as `pi-memnest-0.3.1.tgz` on the [GitHub release](https://github.com/Blue-B/memnest/releases/tag/v0.3.1). The npm registry remains at 0.2.0 pending publish authentication.
-
-To load the prebuilt extension from the release source:
+Start the [memnest core service](https://github.com/Blue-B/memnest#install), then install the matching extension:
 
 ```bash
-git clone --depth 1 --branch v0.3.1 https://github.com/Blue-B/memnest.git ~/.local/share/memnest-v0.3.1
-pi install ~/.local/share/memnest-v0.3.1/pi-extension
+pi install npm:pi-memnest@0.3.1
 ```
 
-If Memnest is already registered from npm or another local path, remove that package declaration first to avoid duplicate tools. Keep the local directory; pi loads it in place. To use the package archive instead, unpack it to a persistent directory and pass the extracted `package` directory to `pi install`.
+If Memnest is already registered from a local path or another pinned version, remove that package declaration first to avoid duplicate tools. A pinned package is not changed by `pi update --extensions`. Keep the core and extension versions aligned.
 
 To develop from a source checkout instead:
 
@@ -124,7 +121,7 @@ MCP does not describe host session events. The core provides host-neutral automa
 - `memnest hook` reads a host's hook payload on stdin and answers with a context pack, in the shape that host expects.
 - `memnest watch` follows Claude Code, pi, and Codex transcripts and stores visible conversation text, with no host extension hooks.
 
-See [conversation capture](https://github.com/Blue-B/memnest#capture-conversations) in the root README. Inside pi the extension exposes the same five-tool memory contract, optionally adds four vault tools, and provides the `/memnest` command.
+See [conversation capture and history import](https://github.com/Blue-B/memnest/blob/main/docs/history-import.md). Inside pi the extension exposes the same five-tool memory contract, optionally adds four vault tools, and provides the `/memnest` command.
 
 ## Development
 
