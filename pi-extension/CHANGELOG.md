@@ -2,6 +2,15 @@
 
 All notable changes to `pi-memnest` are recorded here.
 
+## [0.3.1] - 2026-09-28
+
+### Added
+
+- Show the core's optional `following_id` in search results with a warning that it is a later assistant capture, not a verified reply. Read that source with the existing `memory_get` tool.
+- Keep compatibility with cores that omit the hint; existing result excerpts and search limits are unchanged.
+
+This release also includes the 0.3.0 changes below, which were not previously published to npm.
+
 ## [0.3.0] - 2026-09-15
 
 ### Changed

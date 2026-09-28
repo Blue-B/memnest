@@ -225,7 +225,7 @@ export default function register(pi: ExtensionAPI): void {
 				const lines = [`=== memory search results (${p.query}) ===`];
 				for (const [i, item] of (data.results ?? []).entries())
 					lines.push(
-						`[${i + 1}] project=${item.project} score=${Number(item.score).toFixed(4)} id=${item.id} doc_len=${item.doc_len}\n    ${item.document}`,
+						`[${i + 1}] project=${item.project} score=${Number(item.score).toFixed(4)} id=${item.id} doc_len=${item.doc_len}${item.following_id ? ` following_id=${item.following_id} (later assistant capture, not a verified reply; read with memory_get)` : ""}\n    ${item.document}`,
 					);
 				if (!(data.results ?? []).length) lines.push("no results");
 				return result(lines.join("\n"));

@@ -4594,7 +4594,7 @@ function register(pi) {
         const lines = [`=== memory search results (${p.query}) ===`];
         for (const [i, item] of (data.results ?? []).entries())
           lines.push(
-            `[${i + 1}] project=${item.project} score=${Number(item.score).toFixed(4)} id=${item.id} doc_len=${item.doc_len}
+            `[${i + 1}] project=${item.project} score=${Number(item.score).toFixed(4)} id=${item.id} doc_len=${item.doc_len}${item.following_id ? ` following_id=${item.following_id} (later assistant capture, not a verified reply; read with memory_get)` : ""}
     ${item.document}`
           );
         if (!(data.results ?? []).length) lines.push("no results");

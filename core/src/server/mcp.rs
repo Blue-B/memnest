@@ -451,6 +451,9 @@ pub(crate) async fn memory_search(
             item.score,
             item.id
         ));
+        if let Some(id) = &item.following_id {
+            lines.push(format!("    following_id={id} (later assistant capture, not a verified reply; read with memory_get)"));
+        }
         lines.push(format!(
             "    doc_len={} returned_chars={}\n    {}",
             item.doc_len,

@@ -66,6 +66,9 @@ pub struct SearchResultItem {
     pub category: String,
     pub memory_kind: String,
     pub confidence: Option<f32>,
+    /// Later assistant source to read, not a verified reply or a relevance score.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub following_id: Option<String>,
     pub adapter: String,
 }
 
@@ -577,28 +580,7 @@ pub(crate) async fn run_hybrid_search_scope(
                     sys.config.recency_penalty_cap,
                 );
             let embedding = c.embedding.clone().unwrap_or_default();
-            let redacted = redact_text(&c.document);
-            let doc_len = redacted.chars().count();
-            items.push((
-                SearchResultItem {
-                    id: c.id,
-                    project: c.project,
-                    document: redacted.chars().take(600).collect(),
-                    doc_len,
-                    score: final_score,
-                    timestamp: c.updated_at.to_rfc3339(),
-                    chunk_type: format!("{:?}", c.metadata.chunk_type),
-                    importance: format!("{:?}", c.metadata.importance),
-                    category: format!("{:?}", c.metadata.category),
-                    memory_kind: serde_json::to_value(&c.metadata.memory_kind)
-                        .ok()
-                        .and_then(|value| value.as_str().map(str::to_string))
-                        .unwrap_or_else(|| "record".to_string()),
-                    confidence: c.metadata.confidence,
-                    adapter: c.metadata.adapter.clone().unwrap_or_default(),
-                },
-                embedding,
-            ));
+            items.push((search_result_item(c, final_score), embedding));
             if items.len() >= candidate_limit {
                 break;
             }
@@ -615,17 +597,86 @@ pub(crate) async fn run_hybrid_search_scope(
             .partial_cmp(&a.0.score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    if options.recent_first {
+    let lambda = sys.config.mmr_lambda;
+    let mut results = if options.recent_first {
         items.sort_by(|a, b| b.0.timestamp.cmp(&a.0.timestamp));
         let ranked = items.into_iter().map(|(item, _)| item).collect();
-        return diversify_by_project(ranked, n_results);
-    }
-    let lambda = sys.config.mmr_lambda;
-    if lambda > 0.0 && lambda < 1.0 {
+        diversify_by_project(ranked, n_results)
+    } else if lambda > 0.0 && lambda < 1.0 {
         mmr_select(items, lambda, n_results)
     } else {
         let ranked = items.into_iter().map(|(item, _)| item).collect();
         diversify_by_project(ranked, n_results)
+    };
+    if !options.durable_only && !options.recent_first {
+        link_following_capture(&db, &mut results, cat_filter.as_deref());
+    }
+    results
+}
+
+fn search_result_item(c: MemoryChunk, score: f32) -> SearchResultItem {
+    let redacted = redact_text(&c.document);
+    SearchResultItem {
+        id: c.id,
+        project: c.project,
+        document: redacted.chars().take(600).collect(),
+        doc_len: redacted.chars().count(),
+        score,
+        timestamp: c.updated_at.to_rfc3339(),
+        chunk_type: format!("{:?}", c.metadata.chunk_type),
+        importance: format!("{:?}", c.metadata.importance),
+        category: format!("{:?}", c.metadata.category),
+        memory_kind: serde_json::to_value(&c.metadata.memory_kind)
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_string))
+            .unwrap_or_else(|| "record".to_string()),
+        confidence: c.metadata.confidence,
+        following_id: None,
+        adapter: c.metadata.adapter.unwrap_or_default(),
+    }
+}
+
+fn link_following_capture(
+    db: &crate::storage::Database,
+    results: &mut [SearchResultItem],
+    category: Option<&str>,
+) {
+    let returned_ids: Vec<_> = results.iter().map(|item| item.id.clone()).collect();
+    for item in results.iter_mut() {
+        let Ok(Some(anchor)) = db.get_chunk(&item.id) else {
+            continue;
+        };
+        if anchor.metadata.role.as_deref() != Some("user") || anchor.metadata.total != Some(1) {
+            continue;
+        }
+        let Ok(neighbors) = db.transcript_neighbors(&anchor, 5, false) else {
+            continue;
+        };
+        let mut following = None;
+        for neighbor in neighbors {
+            if neighbor.metadata.role.as_deref() != Some("assistant")
+                || neighbor.metadata.sensitive
+                || neighbor.metadata.total != Some(1)
+                || category.is_some_and(|expected| {
+                    serde_json::to_value(&neighbor.metadata.category)
+                        .ok()
+                        .and_then(|v| v.as_str().map(str::to_owned))
+                        .as_deref()
+                        != Some(expected)
+                })
+            {
+                break;
+            }
+            following = Some(neighbor);
+        }
+        if let Some(chunk) = following {
+            if returned_ids.contains(&chunk.id) {
+                continue;
+            }
+            // One source link, no extra body, model work or eviction of direct hits.
+            item.following_id = Some(chunk.id);
+            return;
+        }
     }
 }
 
@@ -2284,6 +2335,156 @@ pub(crate) mod test_support {
         (tmp, Arc::new(RwLock::new(sys)))
     }
 
+    #[tokio::test]
+    async fn following_capture_recovers_unnamed_explanation_without_crossing_boundaries() {
+        let (_tmp, system) = build_system().await;
+        let query = "Redis 설정 왜 바꿨지";
+        let now = chrono::Utc::now();
+        let embedding = system.read().await.embedder.encode_query(query).unwrap();
+        let question = MemoryChunk {
+            id: "question".into(),
+            project: "follow-test".into(),
+            document: query.into(),
+            embedding: Some(embedding.clone()),
+            metadata: Metadata {
+                session_id: "session".into(),
+                source: Some("pi.transcript".into()),
+                cwd: Some("/project".into()),
+                role: Some("user".into()),
+                total: Some(1),
+                ..Metadata::default()
+            },
+            created_at: now,
+            updated_at: now,
+        };
+        let answer = MemoryChunk {
+            id: "unnamed-answer".into(),
+            document: format!(
+                "재접속 오류 때문에 기본값으로 되돌렸습니다. ghp_{}",
+                "a".repeat(36)
+            ),
+            metadata: Metadata {
+                role: Some("assistant".into()),
+                ..question.metadata.clone()
+            },
+            created_at: now + chrono::Duration::seconds(1),
+            ..question.clone()
+        };
+        let next_user = MemoryChunk {
+            id: "next-user".into(),
+            document: "다음 주제로 넘어가자".into(),
+            created_at: now + chrono::Duration::seconds(2),
+            ..question.clone()
+        };
+        let unrelated = MemoryChunk {
+            id: "other-answer".into(),
+            document: "게임 권장 사양입니다".into(),
+            created_at: now + chrono::Duration::seconds(3),
+            ..answer.clone()
+        };
+        {
+            let sys = system.read().await;
+            for c in [&question, &answer, &next_user, &unrelated] {
+                sys.db.write().await.insert_chunk(c).unwrap();
+                sys.add_text_doc(&c.id, &c.project, &c.document)
+                    .await
+                    .unwrap();
+            }
+        }
+        let results = run_hybrid_search(
+            system.clone(),
+            query,
+            "follow-test",
+            5,
+            SearchOptions::default(),
+            None,
+        )
+        .await;
+        assert_eq!(
+            results.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            ["question"]
+        );
+        assert_eq!(results[0].following_id.as_deref(), Some("unnamed-answer"));
+        let full =
+            super::super::operations::get(system.clone(), "unnamed-answer", Default::default())
+                .await
+                .unwrap();
+        assert!(full["document"].as_str().unwrap().contains("재접속 오류"));
+        assert!(!full["document"].as_str().unwrap().contains("ghp_"));
+        assert!(results[0].document.chars().count() <= 600);
+        let recent = run_hybrid_search(
+            system.clone(),
+            query,
+            "follow-test",
+            5,
+            SearchOptions {
+                recent_first: true,
+                ..SearchOptions::default()
+            },
+            None,
+        )
+        .await;
+        assert!(recent.iter().all(|r| r.following_id.is_none()));
+        let durable = run_hybrid_search(
+            system.clone(),
+            query,
+            "follow-test",
+            5,
+            SearchOptions {
+                durable_only: true,
+                ..SearchOptions::default()
+            },
+            None,
+        )
+        .await;
+        assert!(durable.is_empty());
+        let sys = system.read().await;
+        let db = sys.db.write().await;
+        let mut full = vec![search_result_item(question.clone(), 1.0)];
+        link_following_capture(&db, &mut full, None);
+        assert_eq!(full.len(), 1, "never evict or exceed the requested count");
+        assert_eq!(full[0].following_id.as_deref(), Some("unnamed-answer"));
+        let mut duplicate = vec![
+            search_result_item(question.clone(), 1.0),
+            search_result_item(answer.clone(), 1.0),
+        ];
+        link_following_capture(&db, &mut duplicate, None);
+        assert!(
+            duplicate.iter().all(|item| item.following_id.is_none()),
+            "no extra link for an already returned source"
+        );
+        for boundary in 0..9 {
+            let mut changed = answer.clone();
+            match boundary {
+                0 => changed.metadata.sensitive = true,
+                1 => changed.metadata.role = None,
+                2 => changed.metadata.role = Some("user".into()),
+                3 => changed.metadata.total = Some(2),
+                4 => changed.metadata.category = MemoryCategory::Failure,
+                5 => changed.project = "other-project".into(),
+                6 => changed.metadata.cwd = Some("/other".into()),
+                7 => changed.metadata.session_id = "other-session".into(),
+                8 => changed.metadata.source = Some("codex.transcript".into()),
+                _ => unreachable!(),
+            }
+            db.insert_chunk(&changed).unwrap();
+            let mut found = vec![search_result_item(question.clone(), 1.0)];
+            link_following_capture(&db, &mut found, Some("general"));
+            assert!(
+                found[0].following_id.is_none(),
+                "must not cross boundary {boundary}"
+            );
+        }
+        db.insert_chunk(&answer).unwrap();
+        db.delete_chunk(&answer.id).unwrap();
+        let mut found = vec![search_result_item(question, 1.0)];
+        link_following_capture(&db, &mut found, None);
+        assert!(
+            found[0].following_id.is_none(),
+            "deleted answer must not be linked"
+        );
+    }
+
     #[test]
     fn latin_terms_have_boundaries_and_allow_korean_particles() {
         assert!(contains_latin_term("@scope/pi-task-panel task도", "TASK"));
@@ -2558,6 +2759,7 @@ pub(crate) mod test_support {
             category: String::new(),
             memory_kind: "record".to_string(),
             confidence: None,
+            following_id: None,
             adapter: String::new(),
         };
         let dup = vec![1.0f32, 0.0, 0.0];
@@ -2705,6 +2907,7 @@ pub(crate) mod test_support {
                 category: "General".to_string(),
                 memory_kind: "record".to_string(),
                 confidence: None,
+                following_id: None,
                 adapter: String::new(),
             })
             .collect();
@@ -2752,6 +2955,7 @@ pub(crate) mod test_support {
             category: "General".to_string(),
             memory_kind: "record".to_string(),
             confidence: None,
+            following_id: None,
             adapter: String::new(),
         }];
         let rendered = render_context_prompt(&korean, 300);

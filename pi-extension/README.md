@@ -16,13 +16,16 @@ This extension does not contain the memory engine. Start the Rust core before in
 
 ## Install
 
-Start the [memnest core service](https://github.com/Blue-B/memnest#install), then install the extension from npm:
+Start the [memnest core service](https://github.com/Blue-B/memnest#install). Version 0.3.1 is available from the tagged source and as `pi-memnest-0.3.1.tgz` on the [GitHub release](https://github.com/Blue-B/memnest/releases/tag/v0.3.1). The npm registry remains at 0.2.0 pending publish authentication.
+
+To load the prebuilt extension from the release source:
 
 ```bash
-pi install npm:pi-memnest
+git clone --depth 1 --branch v0.3.1 https://github.com/Blue-B/memnest.git ~/.local/share/memnest-v0.3.1
+pi install ~/.local/share/memnest-v0.3.1/pi-extension
 ```
 
-To pin this release, use `pi install npm:pi-memnest@0.3.0`. A pinned package is not changed by `pi update --extensions`.
+If Memnest is already registered from npm or another local path, remove that package declaration first to avoid duplicate tools. Keep the local directory; pi loads it in place. To use the package archive instead, unpack it to a persistent directory and pass the extracted `package` directory to `pi install`.
 
 To develop from a source checkout instead:
 

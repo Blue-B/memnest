@@ -17,6 +17,7 @@ globalThis.fetch = async (url, init = {}) => {
                 score: 1,
                 document: "😀한",
                 doc_len: 99,
+                following_id: "following-source",
               },
             ],
           }
@@ -49,6 +50,8 @@ assert.equal("max_chars" in JSON.parse(requests.at(-1).init.body), false);
 assert.match(search.content[0].text, /😀한/);
 assert.doesNotMatch(search.content[0].text, /undefined/);
 assert.match(search.content[0].text, /doc_len=99/);
+assert.match(search.content[0].text, /following_id=following-source/);
+assert.match(search.content[0].text, /not a verified reply/);
 const get = await tools
   .get("memory_get")
   .execute("x", { id: "a/b", offset: 1, max_chars: 2, before: 1, after: 0 });

@@ -31,12 +31,12 @@ For a few rules that should load every time, use `CLAUDE.md` or `AGENTS.md`. Mem
 
 ### Linux release
 
-This installs core v0.3.0 without Rust. Read the downloaded script before running it. Setup installs and starts the server and conversation watcher, adds missing Claude Code, Codex, and Cursor connections, and verifies a scratch save/search round trip.
+This installs core v0.3.1 without Rust. Read the downloaded script before running it. Setup installs and starts the server and conversation watcher, adds missing Claude Code, Codex, and Cursor connections, and verifies a scratch save/search round trip.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.3.0/core/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.3.1/core/scripts/install.sh \
   -o /tmp/memnest-install.sh
-VERSION=v0.3.0 bash /tmp/memnest-install.sh --user
+VERSION=v0.3.1 bash /tmp/memnest-install.sh --user
 ```
 
 Client files and supported service changes are backed up before modification, and setup prints exact restore commands. Existing Memnest client entries, custom service commands, drop-ins, and external environment files are not guessed at or overwritten. Automatic recall hooks remain opt-in with `--autocontext`.
@@ -58,9 +58,14 @@ pi is installed separately. See [upgrade and recovery details](docs/operations.m
 
 ### pi
 
+The npm registry still has 0.2.0; 0.3.1 is available from the tagged source and as a package file on the [GitHub release](https://github.com/Blue-B/memnest/releases/tag/v0.3.1). To load its prebuilt extension without changing another checkout:
+
 ```bash
-pi install npm:pi-memnest@0.3.0
+git clone --depth 1 --branch v0.3.1 https://github.com/Blue-B/memnest.git ~/.local/share/memnest-v0.3.1
+pi install ~/.local/share/memnest-v0.3.1/pi-extension
 ```
+
+If you already load Memnest from npm or another local path, remove that package declaration first to avoid duplicate tools.
 
 To use a local checkout instead, build and install the extension from the repository root:
 
@@ -125,13 +130,13 @@ Capture is separate from automatic recall. It skips system/developer prompts, re
 
 ## Compatibility and release status
 
-v0.3.0 provides Linux x86_64 and Arm64 core archives and `pi-memnest` 0.3.0 on npm. It includes integrated setup, long-source pagination, nearby conversation records, bounded provenance, safer correction errors, and default-off pi automatic recall.
+v0.3.1 provides Linux x86_64 and Arm64 core archives, plus the pi extension package on GitHub. It adds selected history replay, less off-topic padding in named searches, and a bounded link from a retrieved question to a later assistant capture. The npm release is pending authentication; its latest version remains 0.2.0.
 
 The scope is intentionally limited to safer setup and source-backed reading. It does not include a graph, dashboard, team service, or a model that decides whether a source fully answers a question.
 
 macOS installation and packaging code are present, but native installation, restart, and removal have not been verified. Do not treat macOS as a validated release target yet.
 
-See the [v0.3.0 summary (Korean)](docs/next-release.ko.md), [core changelog](core/CHANGELOG.md), and [pi changelog](pi-extension/CHANGELOG.md).
+See the [v0.3.1 changes](core/CHANGELOG.md#031---2026-09-28), [v0.3.0 summary (Korean)](docs/next-release.ko.md), [core changelog](core/CHANGELOG.md), and [pi changelog](pi-extension/CHANGELOG.md).
 
 ## How it works
 

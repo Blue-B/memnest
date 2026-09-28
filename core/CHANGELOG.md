@@ -2,6 +2,25 @@
 
 All notable changes to the `memnest` Rust engine are recorded here.
 
+## [0.3.1] - 2026-09-28
+
+### Fixed
+
+- Explicit `watch --backfill --once --path /original/absolute/path` replays selected history without rewinding the live watcher. `--dry-run` previews eligible chunks without storing them. Same-source replay preserves existing deletion and deduplication rules; eligible does not mean missing.
+- Mixed Korean/Latin searches no longer fill named matches with candidates that lack every explicit Latin identifier. Semantic fallback remains when no named candidate exists; relevant name-free records can still be missed.
+
+### Added
+
+- A bounded `following_id` hint on at most one retrieved user capture, so clients can read a later assistant source with `memory_get` even when its text omits the searched name. Search result order and count remain unchanged. Capture order is not a verified reply relationship or a guarantee of a final answer.
+- Status explicitly states that past-history completeness has not been checked.
+
+### Compatibility
+
+- No database reset, automatic history replay, new dependency, or additional generative model call is required.
+- Linux x86_64 and aarch64 archives remain the release targets. macOS remains source-only; Windows builds are covered by CI but no Windows archive is published.
+
+See [history import](../docs/history-import.md), [search relevance](../docs/search-relevance.md), and [following captures](../docs/following-capture.md) for limits and validation.
+
 ## [0.3.0] - 2026-09-15
 
 ### Added

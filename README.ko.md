@@ -31,12 +31,12 @@ pi, Claude Code, Codex의 보이는 대화 텍스트를 로컬에 저장하고, 
 
 ### Linux 배포판
 
-Rust 없이 코어 v0.3.0을 설치합니다. 내려받은 스크립트를 읽은 뒤 실행하세요. setup은 서버와 대화 감시기를 설치하고 시작하며, Claude Code, Codex, Cursor의 빠진 연결을 추가한 뒤 임시 기억의 저장과 검색을 확인합니다.
+Rust 없이 코어 v0.3.1을 설치합니다. 내려받은 스크립트를 읽은 뒤 실행하세요. setup은 서버와 대화 감시기를 설치하고 시작하며, Claude Code, Codex, Cursor의 빠진 연결을 추가한 뒤 임시 기억의 저장과 검색을 확인합니다.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.3.0/core/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.3.1/core/scripts/install.sh \
   -o /tmp/memnest-install.sh
-VERSION=v0.3.0 bash /tmp/memnest-install.sh --user
+VERSION=v0.3.1 bash /tmp/memnest-install.sh --user
 ```
 
 클라이언트 파일과 지원되는 서비스 변경은 수정 전에 백업하고, setup이 정확한 복구 명령을 출력합니다. 기존 Memnest 연결, 직접 바꾼 서비스 실행 명령, systemd 추가 설정과 외부 환경 파일은 추측해 덮어쓰지 않습니다. 자동 회상 hook은 `--autocontext`를 추가한 경우에만 설정합니다.
@@ -58,9 +58,14 @@ pi는 별도로 설치합니다. 기존 Linux 서비스의 업그레이드와 �
 
 ### pi
 
+npm에는 아직 0.2.0이 있습니다. 0.3.1은 태그 소스와 [GitHub 릴리스의 패키지 파일](https://github.com/Blue-B/memnest/releases/tag/v0.3.1)로 제공합니다. 기존 소스를 건드리지 않고 빌드된 확장을 불러오려면 다음과 같이 설치합니다.
+
 ```bash
-pi install npm:pi-memnest@0.3.0
+git clone --depth 1 --branch v0.3.1 https://github.com/Blue-B/memnest.git ~/.local/share/memnest-v0.3.1
+pi install ~/.local/share/memnest-v0.3.1/pi-extension
 ```
+
+이미 npm이나 다른 로컬 경로에서 Memnest를 불러오고 있다면 먼저 그 패키지 등록을 제거해 도구 중복을 피하세요.
 
 저장소 소스를 직접 쓰려면 루트에서 로컬 확장을 빌드하고 설치합니다.
 
@@ -125,13 +130,13 @@ memnest watch --path /absolute/path/session.jsonl --backfill --once
 
 ## 호환성과 배포 상태
 
-v0.3.0은 Linux x86_64와 Arm64 코어 압축 파일, npm의 `pi-memnest` 0.3.0을 제공합니다. 통합 setup, 긴 원문 이어 읽기, 같은 대화의 주변 기록, 제한된 출처 정보, 더 명확한 정정 오류와 pi 자동 회상 기본 꺼짐이 포함됩니다.
+v0.3.1은 Linux x86_64와 Arm64 코어 압축 파일, GitHub의 pi 확장 패키지를 제공합니다. 선택한 과거 대화 가져오기, 이름을 포함한 검색에서 무관한 결과 채우기 감소, 검색된 질문의 후속 답변 출처 안내가 추가됐습니다. npm 출시는 인증 대기 상태이며 최신 버전은 아직 0.2.0입니다.
 
 이번 범위는 안전한 설치와 원문 근거 조회에 집중합니다. 그래프, 관리 화면, 팀 서비스나 검색 결과가 질문에 완전히 답하는지 판정하는 모델은 포함하지 않습니다.
 
 macOS 설치와 패키징 코드는 있지만 실제 설치, 재시작과 제거를 검증하지 못했습니다. 아직 검증된 배포 대상으로 보지 마세요.
 
-자세한 변경점은 [v0.3.0 요약](docs/next-release.ko.md), [코어 변경 이력](core/CHANGELOG.md), [pi 변경 이력](pi-extension/CHANGELOG.md)에 있습니다.
+자세한 변경점은 [v0.3.1 변경 이력](core/CHANGELOG.md#031---2026-09-28), [v0.3.0 요약](docs/next-release.ko.md), [코어 변경 이력](core/CHANGELOG.md), [pi 변경 이력](pi-extension/CHANGELOG.md)에 있습니다.
 
 ## 동작 구조
 
