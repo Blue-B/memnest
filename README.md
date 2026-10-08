@@ -14,6 +14,12 @@ Memnest stores pi, Claude Code, and Codex conversation text on your machine. Con
 [![npm: pi-memnest](https://img.shields.io/npm/v/pi-memnest?label=npm%20pi-memnest&color=cb3837)](https://www.npmjs.com/package/pi-memnest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+## A recorded lookup
+
+[![An actual question followed through two reads to an existing saved explanation](docs/recall-demo.png)](docs/recall-check-2026-10-06.md)
+
+In this check, the AI searched for why a task manager had been replaced, followed a reference, and read an existing manual note describing the reason. It did not recover the original conversation in one search. The image is an edited request summary, not a screen recording; [the three-question report](docs/recall-check-2026-10-06.md) also records the two unresolved questions.
+
 ## When to use it
 
 Use the accumulated record for questions such as:
@@ -47,10 +53,28 @@ Setup starts the server and conversation watcher and adds missing connections to
 With the core running, install the matching extension:
 
 ```bash
+# Published npm baseline (basic operations)
 pi install npm:pi-memnest@0.3.1
+
+# New 0.4.0 options from a reviewed source checkout until npm publication
+pi install ./pi-extension
 ```
 
 If Memnest is already registered from another source, remove that registration first to avoid loading it twice. Use `/memnest` in pi to check the connection. See [extension settings](pi-extension/README.md).
+
+<details>
+<summary>Local development: vault tool settings</summary>
+
+The extension exposes only the five memory tools by default. To let pi store and retrieve credentials with `secret_set`, `secret_get`, `secret_list`, and `secret_delete`, enable the vault tools before starting pi:
+
+```bash
+export MEMNEST_EXPOSE_SECRET_TOOLS=1
+pi
+```
+
+Restart pi after changing the variable; `/reload` alone cannot change the running process environment. `/memnest` reports whether the vault tools are available and shows this activation hint when they are hidden.
+
+</details>
 
 Other MCP clients connect to `http://127.0.0.1:3111/mcp`. See [connection examples](adapters/README.md), [other environments and source installation](docs/operations.md), and [upgrade and recovery](docs/operations.md#linux-service-upgrades). macOS is source-only; native installation and removal have not been validated.
 
@@ -71,13 +95,19 @@ When the host provides the current directory, searches include that workspace an
 
 Conversations from before installation are not all imported automatically. Select the original files you need with [history import](docs/history-import.md).
 
+### Source-backed coding records (0.4.0)
+
+Save an approach as proposed, failed, or reported success without treating that report as verification. Optionally attach selected local files with `memory_remember(code_files=["relative/file"])`, then request `memory_get(check_code=true)` when you want to compare their bytes. Unrelated edits do not trigger warnings. See [code evidence](docs/code-evidence.md).
+
+Optional [team access](docs/team-access.md) adds named project grants, audit and retention. A [free local comparison](docs/local-provider-comparison.md) records where Memnest did and did not perform well; it does not claim universal accuracy superiority.
+
 ## Important limits
 
 - **Retrieval is not truth checking.** Search can miss a relevant record. Memnest cannot determine whether an old decision still holds. A following-source hint is not a verified reply relationship.
 - **Capture is selective.** It stores visible conversation text, not reasoning, tool traffic, images, or subagent conversations. It does not import ChatGPT's or Claude's built-in memory.
-- **Storage is local; your connected AI answers.** Memnest makes no generative LLM calls. A cloud AI provider receives retrieved text that you send to its model.
+- **Storage is local; your connected AI answers.** Default storage/search makes no generative LLM calls. Explicit `evidence_only=true` opts in to a configured local source-selector model, whose judgment remains unverified. A cloud AI provider receives retrieved text that you send to its model.
 - **Regular memories are not encrypted.** Redaction handles known credential patterns, not every possible secret. Do not expose port 3111 directly to the internet.
-- **Deletion is not immediate erasure.** Records remain in trash for 30 days and may remain in archive JSONL. See [security and deletion limits](SECURITY.md).
+- **Deletion is not immediate erasure.** Records default to 30 days in trash. New plaintext archives are off by default; old archives, backups and external transcripts may still retain copies. See [security and deletion limits](SECURITY.md).
 
 ## Documentation and checks
 

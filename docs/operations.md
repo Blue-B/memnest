@@ -128,7 +128,9 @@ curl -s http://127.0.0.1:3111/restore \
   -d '{"ids":["manual_..."]}'
 ```
 
-Trash older than 30 days is hard-deleted. Before that deletion the full record is appended to `<data-dir>/archive/YYYY-MM.jsonl`. Set `MEMNEST_ARCHIVE=0` to disable archive files.
+Trash defaults to a 30-day recovery window; `MEMNEST_TRASH_RETENTION_DAYS` accepts 0 to 3650. Plaintext archive copies are off by default; `MEMNEST_ARCHIVE=1` explicitly enables them. Existing archive files are not removed by changing the setting. `POST /purge` permanently removes already-trashed records from serving storage/indexes, not every external or physical copy.
+
+Optional [team access policies](team-access.md) add named project grants, access audit and project maximum-age retention, which overrides pinned/type exemptions for the configured project. Administrators can trigger lifecycle checks with `POST /retention`. Leave these opt-in during a personal-store upgrade unless you have prepared the policy and client credentials.
 
 Preview a cleanup without changing data:
 

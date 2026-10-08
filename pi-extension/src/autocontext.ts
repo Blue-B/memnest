@@ -7,6 +7,8 @@
  * or phrasings get memory.
  */
 
+import { memoryReadAllowed } from "./model-policy.js";
+
 type ExtensionAPI = {
 	on: (event: string, handler: (...args: any[]) => unknown) => void;
 	registerTool: (tool: unknown) => void;
@@ -104,6 +106,7 @@ interface MemResult {
 	score: number;
 	chunk_type?: string;
 	timestamp?: string;
+	approach?: unknown;
 }
 
 export function isSubstantive(prompt: string): boolean {
@@ -195,7 +198,8 @@ function formatBlock(results: MemResult[], reason: string): string | null {
 		const created = typeof r.timestamp === "string" ? r.timestamp.slice(0, 64) : "unknown";
 		let doc = r.document.replace(/\s+/g, " ").trim();
 		if (doc.length > DOC_CHARS) doc = `${doc.slice(0, DOC_CHARS)}…`;
-		return `${i + 1}. durable memory [${escape(r.project)}] (${r.score.toFixed(2)}) id=${escape(JSON.stringify(r.id))} created=${escape(created)}\n   ${escape(doc)}`;
+		const approach = r.approach ? ` approach (caller-reported, not verified)=${escape(JSON.stringify(r.approach).slice(0, 1600))} [bounded; memory_get for details]` : "";
+		return `${i + 1}. durable memory [${escape(r.project)}] (${r.score.toFixed(2)}) id=${escape(JSON.stringify(r.id))} created=${escape(created)}${approach}\n   ${escape(doc)}`;
 	});
 
 	const instruction =
@@ -224,7 +228,8 @@ export function installAutocontext(pi: ExtensionAPI): boolean {
 		injections = 0;
 	});
 
-	pi.on("before_agent_start", async (event: unknown) => {
+	pi.on("before_agent_start", async (event: unknown, ctx?: { model?: { provider?: string } }) => {
+		if (!memoryReadAllowed(ctx)) return;
 		const e =
 			event && typeof event === "object" ? (event as { prompt?: unknown }) : {};
 		const prompt: string = typeof e.prompt === "string" ? e.prompt : "";

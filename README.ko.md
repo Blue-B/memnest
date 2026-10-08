@@ -14,6 +14,12 @@ Memnest는 pi, Claude Code, Codex의 대화 텍스트를 내 컴퓨터에 저장
 [![npm: pi-memnest](https://img.shields.io/npm/v/pi-memnest?label=npm%20pi-memnest&color=cb3837)](https://www.npmjs.com/package/pi-memnest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+## 실제 기억 조회
+
+[![실제 질문에서 두 번의 조회를 거쳐 기존 정리 메모의 이유를 읽은 사례](docs/recall-demo.ko.png)](docs/recall-check-2026-10-06.md)
+
+작업 관리 도구를 왜 바꿨는지 검색하고, 결과에 연결된 기존 수동 정리 메모를 읽어 이유를 확인했습니다. 한 번의 검색으로 당시 대화를 복원한 사례는 아닙니다. 이미지는 실제 요청 결과를 편집한 것으로 화면 녹화가 아니며, [질문 3개를 시험한 결과](docs/recall-check-2026-10-06.md)에는 답을 확인하지 못한 나머지 두 질문도 남겼습니다.
+
 ## 사용 장면
 
 이런 질문을 할 때 쌓인 기록을 찾아보는 용도입니다.
@@ -47,10 +53,28 @@ VERSION=v0.3.1 bash /tmp/memnest-install.sh --user
 코어를 실행한 상태에서 같은 버전의 확장을 설치합니다.
 
 ```bash
+# npm에 공개된 기본 연동
 pi install npm:pi-memnest@0.3.1
+
+# npm 배포 전 0.4.0 기능은 검토한 소스에서 연결
+pi install ./pi-extension
 ```
 
 다른 경로의 Memnest 확장이 이미 등록돼 있다면 먼저 그 등록을 제거해 중복 로드를 피하세요. 연결 상태는 pi의 `/memnest`에서 확인합니다. [확장 설정](pi-extension/README.md)
+
+<details>
+<summary>로컬 개발 설정: 금고 도구</summary>
+
+확장은 기본적으로 기억 도구 5개만 노출합니다. pi에서 자격 증명을 저장하고 조회하는 `secret_set`, `secret_get`, `secret_list`, `secret_delete`를 사용하려면 pi를 시작하기 전에 금고 도구를 활성화하세요.
+
+```bash
+export MEMNEST_EXPOSE_SECRET_TOOLS=1
+pi
+```
+
+환경변수를 바꾼 뒤에는 pi를 다시 시작해야 합니다. `/reload`만으로는 실행 중인 프로세스 환경이 바뀌지 않습니다. `/memnest`는 금고 도구의 사용 가능 여부를 보여주며, 숨겨진 경우 이 활성화 방법을 안내합니다.
+
+</details>
 
 다른 MCP 클라이언트는 `http://127.0.0.1:3111/mcp`에 연결합니다. [연결 예시](adapters/README.md), [다른 환경과 소스 설치](docs/operations.md), [업그레이드와 복구](docs/operations.md#linux-service-upgrades)를 참고하세요. macOS는 소스 설치만 제공하며 실제 설치와 제거는 검증하지 못했습니다.
 
@@ -71,13 +95,19 @@ memory_get(id="<검색 결과의 ID>")
 
 설치 전의 대화는 자동으로 모두 가져오지 않습니다. 필요한 원본 파일을 선택해 [과거 기록 가져오기](docs/history-import.md)로 추가하세요.
 
+### 코드 근거와 팀 제어 (0.4.0)
+
+해결 기록을 제안, 실패, 보고된 성공으로 구분하되 검증된 사실로 취급하지 않습니다. `memory_remember(code_files=["상대/파일경로"])`로 선택한 파일의 기준을 붙이고, 필요할 때만 `memory_get(check_code=true)`로 비교합니다. 무관한 파일을 바꿨다고 경고하지 않습니다. [코드 근거 문서](docs/code-evidence.md)
+
+선택적으로 [팀별 프로젝트 권한, 감사, 보존 정책](docs/team-access.md)을 켤 수 있습니다. [무료 로컬 비교](docs/local-provider-comparison.md)에는 경쟁 제품보다 나았던 항목과 부족했던 항목을 함께 공개합니다.
+
 ## 알아둘 점
 
 - **기록 검색이지 사실 판정은 아닙니다.** 필요한 기록을 놓칠 수 있고, 옛 결정이 지금도 맞는지 자동으로 판별하지 못합니다. 후속 기록 안내도 검증된 답변 관계를 뜻하지 않습니다.
 - **모든 대화를 저장하지는 않습니다.** 보이는 대화 텍스트를 수집하며, 추론 내용, 도구 입출력, 이미지와 서브에이전트 대화는 제외합니다. ChatGPT나 Claude의 내장 메모리도 가져오지 않습니다.
-- **저장은 로컬, 답변은 연결한 AI가 담당합니다.** Memnest 자체는 생성형 LLM을 호출하지 않습니다. 클라우드 AI에 검색 결과를 전달하면 해당 제공자가 그 내용을 받습니다.
+- **저장은 로컬, 답변은 연결한 AI가 담당합니다.** 기본 저장과 검색은 생성형 LLM을 호출하지 않습니다. `evidence_only=true`를 명시하면 설정한 로컬 모델이 근거 후보를 선택하며, 그 판단은 사실 검증이 아닙니다. 클라우드 AI에 검색 결과를 전달하면 해당 제공자가 그 내용을 받습니다.
 - **일반 기억은 암호화되지 않습니다.** 알려진 비밀값 형태를 가리는 처리가 모든 유출을 막지는 못합니다. 3111 포트를 인터넷에 직접 노출하지 마세요.
-- **삭제 직후 완전히 사라지지는 않습니다.** 휴지통에 30일 남으며 보관용 JSONL에도 남을 수 있습니다. [보안과 삭제 범위](SECURITY.md)를 확인하세요.
+- **삭제 직후 완전히 사라지지는 않습니다.** 휴지통에 기본 30일 남습니다. 새 평문 보관 파일은 기본으로 만들지 않지만 기존 보관 파일, 백업과 원본 대화에는 남을 수 있습니다. [보안과 삭제 범위](SECURITY.md)를 확인하세요.
 
 ## 문서와 검증
 

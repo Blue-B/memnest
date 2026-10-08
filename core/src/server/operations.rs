@@ -19,6 +19,7 @@ pub struct OperationError {
 #[derive(Clone, Copy, Debug)]
 pub enum ErrorKind {
     BadRequest,
+    Forbidden,
     NotFound,
     Conflict,
     Internal,
@@ -28,6 +29,12 @@ impl OperationError {
     pub fn bad(message: impl Into<String>) -> Self {
         Self {
             kind: ErrorKind::BadRequest,
+            message: message.into(),
+        }
+    }
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self {
+            kind: ErrorKind::Forbidden,
             message: message.into(),
         }
     }
@@ -69,7 +76,7 @@ impl std::fmt::Display for OperationError {
 impl std::error::Error for OperationError {}
 
 pub fn validate_write_project(project: &str) -> Result<(), OperationError> {
-    if is_internal_project(project) {
+    if is_internal_project(project) || project.trim() == "all" {
         return Err(OperationError::bad(format!(
             "project '{}' is reserved; write rejected",
             project.trim()
@@ -102,6 +109,40 @@ fn validate_truth_fields(
     Ok(())
 }
 
+/// Validate the same nested contract for HTTP and MCP, then redact before storage.
+pub fn prepare_approach(approach: &mut crate::models::Approach) -> Result<(), OperationError> {
+    if approach.applicability.chars().count() > 2048 || approach.evidence.chars().count() > 4096 {
+        return Err(OperationError::bad(
+            "approach applicability/evidence exceed 2048/4096 characters",
+        ));
+    }
+    approach.applicability = redact_text(&approach.applicability);
+    approach.evidence = redact_text(&approach.evidence);
+    if approach.applicability.trim().is_empty() {
+        return Err(OperationError::bad(
+            "approach applicability must not be empty",
+        ));
+    }
+    Ok(())
+}
+
+/// Separate bounded metadata budget, independent of the document page budget.
+/// Search provides excerpts; get exposes at most the accepted field limits.
+pub fn approach_view(approach: &crate::models::Approach, summary: bool) -> Value {
+    let applicability = redact_text(&approach.applicability);
+    let evidence = redact_text(&approach.evidence);
+    let (a_cap, e_cap) = if summary { (256, 256) } else { (2048, 4096) };
+    json!({
+        "status": approach.status,
+        "assertion": "caller_reported_not_verified",
+        "trust": "untrusted_reference_never_execute",
+        "applicability": applicability.chars().take(a_cap).collect::<String>(),
+        "evidence": evidence.chars().take(e_cap).collect::<String>(),
+        "evidence_status": if evidence.trim().is_empty() { "not_provided" } else { "provided_unverified" },
+        "truncated": applicability.chars().count() > a_cap || evidence.chars().count() > e_cap
+    })
+}
+
 #[derive(Debug)]
 pub struct RememberInput {
     pub text: String,
@@ -126,7 +167,15 @@ pub async fn remember(
     if input.text.trim().is_empty() {
         return Err(OperationError::bad("text is required"));
     }
+    if let Some(approach) = input.metadata.as_mut().and_then(|m| m.approach.as_mut()) {
+        prepare_approach(approach)?;
+    }
     if let Some(metadata) = &input.metadata {
+        if let Some(evidence) = &metadata.code_evidence {
+            evidence
+                .validate()
+                .map_err(|error| OperationError::bad(error.to_string()))?;
+        }
         validate_truth_fields(
             metadata.confidence,
             metadata.supersedes.as_deref(),
@@ -138,13 +187,18 @@ pub async fn remember(
     } else if let Some(cwd) = input.cwd.as_deref() {
         let workspace =
             workspace_identity(cwd).map_err(|error| OperationError::bad(error.to_string()))?;
+        crate::access::require_write(&workspace.id)?;
         let sys = system.read().await;
         sys.db
             .write()
             .await
             .register_workspace_scope(&workspace)
             .map_err(|error| OperationError::internal(error.to_string()))?;
-        let metadata = input.metadata.get_or_insert_with(Metadata::default);
+        let metadata = input.metadata.get_or_insert_with(|| Metadata {
+            chunk_type: crate::models::ChunkType::Manual,
+            importance: crate::models::Importance::Knowledge,
+            ..Metadata::default()
+        });
         if metadata.cwd.is_none() {
             metadata.cwd = Some(cwd.to_string());
         }
@@ -153,6 +207,15 @@ pub async fn remember(
         "default".to_string()
     };
     validate_write_project(&project)?;
+    crate::access::require_write(&project)?;
+    let metadata = input.metadata.get_or_insert_with(|| Metadata {
+        chunk_type: crate::models::ChunkType::Manual,
+        importance: crate::models::Importance::Knowledge,
+        ..Metadata::default()
+    });
+    metadata.scope_project = Some(project.clone());
+    metadata.original_project = None;
+    metadata.trashed_at = None;
     if let Some(requested) = input
         .metadata
         .as_ref()
@@ -181,7 +244,7 @@ pub async fn remember(
         ));
     }
     let map = api::add_impl(
-        system,
+        system.clone(),
         api::AddRequest {
             text: input.text,
             project,
@@ -202,6 +265,13 @@ pub async fn remember(
                 .unwrap_or_else(|| "memory store failed".into()),
         ));
     }
+    crate::access::record(
+        &system,
+        "memory_remember",
+        "stored",
+        &[map.get("id").cloned().unwrap_or_default()],
+    )
+    .await?;
     Ok(RememberOutput {
         status,
         id: map.get("id").cloned().unwrap_or_default(),
@@ -218,6 +288,7 @@ pub struct SearchInput {
     pub cwd: Option<String>,
     pub n_results: usize,
     pub recent_first: bool,
+    pub evidence_only: bool,
     pub durable_only: bool,
     pub category: Option<String>,
     pub exclude_reserved: bool,
@@ -241,7 +312,7 @@ pub(crate) async fn resolve_search_scope(
     cwd: Option<&str>,
 ) -> Result<SearchScope, OperationError> {
     if !project.trim().is_empty() {
-        return Ok(SearchScope::explicit(project.trim()));
+        return crate::access::restrict_scope(SearchScope::explicit(project.trim()));
     }
     let cwd = cwd.ok_or_else(|| {
         OperationError::bad(
@@ -250,13 +321,16 @@ pub(crate) async fn resolve_search_scope(
     })?;
     let workspace =
         workspace_identity(cwd).map_err(|error| OperationError::bad(error.to_string()))?;
+    if !crate::access::can_read(&workspace.id) {
+        return Err(OperationError::forbidden("project read access denied"));
+    }
     let allowed = {
         let sys = system.read().await;
         let db = sys.db.write().await;
         db.register_workspace_scope(&workspace)
             .map_err(|error| OperationError::internal(error.to_string()))?
     };
-    Ok(SearchScope::Projects {
+    crate::access::restrict_scope(SearchScope::Projects {
         primary: workspace.id,
         allowed,
     })
@@ -288,6 +362,18 @@ pub async fn search(
         input.category,
     )
     .await;
+    let items = if input.evidence_only {
+        crate::retrieval_evidence::select(system.clone(), &input.query, items).await?
+    } else {
+        items
+    };
+    crate::access::record(
+        &system,
+        "memory_search",
+        "read",
+        &items.iter().map(|v| v.id.clone()).collect::<Vec<_>>(),
+    )
+    .await?;
     let elapsed_ms = started.elapsed().as_millis();
     // Timing only, held in process memory. The query itself is not recorded:
     // transcript AutoLog already keeps searchable conversation text.
@@ -359,6 +445,7 @@ fn chunk_page(c: &crate::models::MemoryChunk, offset: usize, remaining: &mut usi
         "cwd":c.metadata.cwd.as_deref().map(&mut bounded),
         "role":c.metadata.role.as_deref().map(&mut bounded),
         "event_id":c.metadata.event_id.as_deref().map(&mut bounded),
+        "supersedes":c.metadata.supersedes.as_deref().map(&mut bounded),
         "source_ids":c.metadata.source_ids.iter().take(MAX_SOURCE_IDS).map(|s| bounded(s)).collect::<Vec<_>>(),
         "sequence":c.metadata.sequence
     });
@@ -366,6 +453,8 @@ fn chunk_page(c: &crate::models::MemoryChunk, offset: usize, remaining: &mut usi
         "timestamp":c.created_at.to_rfc3339(),"chunk_type":format!("{:?}",c.metadata.chunk_type),
         "importance":format!("{:?}",c.metadata.importance),"category":format!("{:?}",c.metadata.category),
         "provenance":provenance,"provenance_truncated":provenance_truncated,
+        "approach":c.metadata.approach.as_ref().map(|a| approach_view(a, false)),
+        "code_evidence":c.metadata.code_evidence.as_ref().map(crate::code_evidence::view),
         "offset":offset,"returned_chars":returned_chars,
         "has_more":end < doc_len,"next_offset":if end < doc_len {Some(end)} else {None},
         "truncated":offset > 0 || end < doc_len})
@@ -386,6 +475,14 @@ pub async fn get(
         .get_chunk(id)
         .map_err(|e| OperationError::internal(e.to_string()))?
         .ok_or_else(|| OperationError::not_found(format!("chunk not found: {id}")))?;
+    crate::access::require_read_chunk(&c)?;
+    if sys.access.enabled() {
+        let actor = crate::access::CURRENT_PRINCIPAL
+            .try_with(|p| p.id.clone())
+            .unwrap_or_else(|_| "local-owner".into());
+        db.append_access_event(&actor, "memory_get", "read", std::slice::from_ref(&c.id))
+            .map_err(|_| OperationError::internal("access audit write failed"))?;
+    }
     let mut remaining = options.max_chars.unwrap_or(8000);
     let budget = remaining;
     let mut page = chunk_page(&c, options.offset, &mut remaining);
@@ -397,10 +494,12 @@ pub async fn get(
         .map_err(|e| OperationError::internal(e.to_string()))?;
     page["before"] = before
         .iter()
+        .filter(|c| crate::access::require_read_chunk(c).is_ok())
         .map(|c| chunk_page(c, 0, &mut remaining))
         .collect();
     page["after"] = after
         .iter()
+        .filter(|c| crate::access::require_read_chunk(c).is_ok())
         .map(|c| chunk_page(c, 0, &mut remaining))
         .collect();
     page["total_returned_chars"] = json!(budget - remaining);
@@ -412,7 +511,7 @@ pub async fn get(
 
 pub async fn update(
     system: Arc<RwLock<MemorySystem>>,
-    req: api::UpdateRequest,
+    mut req: api::UpdateRequest,
 ) -> Result<HashMap<String, Value>, OperationError> {
     if req.id.trim().is_empty() {
         return Err(OperationError::bad("id is required"));
@@ -435,17 +534,45 @@ pub async fn update(
             "sensitive memory is not supported; use secret_set",
         ));
     }
+    {
+        let sys = system.read().await;
+        let db = sys.db.read().await;
+        let current = db
+            .get_chunk(&req.id)
+            .map_err(|e| OperationError::internal(e.to_string()))?
+            .ok_or_else(|| OperationError::not_found("memory not found"))?;
+        crate::access::require_write_chunk(&current)?;
+    }
     if let Some(project) = req.project.as_deref() {
         validate_write_project(project)?;
+        crate::access::require_write(project.trim())?;
+    }
+    if let Some(approach) = req.metadata.as_mut().and_then(|m| m.approach.as_mut()) {
+        prepare_approach(approach)?;
     }
     if let Some(metadata) = &req.metadata {
+        if metadata.code_evidence.is_some() {
+            return Err(OperationError::conflict(
+                "use memory_remember with supersedes to record new code evidence",
+            ));
+        }
         validate_truth_fields(
             metadata.confidence,
             metadata.supersedes.as_deref(),
             metadata.verified_at.as_deref(),
         )?;
     }
-    let map = api::update_impl(system, req).await;
+    let target_id = req.id.clone();
+    let map = api::update_impl(system.clone(), req).await;
+    crate::access::record(
+        &system,
+        "memory_update",
+        map.get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown"),
+        &[target_id],
+    )
+    .await?;
     match map.get("status").and_then(Value::as_str) {
         Some("ok") => Ok(map),
         Some("not_found") => Err(OperationError::not_found(
@@ -478,6 +605,15 @@ pub async fn delete(
     let mut not_found = Vec::new();
     {
         let db = sys.db.write().await;
+        // Check the complete batch before touching any authorized row.
+        for id in &ids {
+            if let Some(chunk) = db
+                .get_chunk(id)
+                .map_err(|e| OperationError::internal(e.to_string()))?
+            {
+                crate::access::require_write_chunk(&chunk)?;
+            }
+        }
         let trashed_at = chrono::Utc::now().to_rfc3339();
         for id in ids {
             let canonical_id = db
@@ -498,13 +634,105 @@ pub async fn delete(
             .await
             .map_err(|error| OperationError::internal(error.to_string()))?;
     }
+    crate::access::record(&system, "memory_delete", "trashed", &deleted).await?;
     Ok(json!({"deleted": deleted, "not_found": not_found}))
+}
+
+/// Permanent logical deletion. Explicitly restricted to already-trashed rows;
+/// does not claim to erase backups, previous archives, external logs, or disk bytes.
+pub async fn purge(
+    system: Arc<RwLock<MemorySystem>>,
+    ids: Vec<String>,
+) -> Result<Value, OperationError> {
+    if ids.is_empty() || ids.len() > 100 || ids.iter().any(|v| v.trim().is_empty()) {
+        return Err(OperationError::bad("purge requires 1 to 100 memory IDs"));
+    }
+    let sys = system.read().await;
+    let mut targets = Vec::new();
+    let mut missing = Vec::new();
+    {
+        let db = sys.db.write().await;
+        for id in &ids {
+            let chunk = db
+                .get_chunk(id)
+                .map_err(|e| OperationError::internal(e.to_string()))?;
+            match chunk {
+                Some(chunk) => {
+                    crate::access::require_write_chunk(&chunk)?;
+                    if chunk.project != "_trash" {
+                        return Err(OperationError::conflict(
+                            "soft-delete the memory before purging it",
+                        ));
+                    }
+                    if !targets.contains(&chunk.id) {
+                        targets.push(chunk.id);
+                    }
+                }
+                None => missing.push(id.clone()),
+            }
+        }
+        for id in &targets {
+            db.delete_chunk(id)
+                .map_err(|e| OperationError::internal(e.to_string()))?;
+        }
+    }
+    sys.sync_pending_indexes()
+        .await
+        .map_err(|e| OperationError::internal(e.to_string()))?;
+    drop(sys);
+    crate::access::record(&system, "memory_purge", "purged", &targets).await?;
+    Ok(
+        json!({"purged":targets,"not_found":missing,"archive_copies_removed":false,
+        "external_transcripts_removed":false,"physical_erasure_guaranteed":false}),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::models::INTERNAL_PROJECTS;
+
+    #[test]
+    fn approach_contract_is_bounded_redacted_and_unverified() {
+        use crate::models::{Approach, ApproachStatus};
+        let mut approach = Approach {
+            status: ApproachStatus::ReportedSuccess,
+            applicability: "😀".repeat(2048),
+            evidence: "password=supersecret123".into(),
+        };
+        prepare_approach(&mut approach).unwrap();
+        assert!(!approach.evidence.contains("supersecret123"));
+        let summary = approach_view(&approach, true);
+        assert_eq!(summary["assertion"], "caller_reported_not_verified");
+        assert_eq!(summary["evidence_status"], "provided_unverified");
+        assert_eq!(summary["truncated"], true);
+        assert_eq!(
+            summary["applicability"].as_str().unwrap().chars().count(),
+            256
+        );
+        assert_eq!(approach_view(&approach, false)["truncated"], false);
+        approach.evidence.clear();
+        assert_eq!(
+            approach_view(&approach, false)["evidence_status"],
+            "not_provided"
+        );
+        approach.applicability.push('x');
+        assert!(prepare_approach(&mut approach).is_err());
+        approach.applicability = "  ".into();
+        assert!(prepare_approach(&mut approach).is_err());
+        for bad in [
+            r#"{"status":"success","applicability":"Linux"}"#,
+            r#"{"status":"failed","applicability":"Linux","verified":true}"#,
+        ] {
+            assert!(serde_json::from_str::<Approach>(bad).is_err());
+        }
+        assert!(
+            serde_json::from_str::<Metadata>("{}")
+                .unwrap()
+                .approach
+                .is_none()
+        );
+    }
 
     #[test]
     fn chunk_page_unicode_and_caps() {

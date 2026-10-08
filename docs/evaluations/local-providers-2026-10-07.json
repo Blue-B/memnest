@@ -1,0 +1,4704 @@
+{
+  "run_id": "364b3d52602b",
+  "model": "qwen2.5:3b",
+  "cost_usd": 0,
+  "dataset": "authored coding-memory current-document snapshot",
+  "cases": 48,
+  "providers": {
+    "memnest": {
+      "ingest_seconds": 7.427,
+      "metrics": {
+        "queries": 48,
+        "successful_queries": 48,
+        "errors": 0,
+        "positive_hit_at_1": 0.9090909090909091,
+        "positive_recall_at_5": 0.9545454545454546,
+        "negative_empty_rate": 0.038461538461538464,
+        "positive_answer_term_pass_rate": 0.7272727272727273,
+        "negative_answer_abstention_rate": 1.0,
+        "retrieval_p50_ms": 55.221,
+        "retrieval_p95_ms": 86.246
+      },
+      "rows": [
+        {
+          "id": "port-en",
+          "project": "atlas",
+          "query": "Which port does the Atlas API use now?",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "port",
+            "test",
+            "auth",
+            "noise1",
+            "retry"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 404.628,
+          "answer": "9440",
+          "answer_pass": true,
+          "answer_prompt_tokens": 184,
+          "answer_output_tokens": 5
+        },
+        {
+          "id": "port-ko",
+          "project": "atlas",
+          "query": "아틀라스 API의 현재 포트는?",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "port"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete."
+          ],
+          "error": null,
+          "retrieval_ms": 69.859,
+          "answer": "9440",
+          "answer_pass": true,
+          "answer_prompt_tokens": 100,
+          "answer_output_tokens": 5
+        },
+        {
+          "id": "port-file",
+          "project": "atlas",
+          "query": "server/config.rs port",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "port",
+            "test",
+            "cache",
+            "auth"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 60.484,
+          "answer": "9440",
+          "answer_pass": true,
+          "answer_prompt_tokens": 157,
+          "answer_output_tokens": 5
+        },
+        {
+          "id": "obsolete",
+          "project": "atlas",
+          "query": "8320 obsolete port",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "port",
+            "noise3",
+            "test",
+            "cache"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 58.325,
+          "answer": "8320 obsolete port",
+          "answer_pass": false,
+          "answer_prompt_tokens": 152,
+          "answer_output_tokens": 7
+        },
+        {
+          "id": "tests-en",
+          "project": "atlas",
+          "query": "How do I run the Rust tests offline?",
+          "relevant": [
+            "test"
+          ],
+          "retrieved_keys": [
+            "test",
+            "migration",
+            "noise2",
+            "noise3",
+            "auth"
+          ],
+          "context": [
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 50.738,
+          "answer": "Run cargo test --offline for Atlas Rust tests.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 165,
+          "answer_output_tokens": 11
+        },
+        {
+          "id": "tests-ko",
+          "project": "atlas",
+          "query": "인터넷 없이 Rust 테스트를 실행하는 명령은?",
+          "relevant": [
+            "test"
+          ],
+          "retrieved_keys": [
+            "test"
+          ],
+          "context": [
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases."
+          ],
+          "error": null,
+          "retrieval_ms": 72.724,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 97,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "auth-en",
+          "project": "atlas",
+          "query": "How is HTTP authentication configured?",
+          "relevant": [
+            "auth"
+          ],
+          "retrieved_keys": [
+            "auth",
+            "port",
+            "noise3",
+            "logs"
+          ],
+          "context": [
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted."
+          ],
+          "error": null,
+          "retrieval_ms": 75.519,
+          "answer": "Atlas HTTP authentication uses a Bearer token from the environment variable ATLAS_TOKEN. The configuration for this is found in server/auth.rs.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 155,
+          "answer_output_tokens": 28
+        },
+        {
+          "id": "auth-file",
+          "project": "atlas",
+          "query": "server/auth.rs ATLAS_TOKEN",
+          "relevant": [
+            "auth"
+          ],
+          "retrieved_keys": [
+            "auth",
+            "retry",
+            "cache",
+            "port"
+          ],
+          "context": [
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete."
+          ],
+          "error": null,
+          "retrieval_ms": 56.856,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 167,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "retry-en",
+          "project": "atlas",
+          "query": "How many times are payment webhooks retried?",
+          "relevant": [
+            "retry"
+          ],
+          "retrieved_keys": [
+            "retry",
+            "noise1",
+            "noise3",
+            "logs"
+          ],
+          "context": [
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted."
+          ],
+          "error": null,
+          "retrieval_ms": 51.011,
+          "answer": "3",
+          "answer_pass": false,
+          "answer_prompt_tokens": 155,
+          "answer_output_tokens": 2
+        },
+        {
+          "id": "retry-ko",
+          "project": "atlas",
+          "query": "결제 웹훅 재시도 횟수와 중복 방지 방법은?",
+          "relevant": [
+            "retry"
+          ],
+          "retrieved_keys": [
+            "retry",
+            "timezone",
+            "korean"
+          ],
+          "context": [
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다."
+          ],
+          "error": null,
+          "retrieval_ms": 55.609,
+          "answer": "결제 웹훅 재시도 횟수는 최대 3회이며, 중복 방지 방법은 event_id를 사용하여 디드uplicated을 방지한다.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 186,
+          "answer_output_tokens": 40
+        },
+        {
+          "id": "migration-en",
+          "project": "atlas",
+          "query": "How are SQLite schema migrations made atomic?",
+          "relevant": [
+            "migration"
+          ],
+          "retrieved_keys": [
+            "migration",
+            "test",
+            "noise1",
+            "noise3",
+            "cache"
+          ],
+          "context": [
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 45.163,
+          "answer": "Atlas SQLite migrations are made atomic by running inside an immediate transaction in storage/migrate.rs.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 168,
+          "answer_output_tokens": 19
+        },
+        {
+          "id": "migration-file",
+          "project": "atlas",
+          "query": "storage/migrate.rs transaction",
+          "relevant": [
+            "migration"
+          ],
+          "retrieved_keys": [
+            "migration",
+            "noise3",
+            "port",
+            "test"
+          ],
+          "context": [
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases."
+          ],
+          "error": null,
+          "retrieval_ms": 41.908,
+          "answer": "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 147,
+          "answer_output_tokens": 15
+        },
+        {
+          "id": "cache-en",
+          "project": "atlas",
+          "query": "How many compiled templates fit in the cache?",
+          "relevant": [
+            "cache"
+          ],
+          "retrieved_keys": [
+            "cache",
+            "noise2",
+            "noise1",
+            "noise3"
+          ],
+          "context": [
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved."
+          ],
+          "error": null,
+          "retrieval_ms": 52.041,
+          "answer": "128",
+          "answer_pass": true,
+          "answer_prompt_tokens": 147,
+          "answer_output_tokens": 4
+        },
+        {
+          "id": "cache-ko",
+          "project": "atlas",
+          "query": "템플릿 캐시 최대 크기는?",
+          "relevant": [
+            "cache"
+          ],
+          "retrieved_keys": [
+            "cache",
+            "timezone",
+            "korean"
+          ],
+          "context": [
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs.",
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다."
+          ],
+          "error": null,
+          "retrieval_ms": 43.432,
+          "answer": "128",
+          "answer_pass": true,
+          "answer_prompt_tokens": 179,
+          "answer_output_tokens": 4
+        },
+        {
+          "id": "deploy-ko",
+          "project": "atlas",
+          "query": "금요일 배포 정책과 배포 전 준비는?",
+          "relevant": [
+            "korean"
+          ],
+          "retrieved_keys": [
+            "korean",
+            "noise2",
+            "noise3",
+            "timezone"
+          ],
+          "context": [
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다."
+          ],
+          "error": null,
+          "retrieval_ms": 56.644,
+          "answer": "아틀라스 배포는 금요일에 하지 않는다는 정책이 있습니다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관하는 것이 배포 전 준비입니다.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 188,
+          "answer_output_tokens": 56
+        },
+        {
+          "id": "deploy-en",
+          "project": "atlas",
+          "query": "What should we do before deployment and which day is forbidden?",
+          "relevant": [
+            "korean"
+          ],
+          "retrieved_keys": [
+            "migration",
+            "noise1",
+            "logs",
+            "port",
+            "noise3"
+          ],
+          "context": [
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved."
+          ],
+          "error": null,
+          "retrieval_ms": 48.434,
+          "answer": "NOT_FOUND\n\nThe question asks about a day that is forbidden, but no such day is mentioned in the provided facts. The facts do not contain any information about a forbidden day.",
+          "answer_pass": false,
+          "answer_prompt_tokens": 177,
+          "answer_output_tokens": 37
+        },
+        {
+          "id": "timezone-ko",
+          "project": "atlas",
+          "query": "예약 작업은 어떤 시간대를 사용하나?",
+          "relevant": [
+            "timezone"
+          ],
+          "retrieved_keys": [
+            "timezone",
+            "logs",
+            "korean",
+            "retry"
+          ],
+          "context": [
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 54.53,
+          "answer": "UTC",
+          "answer_pass": true,
+          "answer_prompt_tokens": 199,
+          "answer_output_tokens": 2
+        },
+        {
+          "id": "timezone-en",
+          "project": "atlas",
+          "query": "What timezone is used for scheduled jobs?",
+          "relevant": [
+            "timezone"
+          ],
+          "retrieved_keys": [
+            "test",
+            "port",
+            "timezone"
+          ],
+          "context": [
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다."
+          ],
+          "error": null,
+          "retrieval_ms": 50.306,
+          "answer": "UTC",
+          "answer_pass": true,
+          "answer_prompt_tokens": 148,
+          "answer_output_tokens": 2
+        },
+        {
+          "id": "logs",
+          "project": "atlas",
+          "query": "Which fields are retained in request logs?",
+          "relevant": [
+            "logs"
+          ],
+          "retrieved_keys": [
+            "logs",
+            "noise1",
+            "noise3",
+            "cache"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 58.707,
+          "answer": "request_id and status_code",
+          "answer_pass": true,
+          "answer_prompt_tokens": 151,
+          "answer_output_tokens": 6
+        },
+        {
+          "id": "isolate-port",
+          "project": "beacon",
+          "query": "server/config.rs API port",
+          "relevant": [
+            "beta-port"
+          ],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-retry",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers."
+          ],
+          "error": null,
+          "retrieval_ms": 40.378,
+          "answer": "8320",
+          "answer_pass": true,
+          "answer_prompt_tokens": 123,
+          "answer_output_tokens": 5
+        },
+        {
+          "id": "isolate-tests",
+          "project": "beacon",
+          "query": "How do I run tests?",
+          "relevant": [
+            "beta-test"
+          ],
+          "retrieved_keys": [
+            "beta-test",
+            "beta-retry",
+            "beta-port"
+          ],
+          "context": [
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs.",
+            "Beacon API listens on port 8320. Configure server/config.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 46.925,
+          "answer": "To run tests for Beacon, you would use pnpm test.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 124,
+          "answer_output_tokens": 14
+        },
+        {
+          "id": "isolate-retry",
+          "project": "beacon",
+          "query": "payment webhooks retry limit",
+          "relevant": [
+            "beta-retry"
+          ],
+          "retrieved_keys": [
+            "beta-retry",
+            "beta-test",
+            "beta-port"
+          ],
+          "context": [
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon API listens on port 8320. Configure server/config.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 45.933,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 123,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-en",
+          "project": "atlas",
+          "query": "What is the Kubernetes production cluster name?",
+          "relevant": [],
+          "retrieved_keys": [
+            "port",
+            "noise3",
+            "noise2"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday."
+          ],
+          "error": null,
+          "retrieval_ms": 59.992,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 128,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-ko",
+          "project": "atlas",
+          "query": "운영 Redis 비밀번호 교체 주기는?",
+          "relevant": [],
+          "retrieved_keys": [
+            "timezone",
+            "korean",
+            "retry"
+          ],
+          "context": [
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 69.828,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 177,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-project",
+          "project": "empty-project",
+          "query": "server/config.rs API port",
+          "relevant": [],
+          "retrieved_keys": [],
+          "context": [],
+          "error": null,
+          "retrieval_ms": 8.842,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 69,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-domain",
+          "project": "beacon",
+          "query": "What is our iOS signing certificate renewal policy?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-retry",
+            "beta-port",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs.",
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers."
+          ],
+          "error": null,
+          "retrieval_ms": 55.221,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 127,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-ci-timeout",
+          "project": "atlas",
+          "query": "What timeout do the integration tests use?",
+          "relevant": [],
+          "retrieved_keys": [
+            "test",
+            "noise1",
+            "auth",
+            "noise2",
+            "noise3"
+          ],
+          "context": [
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved."
+          ],
+          "error": null,
+          "retrieval_ms": 48.938,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 164,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-db-pool",
+          "project": "atlas",
+          "query": "What is the maximum SQLite connection pool size?",
+          "relevant": [],
+          "retrieved_keys": [
+            "test",
+            "retry",
+            "migration",
+            "noise1",
+            "noise3"
+          ],
+          "context": [
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved."
+          ],
+          "error": null,
+          "retrieval_ms": 85.595,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 171,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-log-days",
+          "project": "atlas",
+          "query": "How many days are request logs retained?",
+          "relevant": [],
+          "retrieved_keys": [
+            "logs",
+            "noise1",
+            "retry",
+            "auth"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 86.246,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 161,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-metrics-port",
+          "project": "atlas",
+          "query": "Which port does the metrics server use?",
+          "relevant": [],
+          "retrieved_keys": [
+            "port",
+            "auth",
+            "noise1",
+            "test",
+            "noise2"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday."
+          ],
+          "error": null,
+          "retrieval_ms": 39.939,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 173,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-payment-account",
+          "project": "atlas",
+          "query": "What is the payment processor account ID?",
+          "relevant": [],
+          "retrieved_keys": [
+            "retry",
+            "noise3",
+            "logs",
+            "noise2",
+            "port"
+          ],
+          "context": [
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete."
+          ],
+          "error": null,
+          "retrieval_ms": 53.823,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 173,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-review-count",
+          "project": "atlas",
+          "query": "How many code review approvals are required?",
+          "relevant": [],
+          "retrieved_keys": [
+            "logs",
+            "noise1",
+            "noise3",
+            "cache"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 74.342,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 151,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-feature-flags",
+          "project": "atlas",
+          "query": "Which service stores production feature flags?",
+          "relevant": [],
+          "retrieved_keys": [
+            "test",
+            "noise1",
+            "noise3"
+          ],
+          "context": [
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved."
+          ],
+          "error": null,
+          "retrieval_ms": 53.916,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 124,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-backup-days",
+          "project": "atlas",
+          "query": "How many days are database backups retained?",
+          "relevant": [],
+          "retrieved_keys": [
+            "noise1",
+            "migration",
+            "retry"
+          ],
+          "context": [
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 60.599,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 137,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-region-ko",
+          "project": "atlas",
+          "query": "아틀라스 운영 서버 리전은 어디인가?",
+          "relevant": [],
+          "retrieved_keys": [
+            "korean",
+            "port",
+            "timezone",
+            "cache"
+          ],
+          "context": [
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 65.6,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 204,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-tls-ko",
+          "project": "atlas",
+          "query": "TLS 인증서는 며칠마다 갱신하나?",
+          "relevant": [],
+          "retrieved_keys": [
+            "korean",
+            "timezone",
+            "retry"
+          ],
+          "context": [
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 82.197,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 182,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-slack-ko",
+          "project": "atlas",
+          "query": "배포 알림을 보내는 슬랙 채널 이름은?",
+          "relevant": [],
+          "retrieved_keys": [
+            "korean",
+            "port",
+            "timezone",
+            "noise3"
+          ],
+          "context": [
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved."
+          ],
+          "error": null,
+          "retrieval_ms": 66.209,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 200,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-node-ko",
+          "project": "atlas",
+          "query": "프론트엔드가 사용하는 Node.js 버전은?",
+          "relevant": [],
+          "retrieved_keys": [
+            "timezone",
+            "noise3",
+            "korean"
+          ],
+          "context": [
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다."
+          ],
+          "error": null,
+          "retrieval_ms": 48.369,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 172,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-mobile-ko",
+          "project": "atlas",
+          "query": "모바일 앱 번들 ID는 무엇인가?",
+          "relevant": [],
+          "retrieved_keys": [
+            "retry"
+          ],
+          "context": [
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 50.944,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 102,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-pager-ko",
+          "project": "atlas",
+          "query": "장애 대응 당번은 몇 주마다 바뀌나?",
+          "relevant": [],
+          "retrieved_keys": [
+            "korean",
+            "timezone",
+            "retry"
+          ],
+          "context": [
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 70.455,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 182,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-redis-ko",
+          "project": "beacon",
+          "query": "Beacon Redis 제거 정책은 무엇인가?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-retry",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers."
+          ],
+          "error": null,
+          "retrieval_ms": 49.691,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 129,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-registry-ko",
+          "project": "beacon",
+          "query": "Beacon 컨테이너 이미지는 어느 레지스트리에 올리나?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-test",
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 92.325,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 139,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-ci-provider",
+          "project": "beacon",
+          "query": "Which CI provider runs the pnpm tests?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-test",
+            "beta-retry",
+            "beta-port"
+          ],
+          "context": [
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs.",
+            "Beacon API listens on port 8320. Configure server/config.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 48.915,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 127,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-postgres-version",
+          "project": "beacon",
+          "query": "Which PostgreSQL major version do integration tests use?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-test",
+            "beta-retry",
+            "beta-port"
+          ],
+          "context": [
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs.",
+            "Beacon API listens on port 8320. Configure server/config.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 49.001,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 127,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-webhook-timeout",
+          "project": "beacon",
+          "query": "What is the payment webhook request timeout?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-retry",
+            "beta-test",
+            "beta-port"
+          ],
+          "context": [
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon API listens on port 8320. Configure server/config.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 49.756,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 126,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-stage-url",
+          "project": "beacon",
+          "query": "What is the Beacon staging URL?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-test",
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 49.2,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 125,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-owner",
+          "project": "beacon",
+          "query": "Who owns the Beacon API service?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-retry",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers."
+          ],
+          "error": null,
+          "retrieval_ms": 66.949,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 125,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-license",
+          "project": "beacon",
+          "query": "Which license applies to the Beacon repository?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-test",
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 66.875,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 126,
+          "answer_output_tokens": 3
+        }
+      ]
+    },
+    "memu": {
+      "ingest_seconds": 6.543,
+      "metrics": {
+        "queries": 48,
+        "successful_queries": 48,
+        "errors": 0,
+        "positive_hit_at_1": 1.0,
+        "positive_recall_at_5": 1.0,
+        "negative_empty_rate": 0.038461538461538464,
+        "positive_answer_term_pass_rate": 0.8181818181818182,
+        "negative_answer_abstention_rate": 1.0,
+        "retrieval_p50_ms": 337.49,
+        "retrieval_p95_ms": 698.209
+      },
+      "rows": [
+        {
+          "id": "port-en",
+          "project": "atlas",
+          "query": "Which port does the Atlas API use now?",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "port",
+            "auth",
+            "logs",
+            "retry",
+            "cache"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 564.262,
+          "answer": "9440",
+          "answer_pass": true,
+          "answer_prompt_tokens": 190,
+          "answer_output_tokens": 5
+        },
+        {
+          "id": "port-ko",
+          "project": "atlas",
+          "query": "아틀라스 API의 현재 포트는?",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "port",
+            "korean",
+            "auth",
+            "cache",
+            "logs"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted."
+          ],
+          "error": null,
+          "retrieval_ms": 461.451,
+          "answer": "9440",
+          "answer_pass": true,
+          "answer_prompt_tokens": 211,
+          "answer_output_tokens": 5
+        },
+        {
+          "id": "port-file",
+          "project": "atlas",
+          "query": "server/config.rs port",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "port",
+            "auth",
+            "cache",
+            "noise3",
+            "migration"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades."
+          ],
+          "error": null,
+          "retrieval_ms": 317.14,
+          "answer": "9440",
+          "answer_pass": true,
+          "answer_prompt_tokens": 176,
+          "answer_output_tokens": 5
+        },
+        {
+          "id": "obsolete",
+          "project": "atlas",
+          "query": "8320 obsolete port",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "port",
+            "noise3",
+            "test",
+            "logs",
+            "cache"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 376.325,
+          "answer": "8320 is obsolete",
+          "answer_pass": false,
+          "answer_prompt_tokens": 172,
+          "answer_output_tokens": 7
+        },
+        {
+          "id": "tests-en",
+          "project": "atlas",
+          "query": "How do I run the Rust tests offline?",
+          "relevant": [
+            "test"
+          ],
+          "retrieved_keys": [
+            "test",
+            "korean",
+            "port",
+            "retry",
+            "timezone"
+          ],
+          "context": [
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다."
+          ],
+          "error": null,
+          "retrieval_ms": 286.021,
+          "answer": "Run cargo test --offline for Atlas Rust tests.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 218,
+          "answer_output_tokens": 11
+        },
+        {
+          "id": "tests-ko",
+          "project": "atlas",
+          "query": "인터넷 없이 Rust 테스트를 실행하는 명령은?",
+          "relevant": [
+            "test"
+          ],
+          "retrieved_keys": [
+            "test",
+            "auth",
+            "korean",
+            "noise3",
+            "port"
+          ],
+          "context": [
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete."
+          ],
+          "error": null,
+          "retrieval_ms": 490.316,
+          "answer": "Run cargo test --offline",
+          "answer_pass": true,
+          "answer_prompt_tokens": 206,
+          "answer_output_tokens": 6
+        },
+        {
+          "id": "auth-en",
+          "project": "atlas",
+          "query": "How is HTTP authentication configured?",
+          "relevant": [
+            "auth"
+          ],
+          "retrieved_keys": [
+            "auth",
+            "port",
+            "logs",
+            "retry",
+            "noise1"
+          ],
+          "context": [
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css."
+          ],
+          "error": null,
+          "retrieval_ms": 177.149,
+          "answer": "Atlas HTTP authentication uses a Bearer token from the ATLAS_TOKEN. The implementation is found in server/auth.rs.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 184,
+          "answer_output_tokens": 24
+        },
+        {
+          "id": "auth-file",
+          "project": "atlas",
+          "query": "server/auth.rs ATLAS_TOKEN",
+          "relevant": [
+            "auth"
+          ],
+          "retrieved_keys": [
+            "auth",
+            "port",
+            "cache",
+            "logs",
+            "retry"
+          ],
+          "context": [
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 305.953,
+          "answer": "ATLAS_TOKEN",
+          "answer_pass": false,
+          "answer_prompt_tokens": 187,
+          "answer_output_tokens": 4
+        },
+        {
+          "id": "retry-en",
+          "project": "atlas",
+          "query": "How many times are payment webhooks retried?",
+          "relevant": [
+            "retry"
+          ],
+          "retrieved_keys": [
+            "retry",
+            "noise3",
+            "cache",
+            "logs",
+            "noise1"
+          ],
+          "context": [
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css."
+          ],
+          "error": null,
+          "retrieval_ms": 223.769,
+          "answer": "3",
+          "answer_pass": false,
+          "answer_prompt_tokens": 178,
+          "answer_output_tokens": 2
+        },
+        {
+          "id": "retry-ko",
+          "project": "atlas",
+          "query": "결제 웹훅 재시도 횟수와 중복 방지 방법은?",
+          "relevant": [
+            "retry"
+          ],
+          "retrieved_keys": [
+            "retry",
+            "port",
+            "noise3",
+            "auth",
+            "logs"
+          ],
+          "context": [
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted."
+          ],
+          "error": null,
+          "retrieval_ms": 321.215,
+          "answer": "NOT_FOUND\n\nFacts provided do not contain information about payment webhooks retry count or deduplication methods.",
+          "answer_pass": false,
+          "answer_prompt_tokens": 193,
+          "answer_output_tokens": 23
+        },
+        {
+          "id": "migration-en",
+          "project": "atlas",
+          "query": "How are SQLite schema migrations made atomic?",
+          "relevant": [
+            "migration"
+          ],
+          "retrieved_keys": [
+            "migration",
+            "test",
+            "noise3",
+            "logs",
+            "cache"
+          ],
+          "context": [
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 164.262,
+          "answer": "Atlas SQLite migrations are made atomic by running inside an immediate transaction in storage/migrate.rs.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 168,
+          "answer_output_tokens": 19
+        },
+        {
+          "id": "migration-file",
+          "project": "atlas",
+          "query": "storage/migrate.rs transaction",
+          "relevant": [
+            "migration"
+          ],
+          "retrieved_keys": [
+            "migration",
+            "test",
+            "noise3",
+            "retry",
+            "cache"
+          ],
+          "context": [
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 129.958,
+          "answer": "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 170,
+          "answer_output_tokens": 15
+        },
+        {
+          "id": "cache-en",
+          "project": "atlas",
+          "query": "How many compiled templates fit in the cache?",
+          "relevant": [
+            "cache"
+          ],
+          "retrieved_keys": [
+            "cache",
+            "retry",
+            "noise3",
+            "noise1",
+            "test"
+          ],
+          "context": [
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases."
+          ],
+          "error": null,
+          "retrieval_ms": 214.11,
+          "answer": "128",
+          "answer_pass": true,
+          "answer_prompt_tokens": 174,
+          "answer_output_tokens": 4
+        },
+        {
+          "id": "cache-ko",
+          "project": "atlas",
+          "query": "템플릿 캐시 최대 크기는?",
+          "relevant": [
+            "cache"
+          ],
+          "retrieved_keys": [
+            "cache",
+            "noise3",
+            "test",
+            "retry",
+            "noise1"
+          ],
+          "context": [
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css."
+          ],
+          "error": null,
+          "retrieval_ms": 103.398,
+          "answer": "128",
+          "answer_pass": true,
+          "answer_prompt_tokens": 179,
+          "answer_output_tokens": 4
+        },
+        {
+          "id": "deploy-ko",
+          "project": "atlas",
+          "query": "금요일 배포 정책과 배포 전 준비는?",
+          "relevant": [
+            "korean"
+          ],
+          "retrieved_keys": [
+            "korean",
+            "noise2",
+            "migration",
+            "test",
+            "port"
+          ],
+          "context": [
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete."
+          ],
+          "error": null,
+          "retrieval_ms": 180.566,
+          "answer": "아틀라스 배포는 금요일에 하지 않으며, 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관합니다.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 200,
+          "answer_output_tokens": 46
+        },
+        {
+          "id": "deploy-en",
+          "project": "atlas",
+          "query": "What should we do before deployment and which day is forbidden?",
+          "relevant": [
+            "korean"
+          ],
+          "retrieved_keys": [
+            "korean",
+            "noise2",
+            "noise3",
+            "migration",
+            "port"
+          ],
+          "context": [
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete."
+          ],
+          "error": null,
+          "retrieval_ms": 364.284,
+          "answer": "Before deployment, we should run regression tests in the staging environment and back up the previous binary. Atlas deployment is forbidden on Friday.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 196,
+          "answer_output_tokens": 27
+        },
+        {
+          "id": "timezone-ko",
+          "project": "atlas",
+          "query": "예약 작업은 어떤 시간대를 사용하나?",
+          "relevant": [
+            "timezone"
+          ],
+          "retrieved_keys": [
+            "timezone",
+            "noise2",
+            "port",
+            "logs",
+            "migration"
+          ],
+          "context": [
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades."
+          ],
+          "error": null,
+          "retrieval_ms": 231.239,
+          "answer": "UTC",
+          "answer_pass": true,
+          "answer_prompt_tokens": 190,
+          "answer_output_tokens": 2
+        },
+        {
+          "id": "timezone-en",
+          "project": "atlas",
+          "query": "What timezone is used for scheduled jobs?",
+          "relevant": [
+            "timezone"
+          ],
+          "retrieved_keys": [
+            "timezone",
+            "noise2",
+            "migration",
+            "test",
+            "korean"
+          ],
+          "context": [
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다."
+          ],
+          "error": null,
+          "retrieval_ms": 112.563,
+          "answer": "UTC",
+          "answer_pass": true,
+          "answer_prompt_tokens": 202,
+          "answer_output_tokens": 2
+        },
+        {
+          "id": "logs",
+          "project": "atlas",
+          "query": "Which fields are retained in request logs?",
+          "relevant": [
+            "logs"
+          ],
+          "retrieved_keys": [
+            "logs",
+            "auth",
+            "noise3",
+            "port",
+            "migration"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades."
+          ],
+          "error": null,
+          "retrieval_ms": 147.661,
+          "answer": "request_id and status_code",
+          "answer_pass": true,
+          "answer_prompt_tokens": 177,
+          "answer_output_tokens": 6
+        },
+        {
+          "id": "isolate-port",
+          "project": "beacon",
+          "query": "server/config.rs API port",
+          "relevant": [
+            "beta-port"
+          ],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-retry",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers."
+          ],
+          "error": null,
+          "retrieval_ms": 479.005,
+          "answer": "8320",
+          "answer_pass": true,
+          "answer_prompt_tokens": 123,
+          "answer_output_tokens": 5
+        },
+        {
+          "id": "isolate-tests",
+          "project": "beacon",
+          "query": "How do I run tests?",
+          "relevant": [
+            "beta-test"
+          ],
+          "retrieved_keys": [
+            "beta-test",
+            "beta-port",
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 320.778,
+          "answer": "To run tests for Beacon, you should use pnpm test.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 124,
+          "answer_output_tokens": 14
+        },
+        {
+          "id": "isolate-retry",
+          "project": "beacon",
+          "query": "payment webhooks retry limit",
+          "relevant": [
+            "beta-retry"
+          ],
+          "retrieved_keys": [
+            "beta-retry",
+            "beta-port",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs.",
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers."
+          ],
+          "error": null,
+          "retrieval_ms": 145.066,
+          "answer": "10",
+          "answer_pass": true,
+          "answer_prompt_tokens": 123,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-en",
+          "project": "atlas",
+          "query": "What is the Kubernetes production cluster name?",
+          "relevant": [],
+          "retrieved_keys": [
+            "cache",
+            "port",
+            "test",
+            "noise3",
+            "noise2"
+          ],
+          "context": [
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday."
+          ],
+          "error": null,
+          "retrieval_ms": 343.29,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 168,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-ko",
+          "project": "atlas",
+          "query": "운영 Redis 비밀번호 교체 주기는?",
+          "relevant": [],
+          "retrieved_keys": [
+            "logs",
+            "migration",
+            "retry",
+            "port",
+            "korean"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다."
+          ],
+          "error": null,
+          "retrieval_ms": 362.693,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 208,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-project",
+          "project": "empty-project",
+          "query": "server/config.rs API port",
+          "relevant": [],
+          "retrieved_keys": [],
+          "context": [],
+          "error": null,
+          "retrieval_ms": 345.399,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 69,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-domain",
+          "project": "beacon",
+          "query": "What is our iOS signing certificate renewal policy?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-retry",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers."
+          ],
+          "error": null,
+          "retrieval_ms": 566.139,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 127,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-ci-timeout",
+          "project": "atlas",
+          "query": "What timeout do the integration tests use?",
+          "relevant": [],
+          "retrieved_keys": [
+            "test",
+            "timezone",
+            "retry",
+            "korean",
+            "noise2"
+          ],
+          "context": [
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday."
+          ],
+          "error": null,
+          "retrieval_ms": 159.936,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 207,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-db-pool",
+          "project": "atlas",
+          "query": "What is the maximum SQLite connection pool size?",
+          "relevant": [],
+          "retrieved_keys": [
+            "migration",
+            "test",
+            "cache",
+            "port",
+            "logs"
+          ],
+          "context": [
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted."
+          ],
+          "error": null,
+          "retrieval_ms": 242.309,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 178,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-log-days",
+          "project": "atlas",
+          "query": "How many days are request logs retained?",
+          "relevant": [],
+          "retrieved_keys": [
+            "logs",
+            "auth",
+            "korean",
+            "timezone",
+            "cache"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 184.044,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 217,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-metrics-port",
+          "project": "atlas",
+          "query": "Which port does the metrics server use?",
+          "relevant": [],
+          "retrieved_keys": [
+            "port",
+            "auth",
+            "noise3",
+            "noise1",
+            "test"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases."
+          ],
+          "error": null,
+          "retrieval_ms": 747.868,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 174,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-payment-account",
+          "project": "atlas",
+          "query": "What is the payment processor account ID?",
+          "relevant": [],
+          "retrieved_keys": [
+            "logs",
+            "retry",
+            "port",
+            "auth",
+            "timezone"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다."
+          ],
+          "error": null,
+          "retrieval_ms": 440.378,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 200,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-review-count",
+          "project": "atlas",
+          "query": "How many code review approvals are required?",
+          "relevant": [],
+          "retrieved_keys": [
+            "logs",
+            "noise3",
+            "retry",
+            "port",
+            "cache"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 348.924,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 181,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-feature-flags",
+          "project": "atlas",
+          "query": "Which service stores production feature flags?",
+          "relevant": [],
+          "retrieved_keys": [
+            "noise2",
+            "noise1",
+            "test",
+            "port",
+            "auth"
+          ],
+          "context": [
+            "Development lunch notes: try the new coffee shop near the office on Tuesday.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 443.208,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 172,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-backup-days",
+          "project": "atlas",
+          "query": "How many days are database backups retained?",
+          "relevant": [],
+          "retrieved_keys": [
+            "migration",
+            "korean",
+            "logs",
+            "cache",
+            "retry"
+          ],
+          "context": [
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 175.765,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 204,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-region-ko",
+          "project": "atlas",
+          "query": "아틀라스 운영 서버 리전은 어디인가?",
+          "relevant": [],
+          "retrieved_keys": [
+            "port",
+            "korean",
+            "auth",
+            "migration",
+            "cache"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 292.454,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 214,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-tls-ko",
+          "project": "atlas",
+          "query": "TLS 인증서는 며칠마다 갱신하나?",
+          "relevant": [],
+          "retrieved_keys": [
+            "korean",
+            "auth",
+            "logs",
+            "retry",
+            "port"
+          ],
+          "context": [
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete."
+          ],
+          "error": null,
+          "retrieval_ms": 698.209,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 217,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-slack-ko",
+          "project": "atlas",
+          "query": "배포 알림을 보내는 슬랙 채널 이름은?",
+          "relevant": [],
+          "retrieved_keys": [
+            "korean",
+            "port",
+            "migration",
+            "noise3",
+            "retry"
+          ],
+          "context": [
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 258.715,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 211,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-node-ko",
+          "project": "atlas",
+          "query": "프론트엔드가 사용하는 Node.js 버전은?",
+          "relevant": [],
+          "retrieved_keys": [
+            "noise3",
+            "port",
+            "noise1",
+            "logs",
+            "test"
+          ],
+          "context": [
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases."
+          ],
+          "error": null,
+          "retrieval_ms": 349.353,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 176,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-mobile-ko",
+          "project": "atlas",
+          "query": "모바일 앱 번들 ID는 무엇인가?",
+          "relevant": [],
+          "retrieved_keys": [
+            "logs",
+            "noise3",
+            "noise1",
+            "port",
+            "retry"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 280.084,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 183,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-pager-ko",
+          "project": "atlas",
+          "query": "장애 대응 당번은 몇 주마다 바뀌나?",
+          "relevant": [],
+          "retrieved_keys": [
+            "retry",
+            "korean",
+            "noise2",
+            "port",
+            "timezone"
+          ],
+          "context": [
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다."
+          ],
+          "error": null,
+          "retrieval_ms": 337.49,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 222,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-redis-ko",
+          "project": "beacon",
+          "query": "Beacon Redis 제거 정책은 무엇인가?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-retry",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers."
+          ],
+          "error": null,
+          "retrieval_ms": 357.252,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 129,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-registry-ko",
+          "project": "beacon",
+          "query": "Beacon 컨테이너 이미지는 어느 레지스트리에 올리나?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-test",
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 349.135,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 139,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-ci-provider",
+          "project": "beacon",
+          "query": "Which CI provider runs the pnpm tests?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-test",
+            "beta-port",
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 493.563,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 127,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-postgres-version",
+          "project": "beacon",
+          "query": "Which PostgreSQL major version do integration tests use?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-test",
+            "beta-port",
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 251.01,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 127,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-webhook-timeout",
+          "project": "beacon",
+          "query": "What is the payment webhook request timeout?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-retry",
+            "beta-port",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs.",
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers."
+          ],
+          "error": null,
+          "retrieval_ms": 512.452,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 126,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-stage-url",
+          "project": "beacon",
+          "query": "What is the Beacon staging URL?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-retry",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers."
+          ],
+          "error": null,
+          "retrieval_ms": 393.314,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 125,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-owner",
+          "project": "beacon",
+          "query": "Who owns the Beacon API service?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-test",
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 414.433,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 125,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-license",
+          "project": "beacon",
+          "query": "Which license applies to the Beacon repository?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-test",
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 814.173,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 126,
+          "answer_output_tokens": 3
+        }
+      ]
+    },
+    "hindsight": {
+      "ingest_seconds": 443.067,
+      "metrics": {
+        "queries": 48,
+        "successful_queries": 48,
+        "errors": 0,
+        "positive_hit_at_1": 0.9545454545454546,
+        "positive_recall_at_5": 1.0,
+        "negative_empty_rate": 0.038461538461538464,
+        "positive_answer_term_pass_rate": 0.45454545454545453,
+        "negative_answer_abstention_rate": 1.0,
+        "retrieval_p50_ms": 448.615,
+        "retrieval_p95_ms": 733.52
+      },
+      "rows": [
+        {
+          "id": "port-en",
+          "project": "atlas",
+          "query": "Which port does the Atlas API use now?",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "auth",
+            "logs",
+            "korean",
+            "port",
+            "migration"
+          ],
+          "context": [
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation",
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "Atlas deployment is not done on Fridays | When: 2026-10-07",
+            "Atlas API now listens on port 9440 | When: 2026-10-07",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 816.91,
+          "answer": "9440",
+          "answer_pass": true,
+          "answer_prompt_tokens": 222,
+          "answer_output_tokens": 5
+        },
+        {
+          "id": "port-ko",
+          "project": "atlas",
+          "query": "아틀라스 API의 현재 포트는?",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "port",
+            "auth",
+            "retry",
+            "logs",
+            "cache"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440 | When: 2026-10-07",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts | When: 2026-10-07",
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 551.626,
+          "answer": "9440",
+          "answer_pass": true,
+          "answer_prompt_tokens": 233,
+          "answer_output_tokens": 5
+        },
+        {
+          "id": "port-file",
+          "project": "atlas",
+          "query": "server/config.rs port",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "port",
+            "auth",
+            "migration",
+            "noise3"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440 | When: 2026-10-07",
+            "Configure server/config.rs",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs | When: 2026-10-07",
+            "A rejected idea was to rewrite the renderer in Java | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 733.52,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 193,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "obsolete",
+          "project": "atlas",
+          "query": "8320 obsolete port",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "port",
+            "korean",
+            "migration"
+          ],
+          "context": [
+            "8320 is obsolete",
+            "Atlas API now listens on port 9440 | When: 2026-10-07",
+            "Atlas deployment is not done on Fridays | When: 2026-10-07",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs | When: 2026-10-07",
+            "Configure server/config.rs"
+          ],
+          "error": null,
+          "retrieval_ms": 387.961,
+          "answer": "8320 is obsolete",
+          "answer_pass": false,
+          "answer_prompt_tokens": 159,
+          "answer_output_tokens": 7
+        },
+        {
+          "id": "tests-en",
+          "project": "atlas",
+          "query": "How do I run the Rust tests offline?",
+          "relevant": [
+            "test"
+          ],
+          "retrieved_keys": [
+            "test",
+            "migration",
+            "port",
+            "timezone",
+            "auth"
+          ],
+          "context": [
+            "Run cargo test --offline for Atlas Rust tests | When: 2026-10-07",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs | When: 2026-10-07",
+            "Configure server/config.rs",
+            "All reservation operations use UTC time, with local time applied only to the screen. | When: 2026-10-07",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation"
+          ],
+          "error": null,
+          "retrieval_ms": 468.055,
+          "answer": "Run cargo test --offline",
+          "answer_pass": true,
+          "answer_prompt_tokens": 202,
+          "answer_output_tokens": 6
+        },
+        {
+          "id": "tests-ko",
+          "project": "atlas",
+          "query": "인터넷 없이 Rust 테스트를 실행하는 명령은?",
+          "relevant": [
+            "test"
+          ],
+          "retrieved_keys": [
+            "test",
+            "cache",
+            "auth",
+            "logs",
+            "port"
+          ],
+          "context": [
+            "Run cargo test --offline for Atlas Rust tests | When: 2026-10-07",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries | When: 2026-10-07",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation",
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "Configure server/config.rs"
+          ],
+          "error": null,
+          "retrieval_ms": 218.221,
+          "answer": "Run cargo test --offline",
+          "answer_pass": true,
+          "answer_prompt_tokens": 213,
+          "answer_output_tokens": 6
+        },
+        {
+          "id": "auth-en",
+          "project": "atlas",
+          "query": "How is HTTP authentication configured?",
+          "relevant": [
+            "auth"
+          ],
+          "retrieved_keys": [
+            "auth",
+            "port",
+            "logs",
+            "retry"
+          ],
+          "context": [
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation",
+            "Configure server/config.rs",
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "Atlas API now listens on port 9440 | When: 2026-10-07",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 150.143,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 202,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "auth-file",
+          "project": "atlas",
+          "query": "server/auth.rs ATLAS_TOKEN",
+          "relevant": [
+            "auth"
+          ],
+          "retrieved_keys": [
+            "auth",
+            "port",
+            "logs",
+            "migration"
+          ],
+          "context": [
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation",
+            "Atlas API now listens on port 9440 | When: 2026-10-07",
+            "Configure server/config.rs",
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 363.921,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 202,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "retry-en",
+          "project": "atlas",
+          "query": "How many times are payment webhooks retried?",
+          "relevant": [
+            "retry"
+          ],
+          "retrieved_keys": [
+            "retry",
+            "timezone",
+            "noise3",
+            "cache",
+            "logs"
+          ],
+          "context": [
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts | When: 2026-10-07",
+            "All reservation operations use UTC time, with local time applied only to the screen. | When: 2026-10-07",
+            "A rejected idea was to rewrite the renderer in Java | When: 2026-10-07",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries | When: 2026-10-07",
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 239.338,
+          "answer": "3",
+          "answer_pass": false,
+          "answer_prompt_tokens": 221,
+          "answer_output_tokens": 2
+        },
+        {
+          "id": "retry-ko",
+          "project": "atlas",
+          "query": "결제 웹훅 재시도 횟수와 중복 방지 방법은?",
+          "relevant": [
+            "retry"
+          ],
+          "retrieved_keys": [
+            "retry",
+            "port",
+            "noise1",
+            "noise3",
+            "auth"
+          ],
+          "context": [
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts | When: 2026-10-07",
+            "Configure server/config.rs",
+            "Design notes are in web/theme.css",
+            "A rejected idea was to rewrite the renderer in Java | When: 2026-10-07",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation"
+          ],
+          "error": null,
+          "retrieval_ms": 497.261,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 190,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "migration-en",
+          "project": "atlas",
+          "query": "How are SQLite schema migrations made atomic?",
+          "relevant": [
+            "migration"
+          ],
+          "retrieved_keys": [
+            "migration",
+            "test",
+            "logs",
+            "cache",
+            "port"
+          ],
+          "context": [
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs | When: 2026-10-07",
+            "Integration fixtures use disposable SQLite databases",
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries | When: 2026-10-07",
+            "Configure server/config.rs"
+          ],
+          "error": null,
+          "retrieval_ms": 171.743,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 175,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "migration-file",
+          "project": "atlas",
+          "query": "storage/migrate.rs transaction",
+          "relevant": [
+            "migration"
+          ],
+          "retrieved_keys": [
+            "migration",
+            "port",
+            "test",
+            "retry"
+          ],
+          "context": [
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs | When: 2026-10-07",
+            "Configure server/config.rs",
+            "Integration fixtures use disposable SQLite databases",
+            "Run cargo test --offline for Atlas Rust tests | When: 2026-10-07",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 358.559,
+          "answer": "2026-10-07",
+          "answer_pass": false,
+          "answer_prompt_tokens": 161,
+          "answer_output_tokens": 11
+        },
+        {
+          "id": "cache-en",
+          "project": "atlas",
+          "query": "How many compiled templates fit in the cache?",
+          "relevant": [
+            "cache"
+          ],
+          "retrieved_keys": [
+            "cache",
+            "noise1",
+            "test",
+            "retry",
+            "port"
+          ],
+          "context": [
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries | When: 2026-10-07",
+            "Design notes are in web/theme.css",
+            "Integration fixtures use disposable SQLite databases",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts | When: 2026-10-07",
+            "8320 is obsolete"
+          ],
+          "error": null,
+          "retrieval_ms": 528.15,
+          "answer": "128",
+          "answer_pass": true,
+          "answer_prompt_tokens": 154,
+          "answer_output_tokens": 4
+        },
+        {
+          "id": "cache-ko",
+          "project": "atlas",
+          "query": "템플릿 캐시 최대 크기는?",
+          "relevant": [
+            "cache"
+          ],
+          "retrieved_keys": [
+            "cache",
+            "korean",
+            "noise1",
+            "retry",
+            "noise3"
+          ],
+          "context": [
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries | When: 2026-10-07",
+            "Atlas deployment is not done on Fridays | When: 2026-10-07",
+            "Design notes are in web/theme.css",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts | When: 2026-10-07",
+            "A rejected idea was to rewrite the renderer in Java | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 167.217,
+          "answer": "128",
+          "answer_pass": true,
+          "answer_prompt_tokens": 192,
+          "answer_output_tokens": 4
+        },
+        {
+          "id": "deploy-ko",
+          "project": "atlas",
+          "query": "금요일 배포 정책과 배포 전 준비는?",
+          "relevant": [
+            "korean"
+          ],
+          "retrieved_keys": [
+            "korean",
+            "port",
+            "noise2",
+            "timezone",
+            "noise3"
+          ],
+          "context": [
+            "Atlas deployment is not done on Fridays | When: 2026-10-07",
+            "Configure server/config.rs",
+            "User plans to try the new coffee shop near the office on Tuesday | When: 2026-10-06 | Involving: user",
+            "All reservation operations use UTC time, with local time applied only to the screen. | When: 2026-10-07",
+            "A rejected idea was to rewrite the renderer in Java | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 239.064,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 196,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "deploy-en",
+          "project": "atlas",
+          "query": "What should we do before deployment and which day is forbidden?",
+          "relevant": [
+            "korean"
+          ],
+          "retrieved_keys": [
+            "korean",
+            "timezone",
+            "port",
+            "noise3",
+            "test"
+          ],
+          "context": [
+            "Atlas deployment is not done on Fridays | When: 2026-10-07",
+            "All reservation operations use UTC time, with local time applied only to the screen. | When: 2026-10-07",
+            "Configure server/config.rs",
+            "A rejected idea was to rewrite the renderer in Java | When: 2026-10-07",
+            "Run cargo test --offline for Atlas Rust tests | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 470.804,
+          "answer": "Before deployment, you should configure the server with the command `configure server/config.rs`. On the forbidden deployment day, which is 2026-10-07, deployment is not done.",
+          "answer_pass": false,
+          "answer_prompt_tokens": 183,
+          "answer_output_tokens": 43
+        },
+        {
+          "id": "timezone-ko",
+          "project": "atlas",
+          "query": "예약 작업은 어떤 시간대를 사용하나?",
+          "relevant": [
+            "timezone"
+          ],
+          "retrieved_keys": [
+            "timezone",
+            "logs",
+            "noise2",
+            "korean",
+            "noise1"
+          ],
+          "context": [
+            "All reservation operations use UTC time, with local time applied only to the screen. | When: 2026-10-07",
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "User plans to try the new coffee shop near the office on Tuesday | When: 2026-10-06 | Involving: user",
+            "Atlas deployment is not done on Fridays | When: 2026-10-07",
+            "Design notes are in web/theme.css"
+          ],
+          "error": null,
+          "retrieval_ms": 168.197,
+          "answer": "UTC time",
+          "answer_pass": true,
+          "answer_prompt_tokens": 203,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "timezone-en",
+          "project": "atlas",
+          "query": "What timezone is used for scheduled jobs?",
+          "relevant": [
+            "timezone"
+          ],
+          "retrieved_keys": [
+            "timezone",
+            "test",
+            "noise1",
+            "auth",
+            "korean"
+          ],
+          "context": [
+            "All reservation operations use UTC time, with local time applied only to the screen. | When: 2026-10-07",
+            "Integration fixtures use disposable SQLite databases",
+            "Landing page uses purple buttons and a lighthouse illustration | When: 2026-10-07",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation",
+            "Atlas deployment is not done on Fridays | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 193.29,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 199,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "logs",
+          "project": "atlas",
+          "query": "Which fields are retained in request logs?",
+          "relevant": [
+            "logs"
+          ],
+          "retrieved_keys": [
+            "logs",
+            "auth",
+            "noise1",
+            "timezone",
+            "port"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation",
+            "Design notes are in web/theme.css",
+            "All reservation operations use UTC time, with local time applied only to the screen. | When: 2026-10-07",
+            "Configure server/config.rs"
+          ],
+          "error": null,
+          "retrieval_ms": 726.917,
+          "answer": "request_id and status_code",
+          "answer_pass": true,
+          "answer_prompt_tokens": 189,
+          "answer_output_tokens": 6
+        },
+        {
+          "id": "isolate-port",
+          "project": "beacon",
+          "query": "server/config.rs API port",
+          "relevant": [
+            "beta-port"
+          ],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-test",
+            "beta-retry"
+          ],
+          "context": [
+            "Configure server/config.rs | When: 2026-10-07",
+            "Beacon API listens on port 8320 | When: 2026-10-07",
+            "Integration tests use PostgreSQL containers | When: 2026-10-07",
+            "Beacon payment webhooks retry ten times with fixed delay | When: 2026-10-07",
+            "Beacon tests run with pnpm test, not cargo | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 458.932,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 186,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "isolate-tests",
+          "project": "beacon",
+          "query": "How do I run tests?",
+          "relevant": [
+            "beta-test"
+          ],
+          "retrieved_keys": [
+            "beta-test",
+            "beta-retry",
+            "beta-port"
+          ],
+          "context": [
+            "Beacon tests run with pnpm test, not cargo | When: 2026-10-07",
+            "Integration tests use PostgreSQL containers | When: 2026-10-07",
+            "Beacon payment webhooks retry ten times with fixed delay | When: 2026-10-07",
+            "Configure server/config.rs | When: 2026-10-07",
+            "Beacon API listens on port 8320 | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 354.884,
+          "answer": "To run tests, you would use pnpm test.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 187,
+          "answer_output_tokens": 12
+        },
+        {
+          "id": "isolate-retry",
+          "project": "beacon",
+          "query": "payment webhooks retry limit",
+          "relevant": [
+            "beta-retry"
+          ],
+          "retrieved_keys": [
+            "beta-retry",
+            "beta-port",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon payment webhooks retry ten times with fixed delay | When: 2026-10-07",
+            "Configure server/config.rs | When: 2026-10-07",
+            "Beacon API listens on port 8320 | When: 2026-10-07",
+            "Integration tests use PostgreSQL containers | When: 2026-10-07",
+            "Beacon tests run with pnpm test, not cargo | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 277.069,
+          "answer": "10",
+          "answer_pass": true,
+          "answer_prompt_tokens": 186,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-en",
+          "project": "atlas",
+          "query": "What is the Kubernetes production cluster name?",
+          "relevant": [],
+          "retrieved_keys": [
+            "cache",
+            "korean",
+            "port",
+            "migration",
+            "noise1"
+          ],
+          "context": [
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries | When: 2026-10-07",
+            "Atlas deployment is not done on Fridays | When: 2026-10-07",
+            "Configure server/config.rs",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs | When: 2026-10-07",
+            "Design notes are in web/theme.css"
+          ],
+          "error": null,
+          "retrieval_ms": 293.426,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 166,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-ko",
+          "project": "atlas",
+          "query": "운영 Redis 비밀번호 교체 주기는?",
+          "relevant": [],
+          "retrieved_keys": [
+            "logs",
+            "migration",
+            "timezone",
+            "port",
+            "retry"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs | When: 2026-10-07",
+            "All reservation operations use UTC time, with local time applied only to the screen. | When: 2026-10-07",
+            "Configure server/config.rs",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 159.775,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 198,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-project",
+          "project": "empty-project",
+          "query": "server/config.rs API port",
+          "relevant": [],
+          "retrieved_keys": [],
+          "context": [],
+          "error": null,
+          "retrieval_ms": 258.866,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 69,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-domain",
+          "project": "beacon",
+          "query": "What is our iOS signing certificate renewal policy?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-retry",
+            "beta-port",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon payment webhooks retry ten times with fixed delay | When: 2026-10-07",
+            "Configure server/config.rs | When: 2026-10-07",
+            "Integration tests use PostgreSQL containers | When: 2026-10-07",
+            "Beacon tests run with pnpm test, not cargo | When: 2026-10-07",
+            "Beacon API listens on port 8320 | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 309.007,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 190,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-ci-timeout",
+          "project": "atlas",
+          "query": "What timeout do the integration tests use?",
+          "relevant": [],
+          "retrieved_keys": [
+            "test",
+            "timezone",
+            "auth",
+            "noise1"
+          ],
+          "context": [
+            "Integration fixtures use disposable SQLite databases",
+            "Run cargo test --offline for Atlas Rust tests | When: 2026-10-07",
+            "All reservation operations use UTC time, with local time applied only to the screen. | When: 2026-10-07",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation",
+            "Landing page uses purple buttons and a lighthouse illustration | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 137.272,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 201,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-db-pool",
+          "project": "atlas",
+          "query": "What is the maximum SQLite connection pool size?",
+          "relevant": [],
+          "retrieved_keys": [
+            "test",
+            "migration",
+            "retry",
+            "korean",
+            "logs"
+          ],
+          "context": [
+            "Integration fixtures use disposable SQLite databases",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs | When: 2026-10-07",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts | When: 2026-10-07",
+            "Atlas deployment is not done on Fridays | When: 2026-10-07",
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 521.47,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 190,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-log-days",
+          "project": "atlas",
+          "query": "How many days are request logs retained?",
+          "relevant": [],
+          "retrieved_keys": [
+            "logs",
+            "auth",
+            "timezone",
+            "cache",
+            "noise1"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation",
+            "All reservation operations use UTC time, with local time applied only to the screen. | When: 2026-10-07",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries | When: 2026-10-07",
+            "Design notes are in web/theme.css"
+          ],
+          "error": null,
+          "retrieval_ms": 670.661,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 215,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-metrics-port",
+          "project": "atlas",
+          "query": "Which port does the metrics server use?",
+          "relevant": [],
+          "retrieved_keys": [
+            "port",
+            "auth",
+            "test",
+            "noise1",
+            "timezone"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440 | When: 2026-10-07",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation",
+            "Integration fixtures use disposable SQLite databases",
+            "Landing page uses purple buttons and a lighthouse illustration | When: 2026-10-07",
+            "All reservation operations use UTC time, with local time applied only to the screen. | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 457.476,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 203,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-payment-account",
+          "project": "atlas",
+          "query": "What is the payment processor account ID?",
+          "relevant": [],
+          "retrieved_keys": [
+            "logs",
+            "retry",
+            "korean",
+            "port",
+            "cache"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts | When: 2026-10-07",
+            "Atlas deployment is not done on Fridays | When: 2026-10-07",
+            "Configure server/config.rs",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 519.794,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 190,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-review-count",
+          "project": "atlas",
+          "query": "How many code review approvals are required?",
+          "relevant": [],
+          "retrieved_keys": [
+            "logs",
+            "noise3",
+            "migration",
+            "noise1",
+            "retry"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "A rejected idea was to rewrite the renderer in Java | When: 2026-10-07",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs | When: 2026-10-07",
+            "Design notes are in web/theme.css",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 501.222,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 193,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-feature-flags",
+          "project": "atlas",
+          "query": "Which service stores production feature flags?",
+          "relevant": [],
+          "retrieved_keys": [
+            "noise1",
+            "migration",
+            "port",
+            "cache"
+          ],
+          "context": [
+            "Design notes are in web/theme.css",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs | When: 2026-10-07",
+            "Configure server/config.rs",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries | When: 2026-10-07",
+            "Landing page uses purple buttons and a lighthouse illustration | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 264.597,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 169,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-backup-days",
+          "project": "atlas",
+          "query": "How many days are database backups retained?",
+          "relevant": [],
+          "retrieved_keys": [
+            "logs",
+            "test",
+            "cache",
+            "timezone",
+            "auth"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "Integration fixtures use disposable SQLite databases",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries | When: 2026-10-07",
+            "All reservation operations use UTC time, with local time applied only to the screen. | When: 2026-10-07",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation"
+          ],
+          "error": null,
+          "retrieval_ms": 669.326,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 214,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-region-ko",
+          "project": "atlas",
+          "query": "아틀라스 운영 서버 리전은 어디인가?",
+          "relevant": [],
+          "retrieved_keys": [
+            "auth",
+            "port",
+            "migration",
+            "logs"
+          ],
+          "context": [
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation",
+            "Atlas API now listens on port 9440 | When: 2026-10-07",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs | When: 2026-10-07",
+            "Configure server/config.rs",
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 491.328,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 210,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-tls-ko",
+          "project": "atlas",
+          "query": "TLS 인증서는 며칠마다 갱신하나?",
+          "relevant": [],
+          "retrieved_keys": [
+            "auth",
+            "logs",
+            "retry",
+            "port",
+            "cache"
+          ],
+          "context": [
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation",
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts | When: 2026-10-07",
+            "Configure server/config.rs",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 580.959,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 216,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-slack-ko",
+          "project": "atlas",
+          "query": "배포 알림을 보내는 슬랙 채널 이름은?",
+          "relevant": [],
+          "retrieved_keys": [
+            "port",
+            "migration",
+            "auth",
+            "korean"
+          ],
+          "context": [
+            "Configure server/config.rs",
+            "Atlas API now listens on port 9440 | When: 2026-10-07",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs | When: 2026-10-07",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation",
+            "Atlas deployment is not done on Fridays | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 535.988,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 203,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-node-ko",
+          "project": "atlas",
+          "query": "프론트엔드가 사용하는 Node.js 버전은?",
+          "relevant": [],
+          "retrieved_keys": [
+            "noise1",
+            "noise3",
+            "port",
+            "auth"
+          ],
+          "context": [
+            "Design notes are in web/theme.css",
+            "A rejected idea was to rewrite the renderer in Java | When: 2026-10-07",
+            "8320 is obsolete",
+            "Configure server/config.rs",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation"
+          ],
+          "error": null,
+          "retrieval_ms": 653.757,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 164,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-mobile-ko",
+          "project": "atlas",
+          "query": "모바일 앱 번들 ID는 무엇인가?",
+          "relevant": [],
+          "retrieved_keys": [
+            "logs",
+            "korean",
+            "auth",
+            "migration",
+            "noise1"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "Atlas deployment is not done on Fridays | When: 2026-10-07",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN and never logs the token | When: 2026-10-07 | Involving: Atlas HTTP authentication implementation",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs | When: 2026-10-07",
+            "Design notes are in web/theme.css"
+          ],
+          "error": null,
+          "retrieval_ms": 283.649,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 208,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-pager-ko",
+          "project": "atlas",
+          "query": "장애 대응 당번은 몇 주마다 바뀌나?",
+          "relevant": [],
+          "retrieved_keys": [
+            "retry",
+            "noise3",
+            "korean",
+            "logs",
+            "timezone"
+          ],
+          "context": [
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts | When: 2026-10-07",
+            "A rejected idea was to rewrite the renderer in Java | When: 2026-10-07",
+            "Atlas deployment is not done on Fridays | When: 2026-10-07",
+            "Atlas request logs retain only request_id and status_code, redact request bodies and credentials | When: 2026-10-07",
+            "All reservation operations use UTC time, with local time applied only to the screen. | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 2387.608,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 217,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-redis-ko",
+          "project": "beacon",
+          "query": "Beacon Redis 제거 정책은 무엇인가?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-retry",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon API listens on port 8320 | When: 2026-10-07",
+            "Beacon payment webhooks retry ten times with fixed delay | When: 2026-10-07",
+            "Beacon tests run with pnpm test, not cargo | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 433.392,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 153,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-registry-ko",
+          "project": "beacon",
+          "query": "Beacon 컨테이너 이미지는 어느 레지스트리에 올리나?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-retry",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon API listens on port 8320 | When: 2026-10-07",
+            "Beacon payment webhooks retry ten times with fixed delay | When: 2026-10-07",
+            "Beacon tests run with pnpm test, not cargo | When: 2026-10-07",
+            "Integration tests use PostgreSQL containers | When: 2026-10-07",
+            "Configure server/config.rs | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 558.191,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 202,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-ci-provider",
+          "project": "beacon",
+          "query": "Which CI provider runs the pnpm tests?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-test",
+            "beta-port"
+          ],
+          "context": [
+            "Beacon tests run with pnpm test, not cargo | When: 2026-10-07",
+            "Integration tests use PostgreSQL containers | When: 2026-10-07",
+            "Beacon API listens on port 8320 | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 448.615,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 145,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-postgres-version",
+          "project": "beacon",
+          "query": "Which PostgreSQL major version do integration tests use?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-test"
+          ],
+          "context": [
+            "Integration tests use PostgreSQL containers | When: 2026-10-07",
+            "Beacon tests run with pnpm test, not cargo | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 389.12,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 119,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-webhook-timeout",
+          "project": "beacon",
+          "query": "What is the payment webhook request timeout?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-retry",
+            "beta-port",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon payment webhooks retry ten times with fixed delay | When: 2026-10-07",
+            "Beacon API listens on port 8320 | When: 2026-10-07",
+            "Configure server/config.rs | When: 2026-10-07",
+            "Beacon tests run with pnpm test, not cargo | When: 2026-10-07",
+            "Integration tests use PostgreSQL containers | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 617.589,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 189,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-stage-url",
+          "project": "beacon",
+          "query": "What is the Beacon staging URL?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-retry",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon API listens on port 8320 | When: 2026-10-07",
+            "Beacon payment webhooks retry ten times with fixed delay | When: 2026-10-07",
+            "Beacon tests run with pnpm test, not cargo | When: 2026-10-07",
+            "Configure server/config.rs | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 207.204,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 168,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-owner",
+          "project": "beacon",
+          "query": "Who owns the Beacon API service?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-retry",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon API listens on port 8320 | When: 2026-10-07",
+            "Beacon payment webhooks retry ten times with fixed delay | When: 2026-10-07",
+            "Beacon tests run with pnpm test, not cargo | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 548.015,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 149,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-license",
+          "project": "beacon",
+          "query": "Which license applies to the Beacon repository?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-retry",
+            "beta-test"
+          ],
+          "context": [
+            "Beacon API listens on port 8320 | When: 2026-10-07",
+            "Beacon payment webhooks retry ten times with fixed delay | When: 2026-10-07",
+            "Beacon tests run with pnpm test, not cargo | When: 2026-10-07"
+          ],
+          "error": null,
+          "retrieval_ms": 202.513,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 150,
+          "answer_output_tokens": 3
+        }
+      ]
+    },
+    "files": {
+      "ingest_seconds": 0,
+      "metrics": {
+        "queries": 48,
+        "successful_queries": 48,
+        "errors": 0,
+        "positive_hit_at_1": 0.7727272727272727,
+        "positive_recall_at_5": 0.7727272727272727,
+        "negative_empty_rate": 0.3076923076923077,
+        "positive_answer_term_pass_rate": 0.45454545454545453,
+        "negative_answer_abstention_rate": 1.0,
+        "retrieval_p50_ms": 0.089,
+        "retrieval_p95_ms": 0.278
+      },
+      "rows": [
+        {
+          "id": "port-en",
+          "project": "atlas",
+          "query": "Which port does the Atlas API use now?",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "port",
+            "test",
+            "auth",
+            "retry",
+            "migration"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades."
+          ],
+          "error": null,
+          "retrieval_ms": 0.198,
+          "answer": "9440",
+          "answer_pass": true,
+          "answer_prompt_tokens": 184,
+          "answer_output_tokens": 5
+        },
+        {
+          "id": "port-ko",
+          "project": "atlas",
+          "query": "아틀라스 API의 현재 포트는?",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "korean"
+          ],
+          "context": [
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다."
+          ],
+          "error": null,
+          "retrieval_ms": 0.091,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 119,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "port-file",
+          "project": "atlas",
+          "query": "server/config.rs port",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "port",
+            "auth",
+            "retry",
+            "migration",
+            "cache"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 0.093,
+          "answer": "9440",
+          "answer_pass": true,
+          "answer_prompt_tokens": 185,
+          "answer_output_tokens": 5
+        },
+        {
+          "id": "obsolete",
+          "project": "atlas",
+          "query": "8320 obsolete port",
+          "relevant": [
+            "port"
+          ],
+          "retrieved_keys": [
+            "port"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete."
+          ],
+          "error": null,
+          "retrieval_ms": 0.108,
+          "answer": "8320 is obsolete port",
+          "answer_pass": false,
+          "answer_prompt_tokens": 96,
+          "answer_output_tokens": 8
+        },
+        {
+          "id": "tests-en",
+          "project": "atlas",
+          "query": "How do I run the Rust tests offline?",
+          "relevant": [
+            "test"
+          ],
+          "retrieved_keys": [
+            "test",
+            "auth",
+            "migration",
+            "noise1",
+            "noise2"
+          ],
+          "context": [
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday."
+          ],
+          "error": null,
+          "retrieval_ms": 0.1,
+          "answer": "Run cargo test --offline for Atlas Rust tests.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 169,
+          "answer_output_tokens": 11
+        },
+        {
+          "id": "tests-ko",
+          "project": "atlas",
+          "query": "인터넷 없이 Rust 테스트를 실행하는 명령은?",
+          "relevant": [
+            "test"
+          ],
+          "retrieved_keys": [
+            "test",
+            "korean"
+          ],
+          "context": [
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다."
+          ],
+          "error": null,
+          "retrieval_ms": 0.106,
+          "answer": "Run cargo test --offline",
+          "answer_pass": true,
+          "answer_prompt_tokens": 141,
+          "answer_output_tokens": 6
+        },
+        {
+          "id": "auth-en",
+          "project": "atlas",
+          "query": "How is HTTP authentication configured?",
+          "relevant": [
+            "auth"
+          ],
+          "retrieved_keys": [
+            "auth",
+            "port"
+          ],
+          "context": [
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete."
+          ],
+          "error": null,
+          "retrieval_ms": 0.147,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 119,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "auth-file",
+          "project": "atlas",
+          "query": "server/auth.rs ATLAS_TOKEN",
+          "relevant": [
+            "auth"
+          ],
+          "retrieved_keys": [
+            "auth",
+            "port",
+            "retry",
+            "migration",
+            "cache"
+          ],
+          "context": [
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 0.089,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 187,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "retry-en",
+          "project": "atlas",
+          "query": "How many times are payment webhooks retried?",
+          "relevant": [
+            "retry"
+          ],
+          "retrieved_keys": [
+            "retry",
+            "noise1"
+          ],
+          "context": [
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css."
+          ],
+          "error": null,
+          "retrieval_ms": 0.086,
+          "answer": "3",
+          "answer_pass": false,
+          "answer_prompt_tokens": 119,
+          "answer_output_tokens": 2
+        },
+        {
+          "id": "retry-ko",
+          "project": "atlas",
+          "query": "결제 웹훅 재시도 횟수와 중복 방지 방법은?",
+          "relevant": [
+            "retry"
+          ],
+          "retrieved_keys": [],
+          "context": [],
+          "error": null,
+          "retrieval_ms": 0.098,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 83,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "migration-en",
+          "project": "atlas",
+          "query": "How are SQLite schema migrations made atomic?",
+          "relevant": [
+            "migration"
+          ],
+          "retrieved_keys": [
+            "migration",
+            "test",
+            "noise1"
+          ],
+          "context": [
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css."
+          ],
+          "error": null,
+          "retrieval_ms": 0.079,
+          "answer": "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs to make schema migrations atomic.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 129,
+          "answer_output_tokens": 20
+        },
+        {
+          "id": "migration-file",
+          "project": "atlas",
+          "query": "storage/migrate.rs transaction",
+          "relevant": [
+            "migration"
+          ],
+          "retrieved_keys": [
+            "migration",
+            "port",
+            "auth",
+            "retry",
+            "cache"
+          ],
+          "context": [
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 0.097,
+          "answer": "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 186,
+          "answer_output_tokens": 15
+        },
+        {
+          "id": "cache-en",
+          "project": "atlas",
+          "query": "How many compiled templates fit in the cache?",
+          "relevant": [
+            "cache"
+          ],
+          "retrieved_keys": [
+            "cache",
+            "noise1",
+            "noise3",
+            "auth",
+            "retry"
+          ],
+          "context": [
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 0.278,
+          "answer": "128",
+          "answer_pass": true,
+          "answer_prompt_tokens": 181,
+          "answer_output_tokens": 4
+        },
+        {
+          "id": "cache-ko",
+          "project": "atlas",
+          "query": "템플릿 캐시 최대 크기는?",
+          "relevant": [
+            "cache"
+          ],
+          "retrieved_keys": [],
+          "context": [],
+          "error": null,
+          "retrieval_ms": 0.1,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 78,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "deploy-ko",
+          "project": "atlas",
+          "query": "금요일 배포 정책과 배포 전 준비는?",
+          "relevant": [
+            "korean"
+          ],
+          "retrieved_keys": [
+            "korean"
+          ],
+          "context": [
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다."
+          ],
+          "error": null,
+          "retrieval_ms": 0.089,
+          "answer": "NOT_FOUND\n\nThe given facts do not provide information about the deployment policy on Fridays or the preparations made before deployment.",
+          "answer_pass": false,
+          "answer_prompt_tokens": 123,
+          "answer_output_tokens": 24
+        },
+        {
+          "id": "deploy-en",
+          "project": "atlas",
+          "query": "What should we do before deployment and which day is forbidden?",
+          "relevant": [
+            "korean"
+          ],
+          "retrieved_keys": [
+            "port",
+            "migration",
+            "logs",
+            "noise1"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css."
+          ],
+          "error": null,
+          "retrieval_ms": 0.08,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 161,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "timezone-ko",
+          "project": "atlas",
+          "query": "예약 작업은 어떤 시간대를 사용하나?",
+          "relevant": [
+            "timezone"
+          ],
+          "retrieved_keys": [
+            "timezone"
+          ],
+          "context": [
+            "모든 예약 작업의 시간대는 UTC다. 화면에만 사용자의 지역 시간대를 적용한다. scheduler/time.rs에서 변환한다."
+          ],
+          "error": null,
+          "retrieval_ms": 0.082,
+          "answer": "UTC",
+          "answer_pass": true,
+          "answer_prompt_tokens": 110,
+          "answer_output_tokens": 2
+        },
+        {
+          "id": "timezone-en",
+          "project": "atlas",
+          "query": "What timezone is used for scheduled jobs?",
+          "relevant": [
+            "timezone"
+          ],
+          "retrieved_keys": [
+            "port",
+            "test"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases."
+          ],
+          "error": null,
+          "retrieval_ms": 0.075,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 114,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "logs",
+          "project": "atlas",
+          "query": "Which fields are retained in request logs?",
+          "relevant": [
+            "logs"
+          ],
+          "retrieved_keys": [
+            "logs",
+            "noise1",
+            "retry",
+            "migration",
+            "cache"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades.",
+            "Atlas caches compiled templates in an LRU cache capped at 128 entries. Source: render/cache.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 0.086,
+          "answer": "request_id and status_code",
+          "answer_pass": true,
+          "answer_prompt_tokens": 180,
+          "answer_output_tokens": 6
+        },
+        {
+          "id": "isolate-port",
+          "project": "beacon",
+          "query": "server/config.rs API port",
+          "relevant": [
+            "beta-port"
+          ],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 0.05,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 105,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "isolate-tests",
+          "project": "beacon",
+          "query": "How do I run tests?",
+          "relevant": [
+            "beta-test"
+          ],
+          "retrieved_keys": [
+            "beta-test"
+          ],
+          "context": [
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers."
+          ],
+          "error": null,
+          "retrieval_ms": 0.044,
+          "answer": "To run tests, you would use pnpm test for running tests with pnpm, and you would set up PostgreSQL containers for integration tests.",
+          "answer_pass": true,
+          "answer_prompt_tokens": 88,
+          "answer_output_tokens": 29
+        },
+        {
+          "id": "isolate-retry",
+          "project": "beacon",
+          "query": "payment webhooks retry limit",
+          "relevant": [
+            "beta-retry"
+          ],
+          "retrieved_keys": [
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 0.054,
+          "answer": "NOT_FOUND",
+          "answer_pass": false,
+          "answer_prompt_tokens": 88,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-en",
+          "project": "atlas",
+          "query": "What is the Kubernetes production cluster name?",
+          "relevant": [],
+          "retrieved_keys": [
+            "port",
+            "auth",
+            "noise1",
+            "noise2",
+            "noise3"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved."
+          ],
+          "error": null,
+          "retrieval_ms": 0.08,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 172,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-ko",
+          "project": "atlas",
+          "query": "운영 Redis 비밀번호 교체 주기는?",
+          "relevant": [],
+          "retrieved_keys": [],
+          "context": [],
+          "error": null,
+          "retrieval_ms": 0.098,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 74,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-project",
+          "project": "empty-project",
+          "query": "server/config.rs API port",
+          "relevant": [],
+          "retrieved_keys": [],
+          "context": [],
+          "error": null,
+          "retrieval_ms": 0.106,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 69,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-domain",
+          "project": "beacon",
+          "query": "What is our iOS signing certificate renewal policy?",
+          "relevant": [],
+          "retrieved_keys": [],
+          "context": [],
+          "error": null,
+          "retrieval_ms": 0.046,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 73,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-ci-timeout",
+          "project": "atlas",
+          "query": "What timeout do the integration tests use?",
+          "relevant": [],
+          "retrieved_keys": [
+            "test",
+            "auth",
+            "noise1",
+            "noise2",
+            "noise3"
+          ],
+          "context": [
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday.",
+            "A rejected idea was to rewrite the renderer in Java. No migration was approved."
+          ],
+          "error": null,
+          "retrieval_ms": 0.089,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 164,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-db-pool",
+          "project": "atlas",
+          "query": "What is the maximum SQLite connection pool size?",
+          "relevant": [],
+          "retrieved_keys": [
+            "port",
+            "test",
+            "auth",
+            "retry",
+            "migration"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "Atlas SQLite migrations run inside an immediate transaction in storage/migrate.rs. Back up before schema upgrades."
+          ],
+          "error": null,
+          "retrieval_ms": 0.088,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 184,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-log-days",
+          "project": "atlas",
+          "query": "How many days are request logs retained?",
+          "relevant": [],
+          "retrieved_keys": [
+            "logs",
+            "noise1"
+          ],
+          "context": [
+            "Atlas request logs retain only request_id and status_code. Request bodies and credentials must be redacted.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css."
+          ],
+          "error": null,
+          "retrieval_ms": 0.35,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 112,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-metrics-port",
+          "project": "atlas",
+          "query": "Which port does the metrics server use?",
+          "relevant": [],
+          "retrieved_keys": [
+            "port",
+            "auth",
+            "test",
+            "noise1",
+            "noise2"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Run cargo test --offline for Atlas Rust tests. Integration fixtures use disposable SQLite databases.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday."
+          ],
+          "error": null,
+          "retrieval_ms": 0.088,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 173,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-payment-account",
+          "project": "atlas",
+          "query": "What is the payment processor account ID?",
+          "relevant": [],
+          "retrieved_keys": [
+            "port",
+            "auth",
+            "retry",
+            "noise1",
+            "noise2"
+          ],
+          "context": [
+            "Atlas API now listens on port 9440. Configure server/config.rs; 8320 is obsolete.",
+            "Atlas HTTP authentication uses a Bearer token from ATLAS_TOKEN. Never log the token. Implementation: server/auth.rs.",
+            "Atlas payment webhooks retry with exponential backoff, maximum three attempts. Deduplicate using event_id in payments/webhook.rs.",
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css.",
+            "Development lunch notes: try the new coffee shop near the office on Tuesday."
+          ],
+          "error": null,
+          "retrieval_ms": 0.089,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 181,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-review-count",
+          "project": "atlas",
+          "query": "How many code review approvals are required?",
+          "relevant": [],
+          "retrieved_keys": [
+            "noise1"
+          ],
+          "context": [
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css."
+          ],
+          "error": null,
+          "retrieval_ms": 0.081,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 92,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-feature-flags",
+          "project": "atlas",
+          "query": "Which service stores production feature flags?",
+          "relevant": [],
+          "retrieved_keys": [],
+          "context": [],
+          "error": null,
+          "retrieval_ms": 0.203,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 71,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-backup-days",
+          "project": "atlas",
+          "query": "How many days are database backups retained?",
+          "relevant": [],
+          "retrieved_keys": [
+            "noise1"
+          ],
+          "context": [
+            "The landing page uses purple buttons and a lighthouse illustration. Design notes are in web/theme.css."
+          ],
+          "error": null,
+          "retrieval_ms": 0.094,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 92,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-region-ko",
+          "project": "atlas",
+          "query": "아틀라스 운영 서버 리전은 어디인가?",
+          "relevant": [],
+          "retrieved_keys": [
+            "korean"
+          ],
+          "context": [
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다."
+          ],
+          "error": null,
+          "retrieval_ms": 0.088,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 122,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-tls-ko",
+          "project": "atlas",
+          "query": "TLS 인증서는 며칠마다 갱신하나?",
+          "relevant": [],
+          "retrieved_keys": [],
+          "context": [],
+          "error": null,
+          "retrieval_ms": 0.114,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 79,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-slack-ko",
+          "project": "atlas",
+          "query": "배포 알림을 보내는 슬랙 채널 이름은?",
+          "relevant": [],
+          "retrieved_keys": [
+            "korean"
+          ],
+          "context": [
+            "아틀라스 배포는 금요일에 하지 않는다. 배포 전에 스테이징에서 회귀 테스트를 실행하고 이전 바이너리를 보관한다."
+          ],
+          "error": null,
+          "retrieval_ms": 0.191,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 125,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-node-ko",
+          "project": "atlas",
+          "query": "프론트엔드가 사용하는 Node.js 버전은?",
+          "relevant": [],
+          "retrieved_keys": [],
+          "context": [],
+          "error": null,
+          "retrieval_ms": 0.083,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 78,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-mobile-ko",
+          "project": "atlas",
+          "query": "모바일 앱 번들 ID는 무엇인가?",
+          "relevant": [],
+          "retrieved_keys": [],
+          "context": [],
+          "error": null,
+          "retrieval_ms": 0.087,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 77,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-pager-ko",
+          "project": "atlas",
+          "query": "장애 대응 당번은 몇 주마다 바뀌나?",
+          "relevant": [],
+          "retrieved_keys": [],
+          "context": [],
+          "error": null,
+          "retrieval_ms": 0.755,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 79,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-redis-ko",
+          "project": "beacon",
+          "query": "Beacon Redis 제거 정책은 무엇인가?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-test",
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 0.049,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 129,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-registry-ko",
+          "project": "beacon",
+          "query": "Beacon 컨테이너 이미지는 어느 레지스트리에 올리나?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-test",
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 0.068,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 139,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-ci-provider",
+          "project": "beacon",
+          "query": "Which CI provider runs the pnpm tests?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-test"
+          ],
+          "context": [
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers."
+          ],
+          "error": null,
+          "retrieval_ms": 0.046,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 91,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-postgres-version",
+          "project": "beacon",
+          "query": "Which PostgreSQL major version do integration tests use?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-test"
+          ],
+          "context": [
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers."
+          ],
+          "error": null,
+          "retrieval_ms": 0.039,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 91,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-webhook-timeout",
+          "project": "beacon",
+          "query": "What is the payment webhook request timeout?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 0.045,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 91,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-stage-url",
+          "project": "beacon",
+          "query": "What is the Beacon staging URL?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-test",
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 0.044,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 125,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-owner",
+          "project": "beacon",
+          "query": "Who owns the Beacon API service?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-test",
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 0.134,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 125,
+          "answer_output_tokens": 3
+        },
+        {
+          "id": "absent-license",
+          "project": "beacon",
+          "query": "Which license applies to the Beacon repository?",
+          "relevant": [],
+          "retrieved_keys": [
+            "beta-port",
+            "beta-test",
+            "beta-retry"
+          ],
+          "context": [
+            "Beacon API listens on port 8320. Configure server/config.rs.",
+            "Beacon tests run with pnpm test, not cargo. Integration tests use PostgreSQL containers.",
+            "Beacon payment webhooks retry ten times with fixed delay. Implementation: payments/webhook.rs."
+          ],
+          "error": null,
+          "retrieval_ms": 0.048,
+          "answer": "NOT_FOUND",
+          "answer_pass": true,
+          "answer_prompt_tokens": 126,
+          "answer_output_tokens": 3
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "16 authored records, 15 current records, 48 fixed questions; not a representative coding-task benchmark",
+    "Same answering model/prompt; Memnest uses e5-base, competitors use local BGE-M3; no hosted or default-cloud comparison",
+    "memU commit_results receives prepared verbatim files, not its external-agent evolution pipeline",
+    "Answer scoring is a published term check, not a semantic judge; setup/ingestion cost reported separately",
+    "Single serial pass; timings include local model cache effects; no general superiority claim"
+  ],
+  "continuation": "File baseline resumed from query 7 after a 900-second command deadline. Same fixture/model/prompt; previous provider rows were not rerun.",
+  "source_revisions": {
+    "hindsight": "9269b88417ed263e5a8350f2e416ca2b322756b1",
+    "memu": "2c050bc9681a4c0aff1af211a000e73d14f33356"
+  },
+  "fixture_sha256": "3ad233de3534fd6f9357ee89496b966aa9966688bb907636b0459b05691274f1",
+  "core_binary_sha256": null,
+  "host": {
+    "system": "Linux",
+    "machine": "x86_64"
+  },
+  "core_binary_record": "The comparison used the development 0.3.1 source before later changes; its binary digest was not recorded at run start. Do not substitute a later build digest."
+}

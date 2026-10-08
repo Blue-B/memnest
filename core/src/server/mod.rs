@@ -6,7 +6,7 @@ use axum::{
     Router,
     extract::Request,
     http::{
-        HeaderName, HeaderValue, StatusCode,
+        HeaderName, HeaderValue,
         header::{self},
     },
     middleware::{self, Next},
@@ -26,21 +26,6 @@ pub fn normalize_token(value: Option<String>) -> Option<String> {
 
 pub fn auth_token() -> Option<String> {
     normalize_token(std::env::var("MEMNEST_TOKEN").ok())
-}
-
-async fn auth_middleware(request: Request, next: Next) -> Result<Response, StatusCode> {
-    if let Some(token) = auth_token() {
-        let auth_header = request
-            .headers()
-            .get("authorization")
-            .and_then(|h| h.to_str().ok())
-            .unwrap_or("");
-        let expected = format!("Bearer {}", token);
-        if auth_header != expected {
-            return Err(StatusCode::UNAUTHORIZED);
-        }
-    }
-    Ok(next.run(request).await)
 }
 
 async fn security_headers_middleware(request: Request, next: Next) -> Response {
@@ -84,18 +69,24 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
         .route("/update", post(api::update))
         .route("/delete", post(api::delete))
         .route("/restore", post(api::restore))
+        .route("/purge", post(api::purge))
+        .route("/retention", post(api::run_retention))
         .route("/prune", post(api::prune))
         .route("/secrets", get(api::list_secrets).post(api::set_secret))
         .route(
             "/secrets/{key}",
             get(api::get_secret).delete(api::delete_secret),
         )
-        .route("/stats", get(api::stats))
+        .route("/stats", get(api::guarded_stats))
+        .route("/audit", get(crate::access::audit))
         // MCP over Streamable HTTP: same auth and security layers as every other
         // route, so one service covers the API and MCP clients.
         .route("/mcp", post(mcp::http_endpoint))
         .layer(middleware::from_fn(security_headers_middleware))
-        .layer(middleware::from_fn(auth_middleware))
+        .layer(middleware::from_fn_with_state(
+            system.clone(),
+            crate::access::middleware,
+        ))
         .with_state(system)
 }
 

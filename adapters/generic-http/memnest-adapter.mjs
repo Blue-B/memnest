@@ -26,6 +26,7 @@ export function eventToRequest(event) {
 				project: event.project ?? "",
 				cwd: event.project ? undefined : event.cwd,
 				n_results: event.limit ?? 3,
+				evidence_only: event.evidence_only ?? false,
 				adapter,
 			},
 		};
@@ -42,6 +43,8 @@ export function eventToRequest(event) {
 					chunk_type: "manual",
 					importance: event.importance ?? "knowledge",
 					memory_kind: event.memory_kind ?? "record",
+					approach: event.approach,
+					code_evidence: event.code_evidence,
 					confidence: event.confidence,
 					source_ids: event.source_ids ?? [],
 					supersedes: event.supersedes,

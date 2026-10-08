@@ -2,6 +2,21 @@
 
 All notable changes to `pi-memnest` are recorded here.
 
+## [0.4.0] - 2026-10-07
+
+### Added
+
+- `memory_remember(code_files=[...])` explicitly captures bounded file fingerprints through the matching core CLI, without storing file contents.
+- `memory_get(check_code=true)` explicitly compares a saved baseline in the current workspace, including remote-store baselines through a network-free local compare command.
+- `memory_search(evidence_only=true)` forwards optional local-model source selection and preserves its unverified assertion.
+- Optional `MEMNEST_ALLOWED_MODEL_PROVIDERS` blocks new memory/credential reads and automatic recall for unapproved or unknown model contexts before network access.
+
+### Compatibility and limits
+
+- Five memory tools remain the default surface; automatic recall and code checks remain opt-in.
+- Provider allowlisting is a trusted-client routing safeguard, not endpoint attestation, retroactive history erasure, or a complete DLP boundary.
+- New source/evidence options require core 0.4.0. Existing basic operations remain compatible.
+
 ## [0.3.1] - 2026-09-28
 
 ### Added

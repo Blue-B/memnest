@@ -14,6 +14,7 @@ import socket
 import subprocess
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -44,7 +45,12 @@ def summarize(rows, key):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--evidence-only", action="store_true")
+    parser.add_argument("--local-model-url")
+    parser.add_argument("--local-model", default="qwen2.5:3b")
     args = parser.parse_args()
+    if args.evidence_only and not args.local_model_url:
+        parser.error("--evidence-only requires --local-model-url")
     fixture_path = ROOT / "scripts/fixtures/coding-memory.json"
     try:
         fixture = json.loads(fixture_path.read_text())
@@ -75,6 +81,11 @@ def main():
             ALL_PROXY="http://127.0.0.1:1",
             NO_PROXY="127.0.0.1,localhost",
         )
+        if args.evidence_only:
+            env.update(
+                MEMNEST_EVIDENCE_URL=args.local_model_url,
+                MEMNEST_EVIDENCE_MODEL=args.local_model,
+            )
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
         def request(path, body=None):
@@ -86,7 +97,14 @@ def main():
                     "Authorization": f"Bearer {token}",
                 },
             )
-            with opener.open(req, timeout=60) as response:
+            try:
+                response = opener.open(req, timeout=120 if args.evidence_only else 60)
+            except urllib.error.HTTPError as error:
+                detail = error.read(2048).decode("utf-8", errors="replace")
+                raise RuntimeError(
+                    f"disposable service returned HTTP {error.code}: {detail}"
+                ) from error
+            with response:
                 try:
                     return json.load(response)
                 except json.JSONDecodeError as error:
@@ -178,6 +196,7 @@ def main():
                             "query": case["query"],
                             "project": case["project"],
                             "n_results": 5,
+                            "evidence_only": args.evidence_only,
                         },
                     )
                     elapsed = (time.monotonic() - start) * 1000
@@ -206,6 +225,7 @@ def main():
                             keyword=baseline,
                             latency_ms=round(elapsed, 3),
                             scores=[r.get("score") for r in result["results"]],
+                            evidence=[r.get("evidence") for r in result["results"]],
                         )
                     )
                 latencies = sorted(r["latency_ms"] for r in rows)
@@ -223,6 +243,8 @@ def main():
                 output = {
                     "fixture": str(fixture_path.relative_to(ROOT)),
                     "records": len(records),
+                    "evidence_only": args.evidence_only,
+                    "local_model": args.local_model if args.evidence_only else None,
                     "cases": rows,
                     "metrics": {
                         key: summarize(rows, key) for key in ["service", "keyword"]

@@ -44,6 +44,9 @@ pub struct Metadata {
     /// (both would collapse to `projA` as project basename).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
+    /// Server-written authorization scope, retained when a row is hidden.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_project: Option<String>,
     /// Legacy session-lineage metadata retained for row and transcript compatibility.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_session_id: Option<String>,
@@ -62,6 +65,12 @@ pub struct Metadata {
     /// Optional confidence assigned by an importer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f32>,
+    /// Caller-reported coding approach, never independently verified.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approach: Option<Approach>,
+    /// Explicitly selected working-file fingerprints, not proof a solution works.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code_evidence: Option<crate::code_evidence::CodeEvidence>,
     /// Provenance and replacement links used by structured memory workflows.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub source_ids: Vec<String>,
@@ -103,6 +112,24 @@ pub struct Metadata {
     /// The trash GC hard-deletes rows whose `trashed_at` is older than 30 days.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trashed_at: Option<String>,
+}
+
+/// Untrusted caller report; evidence text is not proof of correctness.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Approach {
+    pub status: ApproachStatus,
+    pub applicability: String,
+    #[serde(default)]
+    pub evidence: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApproachStatus {
+    Proposed,
+    Failed,
+    ReportedSuccess,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]

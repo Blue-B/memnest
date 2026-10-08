@@ -84,6 +84,16 @@ impl Database {
             PRAGMA temp_store = MEMORY;
             PRAGMA mmap_size = 30000000000;
 
+            CREATE TABLE IF NOT EXISTS access_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                action TEXT NOT NULL,
+                outcome TEXT NOT NULL,
+                target_ids TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_access_events_created ON access_events(created_at);
+
             CREATE TABLE IF NOT EXISTS chunks (
                 id TEXT PRIMARY KEY,
                 project TEXT NOT NULL,
@@ -244,6 +254,62 @@ impl Database {
         Ok(Self { pool })
     }
 
+    pub fn ensure_access_mode(&self, enabled: bool) -> Result<()> {
+        let conn = self.pool.get()?;
+        let required: Option<String> = conn
+            .query_row(
+                "SELECT value FROM index_meta WHERE key='access_policy_required'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if enabled {
+            conn.execute("INSERT OR REPLACE INTO index_meta(key,value) VALUES ('access_policy_required','1')", [])?;
+        } else {
+            anyhow::ensure!(
+                required.as_deref() != Some("1"),
+                "this store requires MEMNEST_ACCESS_POLICY; removing it must not disable access control"
+            );
+        }
+        Ok(())
+    }
+
+    pub fn append_access_event(
+        &self,
+        actor: &str,
+        action: &str,
+        outcome: &str,
+        ids: &[String],
+    ) -> Result<()> {
+        let ids: Vec<String> = ids
+            .iter()
+            .take(50)
+            .map(|id| {
+                crate::redaction::redact_text(id)
+                    .chars()
+                    .take(256)
+                    .collect()
+            })
+            .collect();
+        self.pool.get()?.execute(
+            "INSERT INTO access_events(created_at,actor,action,outcome,target_ids) VALUES (?1,?2,?3,?4,?5)",
+            params![Utc::now().to_rfc3339(), actor, action, outcome, serde_json::to_string(&ids)?],
+        )?;
+        Ok(())
+    }
+
+    pub fn access_events(&self, limit: usize) -> Result<Vec<serde_json::Value>> {
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare("SELECT id,created_at,actor,action,outcome,target_ids FROM access_events ORDER BY id DESC LIMIT ?1")?;
+        let rows = stmt.query_map(params![limit.min(200) as i64], |row| {
+            let targets: String = row.get(5)?;
+            Ok(serde_json::json!({"id":row.get::<_,i64>(0)?,"created_at":row.get::<_,String>(1)?,
+                "actor":row.get::<_,String>(2)?,"action":row.get::<_,String>(3)?,"outcome":row.get::<_,String>(4)?,
+                "target_ids":serde_json::from_str::<serde_json::Value>(&targets).unwrap_or(serde_json::Value::Null)}))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     pub fn register_workspace_scope(&self, workspace: &WorkspaceIdentity) -> Result<Vec<String>> {
         let conn = self.pool.get()?;
         let now = Utc::now().to_rfc3339();
@@ -380,8 +446,9 @@ impl Database {
             "superseded memory must be active in the same project"
         );
         tx.execute(
-            "UPDATE chunks SET project = '_superseded', updated_at = ?2 WHERE id = ?1",
-            params![superseded_id, Utc::now().to_rfc3339()],
+            "UPDATE chunks SET project = '_superseded', updated_at = ?2,
+                 metadata = json_set(metadata, '$.scope_project', ?3) WHERE id = ?1",
+            params![superseded_id, Utc::now().to_rfc3339(), previous_project],
         )?;
         tx.execute(
             "INSERT OR REPLACE INTO chunks (id, project, document, embedding, metadata, created_at, updated_at)
@@ -779,6 +846,9 @@ impl Database {
         };
         if chunk.project == "_trash" {
             return Ok(false);
+        }
+        if !is_internal_project(&chunk.project) {
+            chunk.metadata.scope_project = Some(chunk.project.clone());
         }
         let original = std::mem::take(&mut chunk.project);
         chunk.project = "_trash".to_string();

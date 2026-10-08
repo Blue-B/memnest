@@ -116,6 +116,20 @@ pub async fn prune_expired(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
         let db = sys.db.read().await;
         let chunks = db.get_all_chunks(1_000_000).unwrap_or_default();
         for chunk in chunks {
+            if chunk.project == "_trash" {
+                continue;
+            }
+            let policy_project = if crate::models::is_internal_project(&chunk.project) {
+                chunk.metadata.scope_project.as_deref()
+            } else {
+                Some(chunk.project.as_str())
+            };
+            if let Some(days) = policy_project.and_then(|p| sys.access.retention_days.get(p)) {
+                if chunk.created_at + chrono::Duration::days(*days) <= now {
+                    to_trash.push(chunk.id);
+                }
+                continue;
+            }
             if chunk.metadata.pinned {
                 continue;
             }
@@ -177,11 +191,11 @@ pub async fn prune_expired(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
 /// disables writes to `<data_dir>/archive/YYYY-MM.jsonl`.
 fn archive_enabled() -> bool {
     match std::env::var("MEMNEST_ARCHIVE") {
-        Err(_) => true,
-        Ok(raw) => {
-            let v = raw.trim();
-            !(v == "0" || v.eq_ignore_ascii_case("off") || v.eq_ignore_ascii_case("false"))
-        }
+        Err(_) => false,
+        Ok(raw) => matches!(
+            raw.trim().to_ascii_lowercase().as_str(),
+            "1" | "on" | "true"
+        ),
     }
 }
 
@@ -224,7 +238,16 @@ fn archive_chunk_before_delete(data_dir: &Path, chunk: &crate::models::MemoryChu
 /// `MEMNEST_ARCHIVE=0`).
 pub async fn prune_trash(system: Arc<RwLock<MemorySystem>>) -> Result<usize> {
     let sys = system.read().await;
-    let cutoff = chrono::Utc::now() - chrono::Duration::days(30);
+    let days = std::env::var("MEMNEST_TRASH_RETENTION_DAYS")
+        .ok()
+        .map(|v| v.parse::<i64>())
+        .transpose()?
+        .unwrap_or(30);
+    anyhow::ensure!(
+        (0..=3650).contains(&days),
+        "trash retention must be between 0 and 3650 days"
+    );
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(days);
 
     let mut to_delete: Vec<crate::models::MemoryChunk> = Vec::new();
     {
@@ -438,9 +461,9 @@ mod tests {
     #[test]
     fn archive_writes_jsonl_when_enabled() {
         let dir = tempfile::tempdir().unwrap();
-        // force enable (default)
+        // Archival is explicit opt-in; never retain a plaintext copy by default.
         unsafe {
-            std::env::remove_var("MEMNEST_ARCHIVE");
+            std::env::set_var("MEMNEST_ARCHIVE", "1");
         }
         let chunk = crate::models::MemoryChunk {
             id: "arch1".into(),
@@ -457,6 +480,10 @@ mod tests {
         let content = std::fs::read_to_string(&path).expect("archive file");
         assert!(content.contains("arch1"));
         assert!(content.contains("archived body"));
+        unsafe {
+            std::env::remove_var("MEMNEST_ARCHIVE");
+        }
+        assert!(!archive_enabled());
     }
 
     #[test]

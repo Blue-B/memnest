@@ -1,3 +1,5 @@
+pub mod access;
+pub mod code_evidence;
 pub mod config;
 pub mod crypto;
 pub mod doctor;
@@ -7,6 +9,7 @@ pub mod index;
 pub mod lifecycle;
 pub mod models;
 pub mod redaction;
+pub mod retrieval_evidence;
 pub mod search;
 pub mod search_metrics;
 pub mod server;
@@ -23,6 +26,7 @@ use tokio::sync::RwLock;
 
 pub struct MemorySystem {
     pub config: config::Config,
+    pub access: Arc<access::AccessControl>,
     pub db: Arc<RwLock<storage::Database>>,
     pub embedder: Arc<embedding::Embedder>,
     pub vector_index: Arc<RwLock<index::VectorIndex>>,
@@ -36,7 +40,16 @@ pub struct MemorySystem {
 
 impl MemorySystem {
     pub async fn new(config: config::Config) -> Result<Self> {
+        let access = Arc::new(access::AccessControl::load()?);
         std::fs::create_dir_all(&config.data_dir)?;
+        #[cfg(unix)]
+        if access.enabled() {
+            use std::os::unix::fs::PermissionsExt;
+            anyhow::ensure!(
+                std::fs::metadata(&config.data_dir)?.permissions().mode() & 0o077 == 0,
+                "access policy requires an owner-only data directory (mode 0700)"
+            );
+        }
         let writer_lock = acquire_writer_lock(&config.data_dir)?;
         // Always derive an encryption key: env var takes precedence, otherwise
         // a per-install random key is created under data_dir/master.key (0600).
@@ -44,6 +57,7 @@ impl MemorySystem {
         let master_key = crypto::resolve_master_key(&config.data_dir)?;
         crypto::init_crypto(Some(&master_key))?;
         let database = storage::Database::new(&config.data_dir).await?;
+        database.ensure_access_mode(access.enabled())?;
         let encrypted_values = database.encrypted_vault_values()?;
         if let Err(error) = crypto::validate_ciphertexts(&master_key, &encrypted_values) {
             crypto::disable_crypto()?;
@@ -115,6 +129,7 @@ impl MemorySystem {
 
         Ok(Self {
             config,
+            access,
             db,
             embedder,
             vector_index,

@@ -2,6 +2,26 @@
 
 All notable changes to the `memnest` Rust engine are recorded here.
 
+## [0.4.0] - 2026-10-07
+
+### Added
+
+- Optional named-principal bearer policy with exact project read/write grants, content-free access audit, protected-store reopen checks, and per-project retention. ID reads, history, context, mutations, restoration, and vault/statistics/audit paths share authorization boundaries.
+- Explicit code evidence capture/compare commands and bounded file fingerprints. File changes are not solution invalidation; unchanged files are not verification.
+- Caller-reported approach outcomes and immutable replacement through `supersedes`.
+- Opt-in `evidence_only` source selection using a configured loopback Ollama model, constrained source excerpts, and exact quotation checks. Default search remains generation-free.
+- `POST /purge` for already-trashed records and administrator `POST /retention` for immediate lifecycle checks.
+
+### Changed
+
+- Plaintext archive copies are off by default; `MEMNEST_ARCHIVE=1` is explicit opt-in. Existing archives, backups, external transcripts, and physical disk copies are not erased.
+- Secret lists omit free-form notes because they can contain sensitive values. Explicit secret retrieval remains administrator-only in policy mode.
+
+### Limits
+
+- Single-host team controls, not SSO, SaaS tenant administration, HA, or compliance certification. Local file owners remain trusted.
+- Model-selected excerpts remain unverified. The small local comparison did not establish superior retrieval accuracy; see the documented dataset, model stack, timings, and continuation.
+
 ## [0.3.1] - 2026-09-28
 
 ### Fixed

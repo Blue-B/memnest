@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 process.env.MEMNEST_AUTOLOG = "1";
 delete process.env.MEMNEST_AUTOCONTEXT_MODE;
+delete process.env.MEMNEST_EXPOSE_SECRET_TOOLS;
 process.env.MEMNEST_TOKEN = "test-token";
 process.env.MEMNEST_URL = "http://127.0.0.1:3111";
 
@@ -69,6 +70,9 @@ await command.handler("", {
 assert.match(notices[0], /Memories: 7/);
 assert.match(notices[0], /Data: \/tmp\/memnest/);
 assert.match(notices[0], /Autocontext: off/);
+assert.match(notices[0], /Vault tools: hidden/);
+assert.match(notices[0], /MEMNEST_EXPOSE_SECRET_TOOLS=1/);
+assert.match(notices[0], /restart pi/);
 // The HTML dashboard is gone, so status must never advertise that dead link.
 assert.doesNotMatch(
 	notices[0],

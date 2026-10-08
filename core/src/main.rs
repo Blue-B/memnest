@@ -56,6 +56,17 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum CliCommand {
+    /// Save selected working-file fingerprints or compare them on demand. Never checks solution correctness.
+    Evidence {
+        /// Local Memnest URL; defaults to MEMNEST_URL, then http://127.0.0.1:3111.
+        #[arg(long)]
+        url: Option<String>,
+        /// Explicit workspace directory; defaults to the current directory.
+        #[arg(long)]
+        cwd: Option<PathBuf>,
+        #[command(subcommand)]
+        command: memnest::code_evidence::Command,
+    },
     /// Report the running version, whether the local service is reachable, and where it stores data.
     Status {
         /// Read-only HTTP health and MCP capability checks (5 second total budget).
@@ -138,6 +149,11 @@ async fn main() -> anyhow::Result<()> {
 
     if let Some(command) = &cli.command {
         match command {
+            CliCommand::Evidence { url, cwd, command } => {
+                let report =
+                    memnest::code_evidence::run(command, url.as_deref(), cwd.as_deref()).await?;
+                println!("{}", serde_json::to_string(&report)?);
+            }
             // Runs on every prompt, so it stays off the paths that probe the
             // service, open the data directory, or load the embedder.
             CliCommand::Hook {
@@ -373,7 +389,9 @@ fn bind_is_safe(host: &str, token: Option<String>) -> bool {
 }
 
 fn enforce_bind_safety(host: &str) -> anyhow::Result<()> {
-    if bind_is_safe(host, std::env::var("MEMNEST_TOKEN").ok()) {
+    if bind_is_safe(host, std::env::var("MEMNEST_TOKEN").ok())
+        || memnest::access::AccessControl::load()?.enabled()
+    {
         return Ok(());
     }
     bail!(

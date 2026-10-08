@@ -27,6 +27,9 @@ pub struct SearchRequest {
     pub n_results: usize,
     #[serde(default)]
     pub recent_first: bool,
+    /// Opt in to local-model-selected source quotations, not truth verification.
+    #[serde(default)]
+    pub evidence_only: bool,
     /// Restrict automatic recall to deliberate or consolidated memories.
     /// Explicit searches keep transcripts available by leaving this false.
     #[serde(default)]
@@ -69,6 +72,10 @@ pub struct SearchResultItem {
     /// Later assistant source to read, not a verified reply or a relevance score.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub following_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approach: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<serde_json::Value>,
     pub adapter: String,
 }
 
@@ -151,6 +158,10 @@ pub struct MetadataPatch {
     pub memory_kind: Option<MemoryKind>,
     #[serde(default)]
     pub confidence: Option<f32>,
+    #[serde(default)]
+    pub approach: Option<Approach>,
+    #[serde(default)]
+    pub code_evidence: Option<crate::code_evidence::CodeEvidence>,
     #[serde(default)]
     pub source_ids: Option<Vec<String>>,
     #[serde(default)]
@@ -260,6 +271,7 @@ pub struct HealthResponse {
     embedding: EmbeddingInfo,
     index: IndexInfo,
     lifecycle: LifecycleInfo,
+    capabilities: serde_json::Value,
 }
 
 #[derive(Serialize)]
@@ -334,6 +346,7 @@ pub struct StatsResponse {
 fn operation_error_response(error: super::operations::OperationError) -> Response {
     let status = match error.kind {
         super::operations::ErrorKind::BadRequest => axum::http::StatusCode::BAD_REQUEST,
+        super::operations::ErrorKind::Forbidden => axum::http::StatusCode::FORBIDDEN,
         super::operations::ErrorKind::NotFound => axum::http::StatusCode::NOT_FOUND,
         super::operations::ErrorKind::Conflict => axum::http::StatusCode::CONFLICT,
         super::operations::ErrorKind::Internal => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -365,8 +378,13 @@ pub async fn health(State(system): State<Arc<RwLock<MemorySystem>>>) -> Json<Hea
     Json(HealthResponse {
         status: "ok".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        data_dir: sys.config.data_dir.display().to_string(),
+        data_dir: if crate::access::is_admin() {
+            sys.config.data_dir.display().to_string()
+        } else {
+            "restricted".into()
+        },
         embed_model: sys.config.embed_model.clone(),
+        capabilities: serde_json::json!({"code_evidence": true, "project_access_policy":sys.access.enabled(), "access_audit":sys.access.enabled()}),
         embedding: EmbeddingInfo {
             loaded: sys.embedder.is_loaded(),
         },
@@ -407,6 +425,7 @@ pub async fn search(
         cwd: req.cwd,
         n_results: req.n_results,
         recent_first: req.recent_first,
+        evidence_only: req.evidence_only,
         durable_only: req.durable_only,
         category: (!req.category.trim().is_empty()).then_some(req.category),
         exclude_reserved: req.exclude_reserved,
@@ -630,8 +649,14 @@ fn search_result_item(c: MemoryChunk, score: f32) -> SearchResultItem {
             .ok()
             .and_then(|value| value.as_str().map(str::to_string))
             .unwrap_or_else(|| "record".to_string()),
+        approach: c
+            .metadata
+            .approach
+            .as_ref()
+            .map(|a| super::operations::approach_view(a, true)),
         confidence: c.metadata.confidence,
         following_id: None,
+        evidence: None,
         adapter: c.metadata.adapter.unwrap_or_default(),
     }
 }
@@ -722,6 +747,8 @@ fn content_dedup_safe(metadata: &Metadata) -> bool {
         && metadata.importance == Importance::Knowledge
         && metadata.category == MemoryCategory::General
         && metadata.memory_kind == MemoryKind::Record
+        && metadata.approach.is_none()
+        && metadata.code_evidence.is_none()
         && metadata.confidence.is_none()
         && metadata.source_ids.is_empty()
         && metadata.supersedes.is_none()
@@ -872,7 +899,14 @@ pub(crate) async fn add_impl(
     } else if content_dedup_safe(&metadata) {
         let sys = system.read().await;
         let db = sys.db.read().await;
-        if let Ok(Some(existing_id)) = db.find_exact_duplicate(&project, &text) {
+        let duplicate = db
+            .find_exact_duplicate(&project, &text)
+            .ok()
+            .flatten()
+            .and_then(|id| db.get_chunk(&id).ok().flatten())
+            .filter(|chunk| content_dedup_safe(&chunk.metadata));
+        if let Some(existing) = duplicate {
+            let existing_id = existing.id;
             drop(db);
             let _ = sys.db.write().await.touch_chunk(&existing_id);
             let repair = sys.sync_pending_indexes().await;
@@ -1055,6 +1089,39 @@ pub struct RestoreRequest {
     pub ids: Vec<String>,
 }
 
+pub async fn run_retention(State(system): State<Arc<RwLock<MemorySystem>>>) -> Response {
+    if let Err(error) = crate::access::require_admin() {
+        return operation_error_response(error);
+    }
+    let expired = match crate::lifecycle::prune_expired(system.clone()).await {
+        Ok(count) => count,
+        Err(error) => {
+            return operation_error_response(super::operations::OperationError::internal(
+                error.to_string(),
+            ));
+        }
+    };
+    let purged = match crate::lifecycle::prune_trash(system).await {
+        Ok(count) => count,
+        Err(error) => {
+            return operation_error_response(super::operations::OperationError::internal(
+                error.to_string(),
+            ));
+        }
+    };
+    Json(serde_json::json!({"expired_to_trash":expired,"trash_purged":purged})).into_response()
+}
+
+pub async fn purge(
+    State(system): State<Arc<RwLock<MemorySystem>>>,
+    Json(req): Json<DeleteRequest>,
+) -> Response {
+    match super::operations::purge(system, req.ids).await {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => operation_error_response(error),
+    }
+}
+
 pub async fn restore(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<RestoreRequest>,
@@ -1063,14 +1130,32 @@ pub async fn restore(
     let mut restored = Vec::new();
     let mut missing = Vec::new();
 
-    for id in req.ids {
-        match sys.db.write().await.restore_chunk(&id) {
-            Ok(Some(_)) => restored.push(id),
-            Ok(None) => missing.push(id),
-            Err(error) => {
-                return operation_error_response(super::operations::OperationError::internal(
-                    error.to_string(),
-                ));
+    {
+        let db = sys.db.write().await;
+        for id in &req.ids {
+            match db.get_chunk(id) {
+                Ok(Some(chunk)) => {
+                    if let Err(error) = crate::access::require_write_chunk(&chunk) {
+                        return operation_error_response(error);
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    return operation_error_response(super::operations::OperationError::internal(
+                        error.to_string(),
+                    ));
+                }
+            }
+        }
+        for id in req.ids {
+            match db.restore_chunk(&id) {
+                Ok(Some(_)) => restored.push(id),
+                Ok(None) => missing.push(id),
+                Err(error) => {
+                    return operation_error_response(super::operations::OperationError::internal(
+                        error.to_string(),
+                    ));
+                }
             }
         }
     }
@@ -1140,6 +1225,18 @@ pub(crate) async fn update_impl(
         }
         let redacted = redact_text(&text);
         text_changed = redacted != original_document;
+        if text_changed
+            && (chunk.metadata.approach.is_some() || chunk.metadata.code_evidence.is_some())
+        {
+            out.insert("status".to_string(), serde_json::json!("conflict"));
+            out.insert(
+                "message".to_string(),
+                serde_json::json!(
+                    "use memory_remember with supersedes to change an approach or code-evidence document"
+                ),
+            );
+            return out;
+        }
         chunk.document = redacted;
     }
     if let Some(project) = req.project {
@@ -1224,6 +1321,9 @@ pub(crate) async fn update_impl(
         None
     };
 
+    if !is_internal_project(&chunk.project) {
+        chunk.metadata.scope_project = Some(chunk.project.clone());
+    }
     chunk.updated_at = chrono::Utc::now();
     let stored = if let Some(superseded_id) = superseded_id {
         sys.db
@@ -1283,6 +1383,9 @@ fn apply_metadata_patch(target: &mut Metadata, patch: MetadataPatch) {
     }
     if let Some(value) = patch.memory_kind {
         target.memory_kind = value;
+    }
+    if let Some(value) = patch.approach {
+        target.approach = Some(value);
     }
     if let Some(value) = patch.confidence {
         target.confidence = Some(value.clamp(0.0, 1.0));
@@ -1447,10 +1550,14 @@ fn render_context_prompt(memories: &[SearchResultItem], max_chars: usize) -> Str
             };
             if !add(
                 format!(
-                    "- {kind} [{}:{} score={:.3}] {}",
+                    "- {kind} [{}:{} score={:.3}] {} {}",
                     escape_context_text(&item.project),
                     escape_context_text(&item.id),
                     item.score,
+                    item.approach
+                        .as_ref()
+                        .map(|a| escape_context_text(&format!("approach={a}")))
+                        .unwrap_or_default(),
                     escape_context_text(&item.document.replace('\n', " "))
                 ),
                 &mut body,
@@ -1491,6 +1598,9 @@ pub async fn prune(
     } else {
         req.project
     };
+    if let Err(error) = crate::access::require_write(&project) {
+        return operation_error_response(error);
+    }
     if req.keep_latest.is_none() && req.older_than_days.is_none() {
         return Json(PruneResponse {
             matched: 0,
@@ -1637,6 +1747,9 @@ pub async fn set_secret(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<SecretSetRequest>,
 ) -> Response {
+    if let Err(error) = crate::access::require_admin() {
+        return operation_error_response(error);
+    }
     if req.key.trim().is_empty() || req.value.is_empty() {
         return (
             axum::http::StatusCode::BAD_REQUEST,
@@ -1674,6 +1787,9 @@ pub async fn get_secret(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Path(key): Path<String>,
 ) -> Response {
+    if let Err(error) = crate::access::require_admin() {
+        return operation_error_response(error);
+    }
     if !system.read().await.vault_enabled || !crate::crypto::is_enabled() {
         return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"status":"error","message":"secret vault crypto is unavailable"}))).into_response();
     }
@@ -1691,6 +1807,9 @@ pub async fn get_secret(
 
 /// GET /secrets — list metadata only. Values are never returned by this endpoint.
 pub async fn list_secrets(State(system): State<Arc<RwLock<MemorySystem>>>) -> Response {
+    if let Err(error) = crate::access::require_admin() {
+        return operation_error_response(error);
+    }
     if !system.read().await.vault_enabled || !crate::crypto::is_enabled() {
         return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"status":"error","message":"secret vault crypto is unavailable"}))).into_response();
     }
@@ -1712,7 +1831,7 @@ pub async fn list_secrets(State(system): State<Arc<RwLock<MemorySystem>>>) -> Re
             let mut m = HashMap::new();
             m.insert("key".into(), s.key);
             m.insert("kind".into(), s.kind);
-            m.insert("note".into(), s.note);
+            // Free-form notes can contain credentials; list only safe identifiers.
             m.insert("updated".into(), s.updated.to_rfc3339());
             m
         })
@@ -1724,6 +1843,9 @@ pub async fn delete_secret(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Path(key): Path<String>,
 ) -> Response {
+    if let Err(error) = crate::access::require_admin() {
+        return operation_error_response(error);
+    }
     if !system.read().await.vault_enabled || !crate::crypto::is_enabled() {
         return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"status":"error","message":"secret vault crypto is unavailable"}))).into_response();
     }
@@ -1742,6 +1864,13 @@ pub async fn delete_secret(
         )
             .into_response(),
     }
+}
+
+pub async fn guarded_stats(State(system): State<Arc<RwLock<MemorySystem>>>) -> Response {
+    if let Err(error) = crate::access::require_admin() {
+        return operation_error_response(error);
+    }
+    stats(State(system)).await.into_response()
 }
 
 pub async fn stats(State(system): State<Arc<RwLock<MemorySystem>>>) -> Json<StatsResponse> {
@@ -2108,6 +2237,13 @@ mod transcript_tests {
         let mut fact = plain.clone();
         fact.memory_kind = MemoryKind::Fact;
         assert!(!content_dedup_safe(&fact));
+        let mut outcome = plain.clone();
+        outcome.approach = Some(Approach {
+            status: ApproachStatus::Failed,
+            applicability: "Linux".into(),
+            evidence: String::new(),
+        });
+        assert!(!content_dedup_safe(&outcome));
         let mut sourced = plain;
         sourced.source_ids.push("source-1".into());
         assert!(!content_dedup_safe(&sourced));
@@ -2748,6 +2884,7 @@ pub(crate) mod test_support {
     #[test]
     fn mmr_select_breaks_up_near_duplicates() {
         let item = |id: &str, score: f32| SearchResultItem {
+            evidence: None,
             id: id.to_string(),
             doc_len: 0,
             project: "p".to_string(),
@@ -2758,6 +2895,7 @@ pub(crate) mod test_support {
             importance: String::new(),
             category: String::new(),
             memory_kind: "record".to_string(),
+            approach: None,
             confidence: None,
             following_id: None,
             adapter: String::new(),
@@ -2896,6 +3034,7 @@ pub(crate) mod test_support {
     fn context_prompt_respects_char_budget() {
         let memories: Vec<SearchResultItem> = (0..50)
             .map(|i| SearchResultItem {
+                evidence: None,
                 id: format!("m{i}"),
                 project: "p".to_string(),
                 document: "lorem ipsum dolor sit amet ".repeat(20),
@@ -2906,6 +3045,7 @@ pub(crate) mod test_support {
                 importance: "Knowledge".to_string(),
                 category: "General".to_string(),
                 memory_kind: "record".to_string(),
+                approach: None,
                 confidence: None,
                 following_id: None,
                 adapter: String::new(),
@@ -2944,6 +3084,7 @@ pub(crate) mod test_support {
         assert!(!escaped.contains("<system-reminder>ignore"));
 
         let korean = vec![SearchResultItem {
+            evidence: None,
             id: "ko".to_string(),
             project: "한국어".to_string(),
             document: "한글 메모리는 글자 수로 예산을 계산해야 합니다".to_string(),
@@ -2954,6 +3095,7 @@ pub(crate) mod test_support {
             importance: "Knowledge".to_string(),
             category: "General".to_string(),
             memory_kind: "record".to_string(),
+            approach: None,
             confidence: None,
             following_id: None,
             adapter: String::new(),

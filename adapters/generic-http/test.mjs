@@ -72,3 +72,7 @@ for (const type of ["message", "summary"]) {
 }
 
 console.log("generic-http adapter: 22 assertions passed");
+
+const approach = { status: "failed", applicability: "Linux", evidence: "test exit 1" };
+assert.deepEqual(eventToRequest({ type: "remember", text: "workaround", project: "demo", approach }).body.metadata.approach, approach);
+console.log("generic-http approach: caller report forwarded unchanged");

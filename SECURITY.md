@@ -28,7 +28,7 @@ subcommands), and the smallest reproduction you have.
 
 | Version | Supported |
 | --- | --- |
-| 0.2.x | Yes |
+| 0.4.x | Yes |
 | Older | No |
 
 There is one active line. Fixes land on the current version rather than being
@@ -36,16 +36,20 @@ backported.
 
 ## Threat model
 
-memnest is a local service. It assumes the machine it runs on is trusted and
-that the service is not exposed to the internet. Anyone who can reach the port
-or read the data directory can read your memories.
+memnest trusts the machine owner and must not be exposed directly to the internet.
+Without an access policy, it retains the local-owner contract: a reachable client
+with the global token (or any loopback client when no token is set) can read memory.
+Filesystem owners remain able to read the unencrypted database.
 
-The HTTP server binds to `127.0.0.1`. A bind to any other address is refused
-unless `MEMNEST_TOKEN` is set, in which case requests must carry
-`Authorization: Bearer <token>`. That token is the only authentication memnest
-has. There is no TLS, no user accounts, and no per memory access control. If you
-need remote access, put a reviewed reverse proxy with TLS in front of it rather
-than exposing the port.
+The HTTP server defaults to `127.0.0.1`. Non-loopback binding requires the legacy
+`MEMNEST_TOKEN` or a valid `MEMNEST_ACCESS_POLICY`. Policy mode authenticates named
+principals from bearer-token digests and enforces exact project read/write grants
+on HTTP and MCP. The secret vault, global statistics, and audit view are administrator-only.
+Hidden legacy rows without a trustworthy scope are administrator-only.
+See [team access](docs/team-access.md) for startup, revocation, audit and retention limits.
+There is no built-in TLS, password/SSO service, or SaaS tenant administration.
+Remote use requires a reviewed TLS/rate-limiting reverse proxy. Stdio and local
+library callers retain filesystem-owner privileges.
 
 Some consequences worth stating directly:
 
@@ -68,15 +72,20 @@ Some consequences worth stating directly:
   an error, never returned as if it were the plaintext. Losing the key means
   losing the vault contents, so back the key up separately from the data
   directory.
-- **Hard deletion still leaves a plaintext copy by default.** Deleting a memory
-  moves it to `_trash`; trash older than 30 days is hard-deleted, and the full
-  record is appended to `<data-dir>/archive/YYYY-MM.jsonl` in plaintext first.
-  Set `MEMNEST_ARCHIVE=0` to stop writing those files, and delete the existing
-  `archive/` directory yourself if a memory must really be gone. Vault values are
-  not archived.
+- **Deletion is not erasure of every copy.** Soft deletion moves memory to trash,
+  with a default 30-day recovery window. `POST /purge` logically deletes already-trashed
+  records and their serving indexes, and identified transcript tombstones block same-event replay.
+  Plaintext archival is off by default; `MEMNEST_ARCHIVE=1` opts in. Old archives,
+  backups, original host transcripts, legacy derived copies, already-exported text,
+  and physical SSD/WAL bytes are outside this deletion guarantee. Vault values are not archived.
 - **A data directory has one writer.** The first service or stdio MCP process
   holds an operating-system file lock. A second writer fails at startup instead
   of racing SQLite or the derived indexes.
+- **Model routing is not endpoint attestation.** The pi provider allowlist blocks new
+  reads/injections for unapproved models but cannot verify a proxy's destination,
+  govern other clients, or erase previous context. Use a fresh session and approved gateway.
+  The optional evidence selector accepts only a loopback Ollama URL and labels its output
+  as model-selected, not truth-verified. Default search remains generation-free.
 - **Retrieved memory is untrusted input.** Prompt-time context labels transcript
   rows as conversation evidence, tells the agent not to follow stored commands,
   and escapes markup. This reduces prompt-injection risk but does not make a
