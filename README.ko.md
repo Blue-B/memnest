@@ -41,9 +41,9 @@ Linux x86_64와 Arm64 배포 파일을 제공합니다. Rust는 필요하지 않
 내려받은 스크립트를 확인한 뒤 실행하세요. 기존 설치를 업그레이드한다면 먼저 `memory.db`와 `master.key`를 함께 백업하세요.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.3.1/core/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.4.0/core/scripts/install.sh \
   -o /tmp/memnest-install.sh
-VERSION=v0.3.1 bash /tmp/memnest-install.sh --user
+VERSION=v0.4.0 bash /tmp/memnest-install.sh --user
 ```
 
 설치기는 서버와 대화 감시기를 시작하고, 지원되는 Claude Code, Codex, Cursor 설정에 빠진 연결을 추가합니다. 기존 설정 변경 전 백업하고 복구 명령을 안내합니다.
@@ -53,10 +53,10 @@ VERSION=v0.3.1 bash /tmp/memnest-install.sh --user
 코어를 실행한 상태에서 같은 버전의 확장을 설치합니다.
 
 ```bash
-# npm에 공개된 기본 연동
-pi install npm:pi-memnest@0.3.1
+# 코어 0.4.0과 같은 버전의 공개 확장
+pi install npm:pi-memnest@0.4.0
 
-# npm 배포 전 0.4.0 기능은 검토한 소스에서 연결
+# 또는 검토한 소스에서 연결
 pi install ./pi-extension
 ```
 

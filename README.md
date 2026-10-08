@@ -41,9 +41,9 @@ Linux x86_64 and Arm64 archives are available; Rust is not required. The first w
 Read the downloaded script before running it. Before upgrading an existing installation, back up `memory.db` together with `master.key`.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.3.1/core/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.4.0/core/scripts/install.sh \
   -o /tmp/memnest-install.sh
-VERSION=v0.3.1 bash /tmp/memnest-install.sh --user
+VERSION=v0.4.0 bash /tmp/memnest-install.sh --user
 ```
 
 Setup starts the server and conversation watcher and adds missing connections to supported Claude Code, Codex, and Cursor configurations. It backs up existing configuration before changing it and prints recovery commands.
@@ -53,10 +53,10 @@ Setup starts the server and conversation watcher and adds missing connections to
 With the core running, install the matching extension:
 
 ```bash
-# Published npm baseline (basic operations)
-pi install npm:pi-memnest@0.3.1
+# Published extension matching core 0.4.0
+pi install npm:pi-memnest@0.4.0
 
-# New 0.4.0 options from a reviewed source checkout until npm publication
+# Or connect a reviewed source checkout
 pi install ./pi-extension
 ```
 
