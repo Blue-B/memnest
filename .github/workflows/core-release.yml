@@ -17,15 +17,18 @@ jobs:
     # target\release\memnest.exe, which is the path the operations guide
     # documents. Windows still gets compile coverage from the windows-latest job
     # in core-ci.yml.
-    # ubuntu-22.04 keeps the glibc floor at 2.35, so the archives also run on
-    # Debian 12 and Ubuntu 22.04. v0.4.0 was built on 24.04 and needed 2.39.
+    # x86_64 builds on ubuntu-22.04 so it runs on glibc 2.35 (Debian 12,
+    # Ubuntu 22.04). The prebuilt aarch64 onnxruntime needs GCC 14's
+    # libstdc++ at runtime, so aarch64 stays on 24.04 and glibc 2.39.
     strategy:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-22.04
+            glibc_floor: GLIBC_2.35
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-22.04
+            os: ubuntu-24.04
+            glibc_floor: GLIBC_2.39
 
     runs-on: ${{ matrix.os }}
     env:
@@ -83,15 +86,17 @@ jobs:
         run: cargo build --release --locked --target "$TARGET"
 
       # readelf reads both architectures, so the cross build is checked too.
-      - name: Binary needs at most glibc 2.35
+      - name: Binary stays within the documented glibc floor
         shell: bash
+        env:
+          FLOOR: ${{ matrix.glibc_floor }}
         run: |
           newest="$(readelf -W -V "target/$TARGET/release/memnest" \
             | grep -o 'GLIBC_2\.[0-9]*' | sort -V | tail -1)"
-          echo "newest glibc version required: $newest"
-          top="$(printf '%s\n' "$newest" GLIBC_2.35 | sort -V | tail -1)"
-          if [ "$top" != GLIBC_2.35 ]; then
-            echo "binary requires $newest; archives must run on 2.35" >&2
+          echo "newest glibc version required: $newest (floor $FLOOR)"
+          top="$(printf '%s\n' "$newest" "$FLOOR" | sort -V | tail -1)"
+          if [ "$top" != "$FLOOR" ]; then
+            echo "binary requires $newest; archive must run on $FLOOR" >&2
             exit 1
           fi
 

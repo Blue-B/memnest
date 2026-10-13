@@ -1,6 +1,6 @@
 //! The prebuilt onnxruntime that fastembed links was compiled with glibc 2.38+ headers, which
 //! redirect strtol/strtoll/strtoull to the C23 `__isoc23_*` entry points. Defining them here
-//! keeps release binaries linkable and runnable on glibc 2.35 (Ubuntu 22.04, Debian 12).
+//! keeps the x86_64 release binary linkable and runnable on glibc 2.35 (Ubuntu 22.04, Debian 12).
 //! shortcut: unlike C23 these do not parse a `0b` prefix; onnxruntime's callers do not rely on it.
 use std::ffi::{c_char, c_int, c_long, c_longlong, c_ulonglong};
 
