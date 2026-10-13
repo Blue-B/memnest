@@ -4,6 +4,8 @@ pub mod config;
 pub mod crypto;
 pub mod doctor;
 pub mod embedding;
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+mod glibc_compat;
 pub mod hook;
 pub mod index;
 pub mod lifecycle;

@@ -2,6 +2,12 @@
 
 All notable changes to the `memnest` Rust engine are recorded here.
 
+## [0.4.1] - 2026-10-13
+
+### Fixed
+
+- Linux release archives run on glibc 2.35 or newer (Ubuntu 22.04, Debian 12 and later). v0.4.0 archives were built on Ubuntu 24.04 and failed to start on older systems with `GLIBC_2.38 not found`. Releases now build on Ubuntu 22.04, the prebuilt onnxruntime's C23 `strtol` family references are forwarded to the classic functions, and the release job fails if a binary requires a newer glibc.
+
 ## [0.4.0] - 2026-10-07
 
 ### Added
