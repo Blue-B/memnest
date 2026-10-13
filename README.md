@@ -36,14 +36,14 @@ For a few rules that should apply every time, `AGENTS.md` or `CLAUDE.md` is simp
 
 ## Install
 
-Linux x86_64 and Arm64 archives are available; Rust is not required. The first write or search downloads an embedding model of about 1.1 GB. Embedding can use about 1.9 GB of RAM.
+Linux x86_64 and Arm64 archives are available; Rust is not required. The x86_64 archive needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12 or later); the Arm64 archive needs glibc 2.39 (Ubuntu 24.04 or later). The first write or search downloads an embedding model of about 1.1 GB. Embedding can use about 1.9 GB of RAM.
 
 Read the downloaded script before running it. Before upgrading an existing installation, back up `memory.db` together with `master.key`.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.4.0/core/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.4.2/core/scripts/install.sh \
   -o /tmp/memnest-install.sh
-VERSION=v0.4.0 bash /tmp/memnest-install.sh --user
+VERSION=v0.4.2 bash /tmp/memnest-install.sh --user
 ```
 
 Setup starts the server and conversation watcher and adds missing connections to supported Claude Code, Codex, and Cursor configurations. It backs up existing configuration before changing it and prints recovery commands.
@@ -53,7 +53,7 @@ Setup starts the server and conversation watcher and adds missing connections to
 With the core running, install the matching extension:
 
 ```bash
-# Published extension matching core 0.4.0
+# Published extension for core 0.4.x
 pi install npm:pi-memnest@0.4.0
 
 # Or connect a reviewed source checkout
