@@ -107,13 +107,14 @@ Optional [team access](docs/team-access.md) adds named project grants, audit and
 - **Capture is selective.** It stores visible conversation text, not reasoning, tool traffic, images, or subagent conversations. It does not import ChatGPT's or Claude's built-in memory.
 - **Storage is local; your connected AI answers.** Default storage/search makes no generative LLM calls. Explicit `evidence_only=true` opts in to a configured local source-selector model, whose judgment remains unverified. A cloud AI provider receives retrieved text that you send to its model.
 - **Regular memories are not encrypted.** Redaction handles known credential patterns, not every possible secret. Do not expose port 3111 directly to the internet.
+- **A web connector is a network path into your memories.** ChatGPT and Grok connectors need a public URL, retrieved text reaches the provider's servers, and that URL acts as a credential. See [web connectors](docs/web-connectors.md).
 - **Deletion is not immediate erasure.** Records default to 30 days in trash. New plaintext archives are off by default; old archives, backups and external transcripts may still retain copies. See [security and deletion limits](SECURITY.md).
 
 ## Documentation and checks
 
 One Rust service stores source records in SQLite and searches with BM25 plus local multilingual embeddings. Search indexes can be rebuilt from the source records.
 
-- [Real-client validation](docs/client-validation.md) and [reproducible shared-store demo](docs/demo.md)
+- [Web connectors for ChatGPT and Grok](docs/web-connectors.md), [real-client validation](docs/client-validation.md) and [reproducible shared-store demo](docs/demo.md)
 - [Following-source checks and limits](docs/following-capture.md), [retrieval evaluation](benchmarks/memorybench/README.md)
 - [Design decisions](docs/design-decisions.md), [operations and backups](docs/operations.md), [contributing](CONTRIBUTING.md)
 - [Latest release](https://github.com/Blue-B/memnest/releases/latest) and [changelog](core/CHANGELOG.md)

@@ -107,13 +107,14 @@ memory_get(id="<검색 결과의 ID>")
 - **모든 대화를 저장하지는 않습니다.** 보이는 대화 텍스트를 수집하며, 추론 내용, 도구 입출력, 이미지와 서브에이전트 대화는 제외합니다. ChatGPT나 Claude의 내장 메모리도 가져오지 않습니다.
 - **저장은 로컬, 답변은 연결한 AI가 담당합니다.** 기본 저장과 검색은 생성형 LLM을 호출하지 않습니다. `evidence_only=true`를 명시하면 설정한 로컬 모델이 근거 후보를 선택하며, 그 판단은 사실 검증이 아닙니다. 클라우드 AI에 검색 결과를 전달하면 해당 제공자가 그 내용을 받습니다.
 - **일반 기억은 암호화되지 않습니다.** 알려진 비밀값 형태를 가리는 처리가 모든 유출을 막지는 못합니다. 3111 포트를 인터넷에 직접 노출하지 마세요.
+- **웹 커넥터는 기억으로 통하는 네트워크 경로입니다.** ChatGPT와 Grok 커넥터는 공개 URL을 요구하고, 검색된 내용은 해당 제공자 서버로 전달되며, 그 URL은 자격증명처럼 동작합니다. [웹 커넥터 안내](docs/web-connectors.md)를 확인하세요.
 - **삭제 직후 완전히 사라지지는 않습니다.** 휴지통에 기본 30일 남습니다. 새 평문 보관 파일은 기본으로 만들지 않지만 기존 보관 파일, 백업과 원본 대화에는 남을 수 있습니다. [보안과 삭제 범위](SECURITY.md)를 확인하세요.
 
 ## 문서와 검증
 
 Memnest는 Rust 서비스 하나에서 SQLite 원문을 관리하고, BM25와 로컬 다국어 임베딩으로 검색합니다. 검색 색인은 원문에서 다시 만들 수 있습니다.
 
-- [실제 클라이언트 검증](docs/client-validation.md)과 [공유 저장소 재현 데모](docs/demo.md)
+- [ChatGPT와 Grok 웹 커넥터](docs/web-connectors.md), [실제 클라이언트 검증](docs/client-validation.md)과 [공유 저장소 재현 데모](docs/demo.md)
 - [후속 기록 조회 검사와 한계](docs/following-capture.md), [검색 평가](benchmarks/memorybench/README.md)
 - [설계 결정](docs/design-decisions.md), [운영과 백업](docs/operations.md), [개발 안내](CONTRIBUTING.md)
 - [최신 릴리스](https://github.com/Blue-B/memnest/releases/latest)와 [변경 이력](core/CHANGELOG.md)
