@@ -210,6 +210,8 @@ For previously tracked history, use `memnest watch --path /absolute/original/ses
 | `MEMNEST_EXPOSE_SECRET_TOOLS` | Set to `1` to expose four vault tools to MCP and the pi extension; hidden by default |
 | `MEMNEST_REBUILD_INDEXES` | Set to `1` for a full SQLite-to-Tantivy/HNSW rebuild at startup |
 
+Reaching the HTTP API from something other than a local client takes more than a token. A web client such as ChatGPT or Grok calls the service from its own infrastructure, so the endpoint needs a public URL, and not every client can send a bearer header. See [connecting ChatGPT and Grok](web-connectors.md).
+
 ## Development checks
 
 Run everything with one command. It builds, runs each package suite against a scratch instance on its own port, and checks the documentation contract:

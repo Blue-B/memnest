@@ -4,6 +4,10 @@
 
 Memnest serves a remote MCP endpoint already. This guide covers what is missing to reach it from ChatGPT on the web and from Grok on the web, and what to check before you expose anything.
 
+For what Memnest is and how to connect a local agent, start at the [README](../README.md).
+
+The gateway this guide uses is [`scripts/mcp-readonly-gateway.mjs`](../scripts/mcp-readonly-gateway.mjs).
+
 Short version: the MCP endpoint exists and works, but both services call it from their own infrastructure. That needs a public HTTPS URL, and ChatGPT's custom MCP dialog cannot send a static bearer header. A small read-only gateway covers both gaps.
 
 ## What the service already serves
@@ -31,7 +35,7 @@ So there are two things to decide, and they are separate: how the URL becomes re
 
 ## Option A: read-only gateway (recommended)
 
-`scripts/mcp-readonly-gateway.mjs` sits in front of the MCP endpoint. It requires a secret path segment, adds the bearer token when one is configured, advertises only the tools you allow, and refuses `tools/call` for everything else. Nothing is stored in the gateway.
+The [`scripts/mcp-readonly-gateway.mjs`](../scripts/mcp-readonly-gateway.mjs) gateway sits in front of the MCP endpoint. It requires a secret path segment, adds the bearer token when one is configured, advertises only the tools you allow, and refuses `tools/call` for everything else. Nothing is stored in the gateway.
 
 ```bash
 # 1. Pick a secret and start the gateway on loopback.
