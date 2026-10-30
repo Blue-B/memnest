@@ -9,7 +9,10 @@ import pathlib
 import shlex
 import shutil
 
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10, e.g. Ubuntu 22.04
+    tomllib = None
 
 
 def executable(name):
@@ -77,12 +80,17 @@ def configure(home, binary, url, force_all, autocontext=False):
         load_json(home / ".claude" / "settings.json")
     if cursor:
         load_json(home / ".cursor" / "mcp.json")
+    codex_unchecked = False
     if codex and (home / ".codex" / "config.toml").exists():
         path = home / ".codex" / "config.toml"
-        try:
-            tomllib.loads(path.read_text())
-        except (OSError, UnicodeError, tomllib.TOMLDecodeError) as error:
-            raise ValueError(f"could not read TOML config {path}: {error}") from error
+        if tomllib is None:
+            # Without a TOML parser, leave an existing Codex config untouched.
+            codex, codex_unchecked = False, True
+        else:
+            try:
+                tomllib.loads(path.read_text())
+            except (OSError, UnicodeError, tomllib.TOMLDecodeError) as error:
+                raise ValueError(f"could not read TOML config {path}: {error}") from error
 
     def persist_manifest():
         doc = {"created": stamp, "home": str(home), "files": entries}
@@ -156,6 +164,12 @@ def configure(home, binary, url, force_all, autocontext=False):
             entry = save(path, before)
             atomic_write_bytes(path, after)
             finish(entry, after)
+
+    if codex_unchecked:
+        detected.append(
+            "Codex (config left unchanged: Python 3.11+ is needed to validate it; "
+            'add [mcp_servers.memnest] url = "' + url + '/mcp" yourself)'
+        )
 
     if executable("pi") or (home / ".pi").exists():
         detected.append("pi (use the pi-memnest package; config left unchanged)")

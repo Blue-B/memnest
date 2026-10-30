@@ -5,6 +5,7 @@ import pathlib
 import stat
 import tempfile
 import unittest
+from unittest import mock
 
 MODULE_PATH = pathlib.Path(__file__).with_name("setup-clients.py")
 spec = importlib.util.spec_from_file_location("setup_clients", MODULE_PATH)
@@ -84,6 +85,8 @@ class SetupClientsTest(unittest.TestCase):
             (pathlib.Path(".claude/settings.json"), "not json", "could not read JSON config"),
             (pathlib.Path(".codex/config.toml"), 'model = "unterminated', "could not read TOML config"),
         ):
+            if path.suffix == ".toml" and setup_clients.tomllib is None:
+                continue  # covered by test_without_tomllib_existing_codex_config_is_left_alone
             with self.subTest(path=path), tempfile.TemporaryDirectory() as directory:
                 home = pathlib.Path(directory)
                 (home / ".claude").mkdir()
@@ -107,6 +110,17 @@ class SetupClientsTest(unittest.TestCase):
             setup_clients.configure(home, pathlib.Path("/opt/memnest"), "http://127.0.0.1:3111", True)
             self.assertEqual(read_json(home / ".claude.json")["mcpServers"]["memnest"]["url"], "http://custom/mcp")
             self.assertIn("http://custom/mcp", (home / ".codex" / "config.toml").read_text())
+
+    def test_without_tomllib_existing_codex_config_is_left_alone(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = pathlib.Path(directory)
+            (home / ".codex").mkdir()
+            original = 'model = "o3"\n'
+            (home / ".codex" / "config.toml").write_text(original)
+            with mock.patch.object(setup_clients, "tomllib", None):
+                setup_clients.configure(home, pathlib.Path("/opt/memnest"), "http://127.0.0.1:3111", True)
+            self.assertEqual((home / ".codex" / "config.toml").read_text(), original)
+            self.assertEqual(read_json(home / ".claude.json")["mcpServers"]["memnest"]["url"], "http://127.0.0.1:3111/mcp")
 
 
 if __name__ == "__main__":

@@ -44,12 +44,7 @@ if [ "$OS" = Linux ]; then
 fi
 validate_port
 BASE_URL="http://${MEMNEST_HOST:-127.0.0.1}:$PORT"
-if [ "$CONFIGURE_CLIENTS" = 1 ]; then
-  python3 -c 'import tomllib' 2>/dev/null || {
-    echo "default setup requires Python 3.11 or newer for safe client-config validation" >&2
-    exit 1
-  }
-elif [ "$VERIFY" = 1 ] || [ "$OS" = Darwin ]; then
+if [ "$CONFIGURE_CLIENTS" = 1 ] || [ "$VERIFY" = 1 ] || [ "$OS" = Darwin ]; then
   command -v python3 >/dev/null 2>&1 || { echo "setup requires python3" >&2; exit 1; }
 fi
 case "$OS" in

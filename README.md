@@ -6,19 +6,45 @@
 
 [한국어](README.ko.md) | [Install](#install) | [Use it](#use-it) | [Operations](docs/operations.md)
 
-Local memory for finding what you did with a coding AI, and why you decided to do it.
+Your coding AI forgets everything when the session ends. Memnest lets it look up what you decided before, and why, from the original conversation instead of an AI-written summary.
 
-Memnest stores pi, Claude Code, and Codex conversation text on your machine. Connected AIs can search those records and read the source after a session ends. Connect several clients to the same Memnest service to use the same history.
+- **Original text, not summaries.** No LLM rewrites your history. Saving and searching call no model API, so there is no API key and no extra token bill. Every result carries a source ID you can open.
+- **One memory for every coding AI.** Claude Code, Codex, Cursor, and pi connect to the same local service. Decide something in Claude Code, look it up from Codex.
+- **Stays on your machine.** One Rust binary with SQLite and a local multilingual embedding model. Credentials go to a separate encrypted vault.
 
 [![Latest release](https://img.shields.io/github/v/release/Blue-B/memnest?label=release)](https://github.com/Blue-B/memnest/releases/latest)
 [![npm: pi-memnest](https://img.shields.io/npm/v/pi-memnest?label=npm%20pi-memnest&color=cb3837)](https://www.npmjs.com/package/pi-memnest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## A recorded lookup
+## Install
 
-[![An actual question followed through two reads to an existing saved explanation](docs/recall-demo.png)](docs/recall-check-2026-10-06.md)
+```bash
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh | bash
+```
 
-In this check, the AI searched for why a task manager had been replaced, followed a reference, and read an existing manual note describing the reason. It did not recover the original conversation in one search. The image is an edited request summary, not a screen recording; [the three-question report](docs/recall-check-2026-10-06.md) also records the two unresolved questions.
+This installs the latest release for your user, starts the server and conversation watcher, and adds Memnest to the Claude Code, Codex, and Cursor configurations it finds. Existing configuration is backed up first, and the restore command is printed.
+
+Requirements: Linux x86_64 (glibc 2.35+, e.g. Ubuntu 22.04, Debian 12) or Arm64 (glibc 2.39+, e.g. Ubuntu 24.04), systemd, and Python 3. The first write or search downloads an embedding model of about 1.1 GB, and embedding can use about 1.9 GB of RAM.
+
+<details>
+<summary>Read the script first, pin a version, or upgrade</summary>
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh \
+  -o /tmp/memnest-install.sh
+less /tmp/memnest-install.sh
+VERSION=v0.4.3 bash /tmp/memnest-install.sh --user
+```
+
+Before upgrading an existing installation, back up `memory.db` together with `master.key`.
+
+</details>
+
+## See it work
+
+[![One client saves a decision, a separate client retrieves the same record](docs/demo-result.png)](docs/demo.md)
+
+Two separate clients, one local store: the record saved through MCP comes back with the same ID from an independent search. [Reproduce it](docs/demo.md) on your own machine.
 
 ## When to use it
 
@@ -33,20 +59,6 @@ Use the accumulated record for questions such as:
 The AI searches memory, reads the relevant source, and uses it to answer. Results include source IDs so you can check the evidence. These are example requests, not an autonomous demo or a guarantee that an answer will be found.
 
 For a few rules that should apply every time, `AGENTS.md` or `CLAUDE.md` is simpler. Memnest is for a growing history of conversations and decisions that you want to look up when needed.
-
-## Install
-
-Linux x86_64 and Arm64 archives are available; Rust is not required. The x86_64 archive needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12 or later); the Arm64 archive needs glibc 2.39 (Ubuntu 24.04 or later). The first write or search downloads an embedding model of about 1.1 GB. Embedding can use about 1.9 GB of RAM.
-
-Read the downloaded script before running it. Before upgrading an existing installation, back up `memory.db` together with `master.key`.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.4.2/core/scripts/install.sh \
-  -o /tmp/memnest-install.sh
-VERSION=v0.4.2 bash /tmp/memnest-install.sh --user
-```
-
-Setup starts the server and conversation watcher and adds missing connections to supported Claude Code, Codex, and Cursor configurations. It backs up existing configuration before changing it and prints recovery commands.
 
 ### Connect pi
 
@@ -115,7 +127,7 @@ Optional [team access](docs/team-access.md) adds named project grants, audit and
 One Rust service stores source records in SQLite and searches with BM25 plus local multilingual embeddings. Search indexes can be rebuilt from the source records.
 
 - [Web connectors for ChatGPT and Grok](docs/web-connectors.md), [real-client validation](docs/client-validation.md) and [reproducible shared-store demo](docs/demo.md)
-- [Following-source checks and limits](docs/following-capture.md), [retrieval evaluation](benchmarks/memorybench/README.md)
+- [Following-source checks and limits](docs/following-capture.md), [retrieval evaluation](benchmarks/memorybench/README.md), [a recorded three-question recall check](docs/recall-check-2026-10-06.md)
 - [Design decisions](docs/design-decisions.md), [operations and backups](docs/operations.md), [contributing](CONTRIBUTING.md)
 - [Latest release](https://github.com/Blue-B/memnest/releases/latest) and [changelog](core/CHANGELOG.md)
 
