@@ -4,6 +4,10 @@ All notable changes to the `memnest` Rust engine are recorded here.
 
 ## [0.4.3] - 2026-10-31
 
+### Added
+
+- Apple Silicon macOS archive (`aarch64-apple-darwin`), installed as launchd agents by the same `install.sh`. Core CI installs, reinstalls, restarts and removes it on a macOS 14 runner. It is not signed or notarized, and Intel Macs still need a source build.
+
 ### Fixed
 
 - Default setup no longer requires Python 3.11. On Python 3.10 (Ubuntu 22.04's default) it configures Claude Code and Cursor and leaves an existing Codex `config.toml` unchanged, because it cannot validate that file without `tomllib`; setup prints the line to add by hand.

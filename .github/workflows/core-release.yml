@@ -10,9 +10,9 @@ permissions:
 
 jobs:
   build:
-    # Only Linux archives are published. The macOS installer remains source-only
-    # until its install, restart, validation, and removal lifecycle is exercised
-    # on native hardware. Nothing downloads a published Windows archive:
+    # Linux and Apple Silicon macOS archives are published. core-ci.yml runs the
+    # macOS install, restart and removal lifecycle on macos-14; Intel Macs have
+    # no prebuilt onnxruntime. Nothing downloads a published Windows archive:
     # install-windows.ps1 takes a -BinPath that defaults to a locally built
     # target\release\memnest.exe, which is the path the operations guide
     # documents. Windows still gets compile coverage from the windows-latest job
@@ -29,6 +29,8 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04
             glibc_floor: GLIBC_2.39
+          - target: aarch64-apple-darwin
+            os: macos-14
 
     runs-on: ${{ matrix.os }}
     env:
@@ -87,6 +89,7 @@ jobs:
 
       # readelf reads both architectures, so the cross build is checked too.
       - name: Binary stays within the documented glibc floor
+        if: runner.os == 'Linux'
         shell: bash
         env:
           FLOOR: ${{ matrix.glibc_floor }}
@@ -136,7 +139,7 @@ jobs:
           tar -xzf "$archive" -C "$unpacked"
           test -f "$unpacked/THIRD_PARTY_NOTICES.md"
           test -x "$unpacked/memnest"
-          if [ "$TARGET" = x86_64-unknown-linux-gnu ]; then
+          if [ "$TARGET" != aarch64-unknown-linux-gnu ]; then
             packaged_version="$("$unpacked/memnest" --version)"
             echo "packaged binary reports: $packaged_version"
             case "$packaged_version" in

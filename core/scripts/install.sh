@@ -54,6 +54,9 @@ case "$OS" in
 linux) TARGET="${TARGET_ARCH}-unknown-linux-gnu" ;;
 darwin)
   [ "$MODE" = user ] || { echo "macOS installs support only --user" >&2; exit 1; }
+  [ "$TARGET_ARCH" = aarch64 ] || {
+    echo "Intel Macs have no release archive; build from source: ${REPO}" >&2; exit 1;
+  }
   TARGET="${TARGET_ARCH}-apple-darwin"
   ;;
 *)

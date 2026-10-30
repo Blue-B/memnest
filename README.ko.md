@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/in
 
 최신 릴리스를 사용자 계정에 설치하고, 서버와 대화 감시기를 시작합니다. 찾은 Claude Code, Codex, Cursor 설정에는 Memnest 연결을 추가합니다. 기존 설정은 먼저 백업하고 복구 명령을 알려 줍니다.
 
-필요 조건: Linux x86_64(glibc 2.35 이상, 예: Ubuntu 22.04, Debian 12) 또는 Arm64(glibc 2.39 이상, 예: Ubuntu 24.04), systemd, Python 3. 처음 저장하거나 검색할 때 약 1.1GB의 임베딩 모델을 내려받고, 임베딩 중에는 RAM을 약 1.9GB까지 사용할 수 있습니다.
+필요 조건: Apple Silicon Mac, 또는 systemd가 있는 Linux x86_64(glibc 2.35 이상, 예: Ubuntu 22.04, Debian 12)나 Arm64(glibc 2.39 이상, 예: Ubuntu 24.04). 설치에는 Python 3이 필요합니다. 처음 저장하거나 검색할 때 약 1.1GB의 임베딩 모델을 내려받고, 임베딩 중에는 RAM을 약 1.9GB까지 사용할 수 있습니다.
 
 <details>
 <summary>스크립트를 먼저 확인하거나 버전을 고정하거나 업그레이드할 때</summary>
@@ -88,7 +88,7 @@ pi
 
 </details>
 
-다른 MCP 클라이언트는 `http://127.0.0.1:3111/mcp`에 연결합니다. [연결 예시](adapters/README.md), [다른 환경과 소스 설치](docs/operations.md), [업그레이드와 복구](docs/operations.md#linux-service-upgrades)를 참고하세요. macOS는 소스 설치만 제공하며 실제 설치와 제거는 검증하지 못했습니다.
+다른 MCP 클라이언트는 `http://127.0.0.1:3111/mcp`에 연결합니다. [연결 예시](adapters/README.md), [다른 환경과 소스 설치](docs/operations.md), [업그레이드와 복구](docs/operations.md#linux-service-upgrades)를 참고하세요. Intel Mac은 소스에서 빌드해야 합니다.
 
 ## 사용법
 

@@ -8,7 +8,7 @@ For what memnest is and how to connect an agent, start at the [README](../README
 
 ## Requirements
 
-Core v0.3.0 provides Linux x86_64 and Arm64 binaries, which need neither Git nor Rust. Its integrated setup requires Python 3; on Python 3.10 it leaves an existing Codex `config.toml` unchanged because validating it needs Python 3.11. Building from source also needs Git and a Rust toolchain with Rust 2024 edition support. The first embedding operation needs internet access to download the configured model. macOS installation and packaging code is present, but native launchd installation, restart, and removal remain unverified.
+Core v0.4.3 provides Linux x86_64 and Arm64 binaries and an Apple Silicon macOS binary, which need neither Git nor Rust. Its integrated setup requires Python 3; on Python 3.10 it leaves an existing Codex `config.toml` unchanged because validating it needs Python 3.11. Building from source also needs Git and a Rust toolchain with Rust 2024 edition support. The first embedding operation needs internet access to download the configured model. Intel Macs have no prebuilt onnxruntime and need a source build.
 
 Linux setup requires `systemctl` and `systemd-analyze` from systemd. The latter is used read-only to inspect user or system unit search paths before an upgrade. The optional package under `pi-extension/` lists its own runtime requirements in its package README.
 
@@ -50,7 +50,7 @@ python3 ~/.memnest/setup-backups/<timestamp>/setup-clients.py \
   --restore ~/.memnest/setup-backups/<timestamp>/manifest.json
 ```
 
-On Linux this uses systemd and stores user data in `~/.memnest`. Use `--system` for `/var/lib/memnest`; system mode intentionally does not run a root transcript watcher, so capture must be run by the desktop user. The macOS implementation targets `io.memnest.service` and `io.memnest.watch` in `~/Library/LaunchAgents`, with logs in `~/Library/Logs/Memnest`. It is source-only and unverified on an actual Mac.
+On Linux this uses systemd and stores user data in `~/.memnest`. Use `--system` for `/var/lib/memnest`; system mode intentionally does not run a root transcript watcher, so capture must be run by the desktop user. The macOS implementation targets `io.memnest.service` and `io.memnest.watch` in `~/Library/LaunchAgents`, with logs in `~/Library/Logs/Memnest`. CI installs, reinstalls, restarts and removes it on a GitHub-hosted macOS 14 runner; it has not been checked on a personal Mac.
 
 The lower-level Linux installer remains available:
 
@@ -82,7 +82,7 @@ Restore client configuration before using `--remove-data`, because setup manifes
 
 Pass `--remove-data` only when the retained store and setup backups should be permanently deleted. Uninstall does not guess which shared client entries the user still wants; use the exact manifest restore command first to roll those back.
 
-Validate an installed macOS service with `scripts/validate-installed-macos.sh`. This repository's Linux environment can syntax- and contract-check launchd files, but only a logged-in macOS host can exercise `launchctl`, launch persistence, restart, reinstall, uninstall, and native x86_64/arm64 execution. The release workflow is configured to build and run native binaries, but does not test the launchd lifecycle. That configuration is not a claim that the current changes have run in hosted CI. The macOS packaging code does not add signing or notarization; a future downloaded artifact may require Gatekeeper approval.
+Validate an installed macOS service with `scripts/validate-installed-macos.sh`. Core CI runs install, reinstall, validation with restart, and `--remove-data` removal on a GitHub-hosted macOS 14 runner. Login persistence across a reboot is not tested. The archive is not signed or notarized: `curl` downloads are not quarantined, but an archive downloaded through a browser may need Gatekeeper approval.
 
 ### WSL
 

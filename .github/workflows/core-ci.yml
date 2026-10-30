@@ -67,8 +67,8 @@ jobs:
       - name: Third-party notices are current
         run: python3 scripts/generate-third-party-notices.py --check
 
-  # Source-only compile coverage on the native target supported by ort.
-  # This does not claim an installed macOS lifecycle is validated or published.
+  # Apple Silicon is the only macOS target ort ships prebuilt binaries for.
+  # The lifecycle steps gate the published aarch64-apple-darwin archive.
   macos-source-check:
     runs-on: macos-14
     defaults:
@@ -86,6 +86,18 @@ jobs:
         run: cargo build --release --locked --target aarch64-apple-darwin
       - name: Installer and launchd contract checks
         run: bash scripts/verify-macos-packaging.sh
+      - name: Native install, reinstall, restart and removal
+        run: |
+          bin="$PWD/target/aarch64-apple-darwin/release/memnest"
+          scripts/setup.sh --user --bin "$bin"
+          scripts/setup.sh --user --bin "$bin" --no-verify
+          bash ~/.local/share/memnest/scripts/validate-installed-macos.sh
+          bash ~/.local/share/memnest/scripts/uninstall-macos.sh --remove-data
+          label="gui/$(id -u)/io.memnest.service"
+          if launchctl print "$label" >/dev/null 2>&1; then exit 1; fi
+          test ! -e ~/.local/bin/memnest
+          test ! -e ~/Library/LaunchAgents/io.memnest.service.plist
+          test ! -e ~/.memnest
 
   windows:
     runs-on: windows-latest

@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/in
 
 This installs the latest release for your user, starts the server and conversation watcher, and adds Memnest to the Claude Code, Codex, and Cursor configurations it finds. Existing configuration is backed up first, and the restore command is printed.
 
-Requirements: Linux x86_64 (glibc 2.35+, e.g. Ubuntu 22.04, Debian 12) or Arm64 (glibc 2.39+, e.g. Ubuntu 24.04), systemd, and Python 3. The first write or search downloads an embedding model of about 1.1 GB, and embedding can use about 1.9 GB of RAM.
+Requirements: macOS on Apple Silicon, or Linux with systemd on x86_64 (glibc 2.35+, e.g. Ubuntu 22.04, Debian 12) or Arm64 (glibc 2.39+, e.g. Ubuntu 24.04). Python 3 is needed for setup. The first write or search downloads an embedding model of about 1.1 GB, and embedding can use about 1.9 GB of RAM.
 
 <details>
 <summary>Read the script first, pin a version, or upgrade</summary>
@@ -88,7 +88,7 @@ Restart pi after changing the variable; `/reload` alone cannot change the runnin
 
 </details>
 
-Other MCP clients connect to `http://127.0.0.1:3111/mcp`. See [connection examples](adapters/README.md), [other environments and source installation](docs/operations.md), and [upgrade and recovery](docs/operations.md#linux-service-upgrades). macOS is source-only; native installation and removal have not been validated.
+Other MCP clients connect to `http://127.0.0.1:3111/mcp`. See [connection examples](adapters/README.md), [other environments and source installation](docs/operations.md), and [upgrade and recovery](docs/operations.md#linux-service-upgrades). Intel Macs need a source build.
 
 ## Use it
 
