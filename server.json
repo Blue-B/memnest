@@ -1,0 +1,29 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Blue-B/memnest",
+  "title": "Memnest",
+  "description": "Local memory for coding AIs: search past conversations and decisions from the original text.",
+  "repository": {
+    "url": "https://github.com/Blue-B/memnest",
+    "source": "github"
+  },
+  "version": "0.4.3",
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/Blue-B/memnest/releases/download/v0.4.3/memnest-v0.4.3-linux-x64.mcpb",
+      "fileSha256": "6c6f9dcd5af80d984592a412af686518be1ff39d904783ede20a66e47c208518",
+      "transport": {
+        "type": "stdio"
+      }
+    },
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/Blue-B/memnest/releases/download/v0.4.3/memnest-v0.4.3-darwin-arm64.mcpb",
+      "fileSha256": "f6d11e822e6d0d7ae9e2876d2fba96da9ef4c3372020fda4fcd76f672e1f01a0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
