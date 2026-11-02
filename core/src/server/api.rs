@@ -1473,7 +1473,8 @@ pub(crate) async fn build_context_scope(
     max_chars: usize,
     category: Option<String>,
 ) -> ContextResponse {
-    let query = query.trim().to_string();
+    // Prompts can be long; only the head is needed to rank recall.
+    let query: String = query.trim().chars().take(2000).collect();
     let project = scope.primary().to_string();
     let memories = if query.is_empty() {
         Vec::new()

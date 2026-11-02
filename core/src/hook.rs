@@ -154,7 +154,10 @@ async fn fetch_context(
     cwd: Option<&str>,
     timeout_ms: u64,
 ) -> Result<String> {
+    // Never route the token or prompt through an ambient proxy or a redirect.
     let client = reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_millis(timeout_ms))
         .build()?;
     let mut request = client.post(context_endpoint(base_url)).json(&json!({

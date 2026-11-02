@@ -246,6 +246,38 @@ pub fn restrict_scope(scope: SearchScope) -> Result<SearchScope, OperationError>
     }
 }
 
+/// Hosts a browser can only reach on purpose: IP literals, localhost, and names in
+/// MEMNEST_ALLOWED_HOSTS (comma-separated). A rebinding attacker controls a DNS name.
+fn host_allowed(host: &str) -> bool {
+    let name = match host.rsplit_once(':') {
+        Some((name, port)) if port.bytes().all(|b| b.is_ascii_digit()) && !name.ends_with(':') => name,
+        _ => host,
+    };
+    let name = name.trim_start_matches('[').trim_end_matches(']').to_ascii_lowercase();
+    name == "localhost"
+        || name.parse::<std::net::IpAddr>().is_ok()
+        || std::env::var("MEMNEST_ALLOWED_HOSTS").is_ok_and(|list| {
+            list.split(',')
+                .any(|allowed| allowed.trim().eq_ignore_ascii_case(&name))
+        })
+}
+
+fn browser_safe_without_auth(headers: &axum::http::HeaderMap) -> bool {
+    let host_ok = headers
+        .get("host")
+        .and_then(|v| v.to_str().ok())
+        .is_none_or(host_allowed);
+    // Browsers send Origin on cross-site POSTs; local CLI and MCP clients send none.
+    let origin_ok = match headers.get("origin").map(|v| v.to_str()) {
+        None => true,
+        Some(Ok(origin)) => origin
+            .split_once("://")
+            .is_some_and(|(_, rest)| host_allowed(rest.trim_end_matches('/'))),
+        Some(Err(_)) => false,
+    };
+    host_ok && origin_ok
+}
+
 fn operation(request: &Request) -> String {
     let route = request
         .extensions()
@@ -298,6 +330,10 @@ pub async fn middleware(
             if header != expected {
                 return Err(StatusCode::UNAUTHORIZED);
             }
+        } else if !browser_safe_without_auth(request.headers()) {
+            // Without a credential, a web page could otherwise drive this service
+            // (cross-site POST or DNS rebinding).
+            return Err(StatusCode::FORBIDDEN);
         }
         return Ok(next.run(request).await);
     }
@@ -307,7 +343,7 @@ pub async fn middleware(
         sys.db
             .read()
             .await
-            .append_access_event("unauthenticated", &operation(&request), "denied", &[])
+            .append_access_event(crate::storage::UNAUTHENTICATED_ACTOR, &operation(&request), "denied", &[])
             .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
         return Err(StatusCode::UNAUTHORIZED);
     };
@@ -337,14 +373,16 @@ pub async fn audit(
 ) -> Result<axum::Json<serde_json::Value>, StatusCode> {
     require_admin().map_err(|_| StatusCode::FORBIDDEN)?;
     let sys = system.read().await;
-    let events = sys
-        .db
-        .read()
-        .await
+    let db = sys.db.read().await;
+    let events = db
         .access_events(200)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let denied = db
+        .unauthenticated_event_count()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(axum::Json(
-        json!({"events":events,"limit":200,"order":"newest_first","contents_logged":false}),
+        json!({"events":events,"limit":200,"order":"newest_first","contents_logged":false,
+            "unauthenticated_denied_recent":denied}),
     ))
 }
 
@@ -404,5 +442,34 @@ mod tests {
         // A reader-only policy cannot lock its administrator out.
         let reader = json!({"principals":[{"id":"reader","token_sha256":"0".repeat(64),"read_projects":["alpha"]}]});
         assert!(AccessControl::from_json(reader.to_string().as_bytes()).is_err());
+    }
+
+    #[test]
+    fn unauthenticated_mode_rejects_browser_cross_site_and_rebinding() {
+        use axum::http::{HeaderMap, HeaderValue};
+        let headers = |pairs: &[(&'static str, &'static str)]| {
+            let mut map = HeaderMap::new();
+            for (k, v) in pairs {
+                map.insert(*k, HeaderValue::from_static(v));
+            }
+            map
+        };
+        assert!(browser_safe_without_auth(&headers(&[("host", "127.0.0.1:3111")])));
+        assert!(browser_safe_without_auth(&headers(&[("host", "localhost:3111")])));
+        assert!(browser_safe_without_auth(&headers(&[("host", "[::1]:3111")])));
+        assert!(browser_safe_without_auth(&headers(&[("host", "100.74.125.103:3111")])));
+        assert!(!browser_safe_without_auth(&headers(&[("host", "rebind.attacker.example:3111")])));
+        assert!(!browser_safe_without_auth(&headers(&[
+            ("host", "127.0.0.1:3111"),
+            ("origin", "https://evil.example")
+        ])));
+        assert!(!browser_safe_without_auth(&headers(&[
+            ("host", "127.0.0.1:3111"),
+            ("origin", "null")
+        ])));
+        assert!(browser_safe_without_auth(&headers(&[
+            ("host", "127.0.0.1:3111"),
+            ("origin", "http://localhost:3111")
+        ])));
     }
 }

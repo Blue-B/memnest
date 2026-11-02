@@ -30,10 +30,11 @@ Requirements: macOS on Apple Silicon, or Linux with systemd on x86_64 (glibc 2.3
 <summary>Read the script first, pin a version, or upgrade</summary>
 
 ```bash
+installer="$(mktemp)"
 curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh \
-  -o /tmp/memnest-install.sh
-less /tmp/memnest-install.sh
-VERSION=v0.4.3 bash /tmp/memnest-install.sh --user
+  -o "$installer"
+less "$installer"
+VERSION=v0.4.3 bash "$installer" --user
 ```
 
 Before upgrading an existing installation, back up `memory.db` together with `master.key`.

@@ -326,8 +326,8 @@ pub(crate) async fn resolve_search_scope(
     }
     let allowed = {
         let sys = system.read().await;
-        let db = sys.db.write().await;
-        db.register_workspace_scope(&workspace)
+        let db = sys.db.read().await;
+        db.workspace_scope(&workspace)
             .map_err(|error| OperationError::internal(error.to_string()))?
     };
     crate::access::restrict_scope(SearchScope::Projects {
@@ -343,6 +343,8 @@ pub async fn search(
     if input.query.trim().is_empty() {
         return Err(OperationError::bad("query is required"));
     }
+    // Bound parser work; clients such as pi autocontext send whole prompts.
+    let query: String = input.query.chars().take(2000).collect();
     if !(1..=50).contains(&input.n_results) {
         return Err(OperationError::bad("n_results must be between 1 and 50"));
     }
@@ -351,7 +353,7 @@ pub async fn search(
     let started = std::time::Instant::now();
     let items = api::run_hybrid_search_scope(
         system.clone(),
-        &input.query,
+        &query,
         &scope,
         input.n_results,
         api::SearchOptions {
@@ -363,7 +365,7 @@ pub async fn search(
     )
     .await;
     let items = if input.evidence_only {
-        crate::retrieval_evidence::select(system.clone(), &input.query, items).await?
+        crate::retrieval_evidence::select(system.clone(), &query, items).await?
     } else {
         items
     };

@@ -110,7 +110,8 @@ pub async fn http_endpoint(
 
     let responses = match &parsed {
         Value::Object(_) => dispatch(system, &parsed).await.into_iter().collect(),
-        Value::Array(batch) if !batch.is_empty() => {
+        // Bounded so one request cannot hold the per-request lock for unbounded work.
+        Value::Array(batch) if !batch.is_empty() && batch.len() <= 32 => {
             let mut out = Vec::new();
             for message in batch {
                 if let Some(response) = dispatch(system.clone(), message).await {
@@ -123,7 +124,7 @@ pub async fn http_endpoint(
             return json_rpc_error(
                 StatusCode::BAD_REQUEST,
                 -32600,
-                "expected a JSON-RPC object or a non-empty batch".to_string(),
+                "expected a JSON-RPC object or a batch of 1 to 32 messages".to_string(),
             );
         }
     };

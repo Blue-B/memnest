@@ -841,6 +841,7 @@ pub async fn import_history(url: Option<&str>, paths: &[String], dry_run: bool) 
     } else {
         Some(
             reqwest::Client::builder()
+                .no_proxy()
                 .timeout(Duration::from_secs(120))
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,
@@ -925,6 +926,8 @@ pub async fn run(
     let mut state = load_state(&state_path)?;
 
     let client = reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(120))
         .build()?;
     let interval_secs = interval_secs.max(1);

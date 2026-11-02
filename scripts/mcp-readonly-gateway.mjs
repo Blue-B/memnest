@@ -53,27 +53,59 @@ function refused(id, message) {
 async function forward(raw) {
 	const headers = { "content-type": "application/json" };
 	if (token) headers.authorization = `Bearer ${token}`;
-	const response = await fetch(upstreamUrl, { method: "POST", headers, body: raw });
+	const response = await fetch(upstreamUrl, {
+		method: "POST",
+		headers,
+		body: raw,
+		signal: AbortSignal.timeout(120_000),
+	});
 	return { status: response.status, text: await response.text() };
 }
 
-function isGatewayPath(pathname) {
+const MAX_BODY_BYTES = 1024 * 1024;
+
+function isGatewayPath(url) {
+	let pathname;
+	try {
+		pathname = new URL(url, "http://localhost").pathname;
+	} catch {
+		return false;
+	}
 	const segments = pathname.split("/").filter(Boolean);
 	return segments.includes(secret) && segments.at(-1) === "mcp";
 }
 
-const server = createServer(async (req, res) => {
+// Any throw inside an async request handler would otherwise end the process.
+const server = createServer((req, res) => {
+	handle(req, res).catch((error) => {
+		console.log(`${new Date().toISOString()} request failed: ${error.message}`);
+		if (!res.headersSent) reply(res, 400, { error: "bad request" });
+		else res.destroy();
+	});
+});
+
+async function handle(req, res) {
 	if (req.method !== "POST") {
 		reply(res, 405, { error: "method not allowed" });
 		return;
 	}
-	if (!isGatewayPath(new URL(req.url, "http://localhost").pathname)) {
+	if (!isGatewayPath(req.url)) {
 		reply(res, 404, { error: "not found" });
 		return;
 	}
 
-	let raw = "";
-	for await (const chunk of req) raw += chunk;
+	const chunks = [];
+	let size = 0;
+	for await (const chunk of req) {
+		size += chunk.length;
+		if (size > MAX_BODY_BYTES) {
+			reply(res, 413, { error: "request body too large" });
+			req.destroy();
+			return;
+		}
+		chunks.push(chunk);
+	}
+	const raw = Buffer.concat(chunks).toString("utf8");
 
 	let message;
 	try {
@@ -86,11 +118,11 @@ const server = createServer(async (req, res) => {
 		});
 		return;
 	}
-	if (Array.isArray(message)) {
+	if (message === null || typeof message !== "object" || Array.isArray(message)) {
 		reply(res, 400, {
 			jsonrpc: "2.0",
 			id: null,
-			error: { code: -32600, message: "batches are not supported" },
+			error: { code: -32600, message: "expected one JSON-RPC object; batches are not supported" },
 		});
 		return;
 	}
@@ -100,11 +132,11 @@ const server = createServer(async (req, res) => {
 
 	if (method === "tools/call" && !allowed.has(name)) {
 		// Tool names are logged; arguments and results are not.
-		console.log(`${new Date().toISOString()} refused tools/call ${name}`);
+		console.log(`${new Date().toISOString()} refused tools/call ${JSON.stringify(name)}`);
 		reply(res, 200, refused(message.id, `tool not available: ${name}`));
 		return;
 	}
-	console.log(`${new Date().toISOString()} ${method}${name ? ` ${name}` : ""}`);
+	console.log(`${new Date().toISOString()} ${JSON.stringify(method)}${name ? ` ${JSON.stringify(name)}` : ""}`);
 
 	let upstream;
 	try {
@@ -141,7 +173,7 @@ const server = createServer(async (req, res) => {
 	}
 
 	reply(res, upstream.status, upstream.text);
-});
+}
 
 server.listen(port, "127.0.0.1", () => {
 	console.log(

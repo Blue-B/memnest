@@ -30,10 +30,11 @@ curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/in
 <summary>스크립트를 먼저 확인하거나 버전을 고정하거나 업그레이드할 때</summary>
 
 ```bash
+installer="$(mktemp)"
 curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh \
-  -o /tmp/memnest-install.sh
-less /tmp/memnest-install.sh
-VERSION=v0.4.3 bash /tmp/memnest-install.sh --user
+  -o "$installer"
+less "$installer"
+VERSION=v0.4.3 bash "$installer" --user
 ```
 
 기존 설치를 업그레이드한다면 먼저 `memory.db`와 `master.key`를 함께 백업하세요.
