@@ -2,6 +2,8 @@
 
 <!-- markdownlint-disable MD013 -->
 
+[English](client-validation.md) | [한국어](client-validation.ko.md)
+
 The reproducible demo uses separate MCP and HTTP clients because it can run without a model account. A second validation on 2026-09-09 launched the installed pi, Claude Code, and Codex programs against an isolated Memnest service and workspace.
 
 ## Result

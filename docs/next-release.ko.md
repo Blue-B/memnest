@@ -75,4 +75,4 @@ MemoryBench 어댑터와 작은 한국어 검색 fixture, 독립 클라이언트
 - macOS는 설치와 패키징 코드를 제공하지만 실제 launchd 설치, 로그인 후 자동 시작, 제거를 실행한 것은 아닙니다.
 - 대규모 저장소 성능, 답변 정확도, 제품 간 비교 성능은 새로 측정하지 않았습니다.
 
-자세한 계약은 [원문 페이지 조회](bounded-retrieval.md), [pi 확장](../pi-extension/README.md), [코어 변경 이력](../core/CHANGELOG.md), [운영 문서](operations.md)에 있습니다.
+자세한 계약은 [원문 페이지 조회](bounded-retrieval.md)(영문), [pi 확장](../pi-extension/README.ko.md), [코어 변경 이력](../core/CHANGELOG.ko.md), [운영 문서](operations.ko.md)에 있습니다.

@@ -1,5 +1,7 @@
 # Local provider comparison
 
+[English](local-provider-comparison.md) | [한국어](local-provider-comparison.ko.md)
+
 This is a small reproducible experiment, not a claim that Memnest is the best memory system. It used the fixed `scripts/fixtures/coding-memory.json`: 16 authored records, their 15-record current snapshot, and 48 questions (22 with a nominated answer document and 26 without one).
 
 ## Conditions

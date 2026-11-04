@@ -1,5 +1,7 @@
 # Security Policy
 
+[English](SECURITY.md) | [한국어](SECURITY.ko.md)
+
 ## Reporting a vulnerability
 
 Please report security problems privately, not in the public issue tracker.

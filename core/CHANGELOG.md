@@ -1,6 +1,24 @@
 # Changelog
 
+[English](CHANGELOG.md) | [한국어](CHANGELOG.ko.md)
+
 All notable changes to the `memnest` Rust engine are recorded here.
+
+## [Unreleased]
+
+### Added
+
+- Task cards for every client. A card is a handoff note for multi-day work; see `docs/task-cards.md`.
+  - The MCP `task_card` tool and `POST /task-card` save, list, open, finish, and close cards.
+  - `memnest hook` handles `SessionStart` and `UserPromptSubmit` for Claude Code and Codex, through `POST /task-card/hook`. It lists cards on a session's first prompt and records each user message verbatim into the open card. After compaction it brings back the rule and the user's latest words.
+  - `memnest hook --no-recall` runs task cards without automatic recall.
+  - Setup installs that hook for Claude Code (`~/.claude/settings.json`) and Codex (`~/.codex/hooks.json`) by default, and lets Codex call `task_card` without an approval prompt. `--autocontext` still opts in to recall.
+
+### Compatibility and limits
+
+- MCP lists six tools by default, with `task_card` after the five memory tools.
+- Open cards per session live in core memory and are forgotten on restart; the next prompt lists cards again.
+- Codex runs new hooks only after you trust them once with `/hooks`.
 
 ## [0.4.3] - 2026-10-31
 

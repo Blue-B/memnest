@@ -133,9 +133,9 @@ async function searchMemnest(query, cwd) {
     if (typeof json.project !== "string" || !Array.isArray(json.results))
       return [];
     return json.results.filter(isMemResult).filter(
-      (result2) => result2.chunk_type === "Manual" || result2.chunk_type === "Consolidated"
+      (result3) => result3.chunk_type === "Manual" || result3.chunk_type === "Consolidated"
     ).filter(
-      (result2) => result2.project === json.project || result2.project === "playbook"
+      (result3) => result3.project === json.project || result3.project === "playbook"
     );
   } catch {
     return [];
@@ -194,9 +194,6 @@ function installAutocontext(pi) {
   });
   return true;
 }
-
-// src/index.ts
-import { execFile } from "node:child_process";
 
 // node_modules/typebox/build/system/memory/memory.mjs
 var memory_exports = {};
@@ -388,10 +385,10 @@ function IsBoolean(value) {
 function IsConstructor(value) {
   if (IsUndefined(value) || !IsFunction(value))
     return false;
-  const result2 = Function.prototype.toString.call(value);
-  if (/^class\s/.test(result2))
+  const result3 = Function.prototype.toString.call(value);
+  if (/^class\s/.test(result3))
     return true;
-  if (/\[native code\]/.test(result2))
+  if (/\[native code\]/.test(result3))
     return true;
   return false;
 }
@@ -480,12 +477,12 @@ function Every(value, offset, callback) {
   return true;
 }
 function EveryAll(value, offset, callback) {
-  let result2 = true;
+  let result3 = true;
   for (let index = offset; index < value.length; index++) {
     if (!callback(value[index], index))
-      result2 = false;
+      result3 = false;
   }
-  return result2;
+  return result3;
 }
 function TakeLeft(array, true_, false_) {
   return IsEqual(array.length, 0) ? false_() : true_(array[0], array.slice(1));
@@ -535,15 +532,15 @@ function FromArray(value) {
   return value.map((value2) => FromValue(value2));
 }
 function FromObject(value) {
-  const result2 = {};
+  const result3 = {};
   const descriptors = Object.getOwnPropertyDescriptors(value);
   for (const key of Object.keys(descriptors)) {
     const descriptor = descriptors[key];
     if (guard_exports.HasPropertyKey(descriptor, "value")) {
-      Object.defineProperty(result2, key, { ...descriptor, value: FromValue(descriptor.value) });
+      Object.defineProperty(result3, key, { ...descriptor, value: FromValue(descriptor.value) });
     }
   }
-  return result2;
+  return result3;
 }
 function FromRegExp(value) {
   return new RegExp(value.source, value.flags);
@@ -620,24 +617,24 @@ function Create(hidden, enumerable, options = {}) {
 // node_modules/typebox/build/system/memory/discard.mjs
 function Discard(value, propertyKeys) {
   Metrics.discard += 1;
-  const result2 = {};
+  const result3 = {};
   const descriptors = Object.getOwnPropertyDescriptors(Clone(value));
   const keysToDiscard = new Set(propertyKeys);
   for (const key of Object.keys(descriptors)) {
     if (keysToDiscard.has(key))
       continue;
-    Object.defineProperty(result2, key, descriptors[key]);
+    Object.defineProperty(result3, key, descriptors[key]);
   }
-  return result2;
+  return result3;
 }
 
 // node_modules/typebox/build/system/memory/update.mjs
 function Update(current, hidden, enumerable) {
   Metrics.update += 1;
   const settings2 = settings_exports.Get();
-  const result2 = Clone(current);
+  const result3 = Clone(current);
   for (const key of Object.keys(hidden)) {
-    Object.defineProperty(result2, key, {
+    Object.defineProperty(result3, key, {
       configurable: true,
       writable: true,
       enumerable: settings2.enumerableKind,
@@ -645,14 +642,14 @@ function Update(current, hidden, enumerable) {
     });
   }
   for (const key of Object.keys(enumerable)) {
-    Object.defineProperty(result2, key, {
+    Object.defineProperty(result3, key, {
       configurable: true,
       enumerable: true,
       writable: true,
       value: enumerable[key]
     });
   }
-  return result2;
+  return result3;
 }
 
 // node_modules/typebox/build/type/types/schema.mjs
@@ -723,8 +720,8 @@ function IsImmutable(value) {
 
 // node_modules/typebox/build/type/types/_optional.mjs
 function OptionalRemove(type) {
-  const result2 = memory_exports.Discard(type, ["~optional"]);
-  return result2;
+  const result3 = memory_exports.Discard(type, ["~optional"]);
+  return result3;
 }
 function OptionalAdd(type) {
   return memory_exports.Update(type, { "~optional": true }, {});
@@ -922,8 +919,8 @@ function IsUnknown(value) {
 
 // node_modules/typebox/build/type/types/cyclic.mjs
 function Cyclic($defs, $ref, options) {
-  const defs = guard_exports.Keys($defs).reduce((result2, key) => {
-    return { ...result2, [key]: memory_exports.Update($defs[key], {}, { $id: key }) };
+  const defs = guard_exports.Keys($defs).reduce((result3, key) => {
+    return { ...result3, [key]: memory_exports.Update($defs[key], {}, { $id: key }) };
   }, {});
   return memory_exports.Create({ ["~kind"]: "Cyclic" }, { $defs: defs, $ref }, options);
 }
@@ -968,7 +965,7 @@ function IsTypeScriptEnumLike(value) {
 }
 function TypeScriptEnumToEnumValues(type) {
   const keys = guard_exports.Keys(type).filter((key) => isNaN(key));
-  return keys.reduce((result2, key) => [...result2, type[key]], []);
+  return keys.reduce((result3, key) => [...result3, type[key]], []);
 }
 
 // node_modules/typebox/build/type/types/enum.mjs
@@ -1212,8 +1209,8 @@ function IsString2(value) {
 // node_modules/typebox/build/type/engine/patterns/pattern.mjs
 function ParsePatternIntoTypes(pattern) {
   const parsed = Pattern(pattern);
-  const result2 = guard_exports.IsEqual(parsed.length, 2) ? parsed[0] : [];
-  return result2;
+  const result3 = guard_exports.IsEqual(parsed.length, 2) ? parsed[0] : [];
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/template_literal/is_finite.mjs
@@ -1224,15 +1221,15 @@ function FromTypesReduce(types) {
   return guard_exports.TakeLeft(types, (left, right) => FromType(left) ? FromTypesReduce(right) : false, () => true);
 }
 function FromTypes(types) {
-  const result2 = guard_exports.IsEqual(types.length, 0) ? false : FromTypesReduce(types);
-  return result2;
+  const result3 = guard_exports.IsEqual(types.length, 0) ? false : FromTypesReduce(types);
+  return result3;
 }
 function FromType(type) {
   return IsUnion(type) ? FromTypes(type.anyOf) : IsLiteral(type) ? FromLiteral(type.const) : false;
 }
 function IsTemplateLiteralFinite(types) {
-  const result2 = FromTypes(types);
-  return result2;
+  const result3 = FromTypes(types);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/template_literal/create.mjs
@@ -1241,18 +1238,18 @@ function TemplateLiteralCreate(pattern) {
 }
 
 // node_modules/typebox/build/type/engine/template_literal/decode.mjs
-function FromLiteralPush(variants, value, result2 = []) {
-  return guard_exports.TakeLeft(variants, (left, right) => FromLiteralPush(right, value, [...result2, `${left}${value}`]), () => result2);
+function FromLiteralPush(variants, value, result3 = []) {
+  return guard_exports.TakeLeft(variants, (left, right) => FromLiteralPush(right, value, [...result3, `${left}${value}`]), () => result3);
 }
 function FromLiteral2(variants, value) {
   return guard_exports.IsEqual(variants.length, 0) ? [`${value}`] : FromLiteralPush(variants, value);
 }
-function FromUnion(variants, types, result2 = []) {
-  return guard_exports.TakeLeft(types, (left, right) => FromUnion(variants, right, [...result2, ...FromType2(variants, left)]), () => result2);
+function FromUnion(variants, types, result3 = []) {
+  return guard_exports.TakeLeft(types, (left, right) => FromUnion(variants, right, [...result3, ...FromType2(variants, left)]), () => result3);
 }
 function FromType2(variants, type) {
-  const result2 = IsUnion(type) ? FromUnion(variants, type.anyOf) : IsLiteral(type) ? FromLiteral2(variants, type.const) : Unreachable();
-  return result2;
+  const result3 = IsUnion(type) ? FromUnion(variants, type.anyOf) : IsLiteral(type) ? FromLiteral2(variants, type.const) : Unreachable();
+  return result3;
 }
 function DecodeFromSpan(variants, types) {
   return guard_exports.TakeLeft(types, (left, right) => DecodeFromSpan(FromType2(variants, left), right), () => variants);
@@ -1263,8 +1260,8 @@ function VariantsToLiterals(variants) {
 function DecodeTypesAsUnion(types) {
   const variants = DecodeFromSpan([], types);
   const literals = VariantsToLiterals(variants);
-  const result2 = Union(literals);
-  return result2;
+  const result3 = Union(literals);
+  return result3;
 }
 function DecodeTypes(types) {
   return guard_exports.IsEqual(types.length, 0) ? Unreachable() : (
@@ -1274,13 +1271,13 @@ function DecodeTypes(types) {
 }
 function TemplateLiteralDecodeUnsafe(pattern) {
   const types = ParsePatternIntoTypes(pattern);
-  const result2 = guard_exports.IsEqual(types.length, 0) ? String2() : IsTemplateLiteralFinite(types) ? DecodeTypes(types) : TemplateLiteralCreate(pattern);
-  return result2;
+  const result3 = guard_exports.IsEqual(types.length, 0) ? String2() : IsTemplateLiteralFinite(types) ? DecodeTypes(types) : TemplateLiteralCreate(pattern);
+  return result3;
 }
 function TemplateLiteralDecode(pattern) {
   const decoded = TemplateLiteralDecodeUnsafe(pattern);
-  const result2 = IsTemplateLiteral(decoded) ? String2() : decoded;
-  return result2;
+  const result3 = IsTemplateLiteral(decoded) ? String2() : decoded;
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/record/record_create.mjs
@@ -1305,30 +1302,30 @@ function FromEnumValue(value) {
   return guard_exports.IsString(value) || guard_exports.IsNumber(value) ? Literal(value) : guard_exports.IsNull(value) ? Null() : Never();
 }
 function EnumValuesToVariants(values) {
-  const result2 = values.map((value) => FromEnumValue(value));
-  return result2;
+  const result3 = values.map((value) => FromEnumValue(value));
+  return result3;
 }
 function EnumValuesToUnion(values) {
   const variants = EnumValuesToVariants(values);
-  const result2 = Union(variants);
-  return result2;
+  const result3 = Union(variants);
+  return result3;
 }
 function EnumToUnion(type) {
-  const result2 = EnumValuesToUnion(type.enum);
-  return result2;
+  const result3 = EnumValuesToUnion(type.enum);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/record/from_key_enum.mjs
 function FromEnumKey(values, value) {
   const unionKey = EnumValuesToUnion(values);
-  const result2 = FromKey(unionKey, value);
-  return result2;
+  const result3 = FromKey(unionKey, value);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/record/from_key_integer.mjs
 function FromIntegerKey(_key, value) {
-  const result2 = CreateRecord(IntegerKey, value);
-  return result2;
+  const result3 = CreateRecord(IntegerKey, value);
+  return result3;
 }
 
 // node_modules/typebox/build/type/types/tuple.mjs
@@ -1345,15 +1342,15 @@ function TupleOptions(type) {
 
 // node_modules/typebox/build/type/engine/tuple/to_object.mjs
 function TupleElementsToProperties(types) {
-  const result2 = types.reduceRight((result3, right, index) => {
-    return { [index]: right, ...result3 };
+  const result3 = types.reduceRight((result4, right, index) => {
+    return { [index]: right, ...result4 };
   }, {});
-  return result2;
+  return result3;
 }
 function TupleToObject(type) {
   const properties = TupleElementsToProperties(type.items);
-  const result2 = _Object_(properties);
-  return result2;
+  const result3 = _Object_(properties);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/evaluate/composite.mjs
@@ -1375,13 +1372,13 @@ function CompositePropertyKey(left, right, key) {
 }
 function CompositeProperties(left, right) {
   const keys = /* @__PURE__ */ new Set([...guard_exports.Keys(right), ...guard_exports.Keys(left)]);
-  return [...keys].reduce((result2, key) => {
-    return { ...result2, [key]: CompositePropertyKey(left, right, key) };
+  return [...keys].reduce((result3, key) => {
+    return { ...result3, [key]: CompositePropertyKey(left, right, key) };
   }, {});
 }
 function GetProperties(type) {
-  const result2 = IsObject2(type) ? type.properties : IsTuple(type) ? TupleElementsToProperties(type.items) : Unreachable();
-  return result2;
+  const result3 = IsObject2(type) ? type.properties : IsTuple(type) ? TupleElementsToProperties(type.items) : Unreachable();
+  return result3;
 }
 function Composite(left, right) {
   const leftProperties = GetProperties(left);
@@ -1392,8 +1389,8 @@ function Composite(left, right) {
 
 // node_modules/typebox/build/type/engine/evaluate/narrow.mjs
 function Narrow(left, right) {
-  const result2 = Compare(left, right);
-  return guard_exports.IsEqual(result2, ResultLeftInside) ? left : guard_exports.IsEqual(result2, ResultRightInside) ? right : guard_exports.IsEqual(result2, ResultEqual) ? right : Never();
+  const result3 = Compare(left, right);
+  return guard_exports.IsEqual(result3, ResultLeftInside) ? left : guard_exports.IsEqual(result3, ResultRightInside) ? right : guard_exports.IsEqual(result3, ResultEqual) ? right : Never();
 }
 
 // node_modules/typebox/build/type/engine/evaluate/distribute.mjs
@@ -1403,8 +1400,8 @@ function IsObjectLike(type) {
 function IsUnionOperand(left, right) {
   const isUnionLeft = IsUnion(left);
   const isUnionRight = IsUnion(right);
-  const result2 = isUnionLeft || isUnionRight;
-  return result2;
+  const result3 = isUnionLeft || isUnionRight;
+  return result3;
 }
 function DistributeOperation(left, right) {
   const evaluatedLeft = EvaluateType(left);
@@ -1412,42 +1409,42 @@ function DistributeOperation(left, right) {
   const isUnionOperand = IsUnionOperand(evaluatedLeft, evaluatedRight);
   const isObjectLeft = IsObjectLike(evaluatedLeft);
   const IsObjectRight = IsObjectLike(evaluatedRight);
-  const result2 = isUnionOperand ? EvaluateIntersect([evaluatedLeft, evaluatedRight]) : isObjectLeft && IsObjectRight ? Composite(evaluatedLeft, evaluatedRight) : isObjectLeft && !IsObjectRight ? evaluatedLeft : !isObjectLeft && IsObjectRight ? evaluatedRight : Narrow(evaluatedLeft, evaluatedRight);
-  return result2;
+  const result3 = isUnionOperand ? EvaluateIntersect([evaluatedLeft, evaluatedRight]) : isObjectLeft && IsObjectRight ? Composite(evaluatedLeft, evaluatedRight) : isObjectLeft && !IsObjectRight ? evaluatedLeft : !isObjectLeft && IsObjectRight ? evaluatedRight : Narrow(evaluatedLeft, evaluatedRight);
+  return result3;
 }
-function DistributeType(type, types, result2 = []) {
-  return guard_exports.TakeLeft(types, (left, right) => DistributeType(type, right, [...result2, DistributeOperation(type, left)]), () => guard_exports.IsEqual(result2.length, 0) ? [type] : result2);
+function DistributeType(type, types, result3 = []) {
+  return guard_exports.TakeLeft(types, (left, right) => DistributeType(type, right, [...result3, DistributeOperation(type, left)]), () => guard_exports.IsEqual(result3.length, 0) ? [type] : result3);
 }
-function DistributeUnion(types, distribution, result2 = []) {
-  return guard_exports.TakeLeft(types, (left, right) => DistributeUnion(right, distribution, [...result2, ...Distribute([left], distribution)]), () => result2);
+function DistributeUnion(types, distribution, result3 = []) {
+  return guard_exports.TakeLeft(types, (left, right) => DistributeUnion(right, distribution, [...result3, ...Distribute([left], distribution)]), () => result3);
 }
-function Distribute(types, result2 = []) {
-  return guard_exports.TakeLeft(types, (left, right) => IsUnion(left) ? Distribute(right, DistributeUnion(left.anyOf, result2)) : Distribute(right, DistributeType(left, result2)), () => result2);
+function Distribute(types, result3 = []) {
+  return guard_exports.TakeLeft(types, (left, right) => IsUnion(left) ? Distribute(right, DistributeUnion(left.anyOf, result3)) : Distribute(right, DistributeType(left, result3)), () => result3);
 }
 
 // node_modules/typebox/build/type/engine/evaluate/evaluate.mjs
 function EvaluateIntersect(types) {
   const distribution = Distribute(types);
-  const result2 = Broaden(distribution);
-  return result2;
+  const result3 = Broaden(distribution);
+  return result3;
 }
 function EvaluateUnion(types) {
-  const result2 = Broaden(types);
-  return result2;
+  const result3 = Broaden(types);
+  return result3;
 }
 function EvaluateType(type) {
   return IsIntersect(type) ? EvaluateIntersect(type.allOf) : IsUnion(type) ? EvaluateUnion(type.anyOf) : type;
 }
 function EvaluateUnionFast(types) {
-  const result2 = guard_exports.IsEqual(types.length, 1) ? types[0] : guard_exports.IsEqual(types.length, 0) ? Never() : Union(types);
-  return result2;
+  const result3 = guard_exports.IsEqual(types.length, 1) ? types[0] : guard_exports.IsEqual(types.length, 0) ? Never() : Union(types);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/record/from_key_intersect.mjs
 function FromIntersectKey(types, value) {
   const evaluatedKey = EvaluateIntersect(types);
-  const result2 = FromKey(evaluatedKey, value);
-  return result2;
+  const result3 = FromKey(evaluatedKey, value);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/record/from_key_literal.mjs
@@ -1457,8 +1454,8 @@ function FromLiteralKey(key, value) {
 
 // node_modules/typebox/build/type/engine/record/from_key_number.mjs
 function FromNumberKey(_key, value) {
-  const result2 = CreateRecord(NumberKey, value);
-  return result2;
+  const result3 = CreateRecord(NumberKey, value);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/record/from_key_string.mjs
@@ -1470,18 +1467,18 @@ function FromStringKey(key, value) {
 function FromTemplateKey(pattern, value) {
   const types = ParsePatternIntoTypes(pattern);
   const finite = IsTemplateLiteralFinite(types);
-  const result2 = finite ? FromKey(TemplateLiteralDecode(pattern), value) : CreateRecord(pattern, value);
-  return result2;
+  const result3 = finite ? FromKey(TemplateLiteralDecode(pattern), value) : CreateRecord(pattern, value);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/evaluate/flatten.mjs
 function FlattenType(type) {
-  const result2 = IsUnion(type) ? Flatten(type.anyOf) : [type];
-  return result2;
+  const result3 = IsUnion(type) ? Flatten(type.anyOf) : [type];
+  return result3;
 }
 function Flatten(types) {
-  return types.reduce((result2, type) => {
-    return [...result2, ...FlattenType(type)];
+  return types.reduce((result3, type) => {
+    return [...result3, ...FlattenType(type)];
   }, []);
 }
 
@@ -1493,14 +1490,14 @@ function TryBuildRecord(types, value) {
   return guard_exports.IsEqual(StringOrNumberCheck(types), true) ? CreateRecord(StringKey, value) : void 0;
 }
 function CreateProperties(types, value) {
-  return types.reduce((result2, left) => {
-    return IsLiteral(left) && (guard_exports.IsString(left.const) || guard_exports.IsNumber(left.const)) ? { ...result2, [left.const]: value } : result2;
+  return types.reduce((result3, left) => {
+    return IsLiteral(left) && (guard_exports.IsString(left.const) || guard_exports.IsNumber(left.const)) ? { ...result3, [left.const]: value } : result3;
   }, {});
 }
 function CreateObject(types, value) {
   const properties = CreateProperties(types, value);
-  const result2 = _Object_(properties);
-  return result2;
+  const result3 = _Object_(properties);
+  return result3;
 }
 function FromUnionKey(types, value) {
   const flattened = Flatten(types);
@@ -1510,14 +1507,14 @@ function FromUnionKey(types, value) {
 
 // node_modules/typebox/build/type/engine/record/from_key.mjs
 function FromKey(key, value) {
-  const result2 = IsAny(key) ? FromAnyKey(value) : IsBoolean2(key) ? FromBooleanKey(value) : IsEnum(key) ? FromEnumKey(key.enum, value) : IsInteger2(key) ? FromIntegerKey(key, value) : IsIntersect(key) ? FromIntersectKey(key.allOf, value) : IsLiteral(key) ? FromLiteralKey(key.const, value) : IsNumber2(key) ? FromNumberKey(key, value) : IsUnion(key) ? FromUnionKey(key.anyOf, value) : IsString2(key) ? FromStringKey(key, value) : IsTemplateLiteral(key) ? FromTemplateKey(key.pattern, value) : _Object_({});
-  return result2;
+  const result3 = IsAny(key) ? FromAnyKey(value) : IsBoolean2(key) ? FromBooleanKey(value) : IsEnum(key) ? FromEnumKey(key.enum, value) : IsInteger2(key) ? FromIntegerKey(key, value) : IsIntersect(key) ? FromIntersectKey(key.allOf, value) : IsLiteral(key) ? FromLiteralKey(key.const, value) : IsNumber2(key) ? FromNumberKey(key, value) : IsUnion(key) ? FromUnionKey(key.anyOf, value) : IsString2(key) ? FromStringKey(key, value) : IsTemplateLiteral(key) ? FromTemplateKey(key.pattern, value) : _Object_({});
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/record/instantiate.mjs
 function RecordAction(key, value, options) {
-  const result2 = CanInstantiate([key]) ? memory_exports.Update(FromKey(key, value), {}, options) : RecordDeferred(key, value, options);
-  return result2;
+  const result3 = CanInstantiate([key]) ? memory_exports.Update(FromKey(key, value), {}, options) : RecordDeferred(key, value, options);
+  return result3;
 }
 function RecordInstantiate(context, state, key, value, options) {
   const instantiatedKey = InstantiateType(context, state, key);
@@ -1543,8 +1540,8 @@ function RecordPattern(type) {
 }
 function RecordKey(type) {
   const pattern = RecordPattern(type);
-  const result2 = guard_exports.IsEqual(pattern, StringKey) ? String2() : guard_exports.IsEqual(pattern, IntegerKey) ? Integer() : guard_exports.IsEqual(pattern, NumberKey) ? Number2() : TemplateLiteralDecodeUnsafe(pattern);
-  return result2;
+  const result3 = guard_exports.IsEqual(pattern, StringKey) ? String2() : guard_exports.IsEqual(pattern, IntegerKey) ? Integer() : guard_exports.IsEqual(pattern, NumberKey) ? Number2() : TemplateLiteralDecodeUnsafe(pattern);
+  return result3;
 }
 function RecordValue(type) {
   return type.patternProperties[RecordPattern(type)];
@@ -1592,9 +1589,9 @@ function IntrinsicOrCall(ref, parameters) {
 function Unreachable2() {
   throw Error("Unreachable");
 }
-var DelimitedDecode = (input, result2 = []) => {
-  return input.reduce((result3, left) => {
-    return guard_exports.IsArray(left) && guard_exports.IsEqual(left.length, 2) ? [...result3, left[0]] : [...result3, left];
+var DelimitedDecode = (input, result3 = []) => {
+  return input.reduce((result4, left) => {
+    return guard_exports.IsArray(left) && guard_exports.IsEqual(left.length, 2) ? [...result4, left[0]] : [...result4, left];
   }, []);
 };
 var Delimited = (input) => {
@@ -1713,8 +1710,8 @@ function KeyOfMapping(input) {
   return input.length > 0;
 }
 function IndexArrayMapping(input) {
-  return input.reduce((result2, current) => {
-    return guard_exports.IsEqual(current.length, 3) ? [...result2, [current[1]]] : [...result2, []];
+  return input.reduce((result3, current) => {
+    return guard_exports.IsEqual(current.length, 3) ? [...result3, [current[1]]] : [...result3, []];
   }, []);
 }
 function ExtendsMapping(input) {
@@ -1727,9 +1724,9 @@ function WithMapping(input) {
   return guard_exports.IsEqual(input.length, 2) ? input[1] : [];
 }
 function FactorIndexArray(Type2, indexArray) {
-  return indexArray.reduce((result2, left) => {
+  return indexArray.reduce((result3, left) => {
     const _left = left;
-    return guard_exports.IsEqual(_left.length, 1) ? IndexDeferred(result2, _left[0]) : guard_exports.IsEqual(_left.length, 0) ? _Array_(result2) : Unreachable2();
+    return guard_exports.IsEqual(_left.length, 1) ? IndexDeferred(result3, _left[0]) : guard_exports.IsEqual(_left.length, 0) ? _Array_(result3) : Unreachable2();
   }, Type2);
 }
 function FactorExtends(type, extend) {
@@ -1818,9 +1815,9 @@ function PropertyListMapping(input) {
   return Delimited(input);
 }
 function PropertiesReduce(propertyList) {
-  return propertyList.reduce((result2, left) => {
+  return propertyList.reduce((result3, left) => {
     const isPatternProperties = guard_exports.HasPropertyKey(left, IntegerKey) || guard_exports.HasPropertyKey(left, NumberKey) || guard_exports.HasPropertyKey(left, StringKey);
-    return isPatternProperties ? [result2[0], memory_exports.Assign(result2[1], left)] : [memory_exports.Assign(result2[0], left), result2[1]];
+    return isPatternProperties ? [result3[0], memory_exports.Assign(result3[1], left)] : [memory_exports.Assign(result3[0], left), result3[1]];
   }, [{}, {}]);
 }
 function PropertiesMapping(input) {
@@ -1925,8 +1922,8 @@ function JsonPropertyListMapping(input) {
   return Delimited(input);
 }
 function JsonObjectMappingReduce(propertyList) {
-  return propertyList.reduce((result2, left) => {
-    return memory_exports.Assign(result2, left);
+  return propertyList.reduce((result3, left) => {
+    return memory_exports.Assign(result3, left);
   }, {});
 }
 function JsonObjectMapping(input) {
@@ -2037,9 +2034,9 @@ function TakeVariant(variant, input) {
 }
 function Take(variants, input) {
   for (let i = 0; i < variants.length; i++) {
-    const result2 = TakeVariant(variants[i], input);
-    if (IsMatch(result2))
-      return result2;
+    const result3 = TakeVariant(variants[i], input);
+    if (IsMatch(result3))
+      return result3;
   }
   return [];
 }
@@ -2070,13 +2067,13 @@ var OpenComment = "/*";
 var CloseComment = "*/";
 function DiscardMultilineComment(input) {
   const index = input.indexOf(CloseComment);
-  const result2 = IsEqual(index, -1) ? "" : input.slice(index + 2);
-  return result2;
+  const result3 = IsEqual(index, -1) ? "" : input.slice(index + 2);
+  return result3;
 }
 function DiscardLineComment(input) {
   const index = input.indexOf(NewLine);
-  const result2 = IsEqual(index, -1) ? "" : input.slice(index);
-  return result2;
+  const result3 = IsEqual(index, -1) ? "" : input.slice(index);
+  return result3;
 }
 function TrimStartUntilNewline(input) {
   return input.replace(/^[ \t\r\f\v]+/, "");
@@ -2099,8 +2096,8 @@ function Optional2(value, input) {
 function IsDiscard(discard, input) {
   return discard.includes(input);
 }
-function Many(allowed2, discard, input, result2 = "") {
-  return Match2(Take(allowed2, input), (Char, Rest2) => IsDiscard(discard, Char) ? Many(allowed2, discard, Rest2, result2) : Many(allowed2, discard, Rest2, `${result2}${Char}`), () => [result2, input]);
+function Many(allowed2, discard, input, result3 = "") {
+  return Match2(Take(allowed2, input), (Char, Rest2) => IsDiscard(discard, Char) ? Many(allowed2, discard, Rest2, result3) : Many(allowed2, discard, Rest2, `${result3}${Char}`), () => [result3, input]);
 }
 
 // node_modules/typebox/build/type/script/token/unsigned_integer.mjs
@@ -2166,8 +2163,8 @@ function TakeInitial(input) {
   return Take(Initial, input);
 }
 var Remaining = [...Initial, ...Digit];
-function TakeRemaining(input, result2 = "") {
-  return Match2(Take(Remaining, input), (Remaining2, RemainingRest) => TakeRemaining(RemainingRest, `${result2}${Remaining2}`), () => [result2, input]);
+function TakeRemaining(input, result3 = "") {
+  return Match2(Take(Remaining, input), (Remaining2, RemainingRest) => TakeRemaining(RemainingRest, `${result3}${Remaining2}`), () => [result3, input]);
 }
 function TakeIdent(input) {
   return Match2(
@@ -2235,16 +2232,16 @@ function Number3(input) {
 
 // node_modules/typebox/build/type/script/token/until.mjs
 function TakeOne(input) {
-  const result2 = IsEqual(input, "") ? [] : [input.slice(0, 1), input.slice(1)];
-  return result2;
+  const result3 = IsEqual(input, "") ? [] : [input.slice(0, 1), input.slice(1)];
+  return result3;
 }
 function IsInputMatchSentinal(end, input) {
   return TakeLeft(end, (left, right) => input.startsWith(left) ? true : IsInputMatchSentinal(right, input), () => false);
 }
-function Until(end, input, result2 = "") {
+function Until(end, input, result3 = "") {
   return Match2(
     TakeOne(input),
-    (One, Rest2) => IsInputMatchSentinal(end, input) ? [result2, input] : Until(end, Rest2, `${result2}${One}`),
+    (One, Rest2) => IsInputMatchSentinal(end, input) ? [result3, input] : Until(end, Rest2, `${result3}${One}`),
     () => []
   );
 }
@@ -2300,16 +2297,16 @@ function Until_1(end, input) {
 }
 
 // node_modules/typebox/build/type/script/parser.mjs
-var If = (result2, left, right = () => []) => result2.length === 2 ? left(result2) : right();
+var If = (result3, left, right = () => []) => result3.length === 2 ? left(result3) : right();
 var GenericParameterExtendsEquals = (input) => If(If(Ident(input), ([_0, input2]) => If(Const("extends", input2), ([_1, input3]) => If(Type(input3), ([_2, input4]) => If(Const("=", input4), ([_3, input5]) => If(Type(input5), ([_4, input6]) => [[_0, _1, _2, _3, _4], input6]))))), ([_0, input2]) => [GenericParameterExtendsEqualsMapping(_0), input2]);
 var GenericParameterExtends = (input) => If(If(Ident(input), ([_0, input2]) => If(Const("extends", input2), ([_1, input3]) => If(Type(input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [GenericParameterExtendsMapping(_0), input2]);
 var GenericParameterEquals = (input) => If(If(Ident(input), ([_0, input2]) => If(Const("=", input2), ([_1, input3]) => If(Type(input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [GenericParameterEqualsMapping(_0), input2]);
 var GenericParameterIdentifier = (input) => If(Ident(input), ([_0, input2]) => [GenericParameterIdentifierMapping(_0), input2]);
 var GenericParameter = (input) => If(If(GenericParameterExtendsEquals(input), ([_0, input2]) => [_0, input2], () => If(GenericParameterExtends(input), ([_0, input2]) => [_0, input2], () => If(GenericParameterEquals(input), ([_0, input2]) => [_0, input2], () => If(GenericParameterIdentifier(input), ([_0, input2]) => [_0, input2], () => [])))), ([_0, input2]) => [GenericParameterMapping(_0), input2]);
-var GenericParameterList_0 = (input, result2 = []) => If(If(GenericParameter(input), ([_0, input2]) => If(Const(",", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => GenericParameterList_0(input2, [...result2, _0]), () => [result2, input]);
+var GenericParameterList_0 = (input, result3 = []) => If(If(GenericParameter(input), ([_0, input2]) => If(Const(",", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => GenericParameterList_0(input2, [...result3, _0]), () => [result3, input]);
 var GenericParameterList = (input) => If(If(GenericParameterList_0(input), ([_0, input2]) => If(If(If(GenericParameter(input2), ([_02, input3]) => [[_02], input3]), ([_02, input3]) => [_02, input3], () => If([[], input2], ([_02, input3]) => [_02, input3], () => [])), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [GenericParameterListMapping(_0), input2]);
 var GenericParameters = (input) => If(If(Const("<", input), ([_0, input2]) => If(GenericParameterList(input2), ([_1, input3]) => If(Const(">", input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [GenericParametersMapping(_0), input2]);
-var GenericCallArgumentList_0 = (input, result2 = []) => If(If(Type(input), ([_0, input2]) => If(Const(",", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => GenericCallArgumentList_0(input2, [...result2, _0]), () => [result2, input]);
+var GenericCallArgumentList_0 = (input, result3 = []) => If(If(Type(input), ([_0, input2]) => If(Const(",", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => GenericCallArgumentList_0(input2, [...result3, _0]), () => [result3, input]);
 var GenericCallArgumentList = (input) => If(If(GenericCallArgumentList_0(input), ([_0, input2]) => If(If(If(Type(input2), ([_02, input3]) => [[_02], input3]), ([_02, input3]) => [_02, input3], () => If([[], input2], ([_02, input3]) => [_02, input3], () => [])), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [GenericCallArgumentListMapping(_0), input2]);
 var GenericCallArguments = (input) => If(If(Const("<", input), ([_0, input2]) => If(GenericCallArgumentList(input2), ([_1, input3]) => If(Const(">", input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [GenericCallArgumentsMapping(_0), input2]);
 var GenericCall = (input) => If(If(Ident(input), ([_0, input2]) => If(GenericCallArguments(input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [GenericCallMapping(_0), input2]);
@@ -2340,7 +2337,7 @@ var LiteralNumber = (input) => If(Number3(input), ([_0, input2]) => [LiteralNumb
 var LiteralString = (input) => If(String3(["'", '"'], input), ([_0, input2]) => [LiteralStringMapping(_0), input2]);
 var Literal2 = (input) => If(If(LiteralBigInt(input), ([_0, input2]) => [_0, input2], () => If(LiteralBoolean(input), ([_0, input2]) => [_0, input2], () => If(LiteralNumber(input), ([_0, input2]) => [_0, input2], () => If(LiteralString(input), ([_0, input2]) => [_0, input2], () => [])))), ([_0, input2]) => [LiteralMapping(_0), input2]);
 var KeyOf = (input) => If(If(If(Const("keyof", input), ([_0, input2]) => [[_0], input2]), ([_0, input2]) => [_0, input2], () => If([[], input], ([_0, input2]) => [_0, input2], () => [])), ([_0, input2]) => [KeyOfMapping(_0), input2]);
-var IndexArray_0 = (input, result2 = []) => If(If(If(Const("[", input), ([_0, input2]) => If(Type(input2), ([_1, input3]) => If(Const("]", input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [_0, input2], () => If(If(Const("[", input), ([_0, input2]) => If(Const("]", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [_0, input2], () => [])), ([_0, input2]) => IndexArray_0(input2, [...result2, _0]), () => [result2, input]);
+var IndexArray_0 = (input, result3 = []) => If(If(If(Const("[", input), ([_0, input2]) => If(Type(input2), ([_1, input3]) => If(Const("]", input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [_0, input2], () => If(If(Const("[", input), ([_0, input2]) => If(Const("]", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [_0, input2], () => [])), ([_0, input2]) => IndexArray_0(input2, [...result3, _0]), () => [result3, input]);
 var IndexArray = (input) => If(IndexArray_0(input), ([_0, input2]) => [IndexArrayMapping(_0), input2]);
 var Extends = (input) => If(If(If(Const("extends", input), ([_0, input2]) => If(Type(input2), ([_1, input3]) => If(Const("?", input3), ([_2, input4]) => If(Type(input4), ([_3, input5]) => If(Const(":", input5), ([_4, input6]) => If(Type(input6), ([_5, input7]) => [[_0, _1, _2, _3, _4, _5], input7])))))), ([_0, input2]) => [_0, input2], () => If([[], input], ([_0, input2]) => [_0, input2], () => [])), ([_0, input2]) => [ExtendsMapping(_0), input2]);
 var Base2 = (input) => If(If(If(Const("(", input), ([_0, input2]) => If(Type(input2), ([_1, input3]) => If(Const(")", input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [_0, input2], () => If(Keyword(input), ([_0, input2]) => [_0, input2], () => If(_Object_2(input), ([_0, input2]) => [_0, input2], () => If(Tuple2(input), ([_0, input2]) => [_0, input2], () => If(TemplateLiteral(input), ([_0, input2]) => [_0, input2], () => If(Literal2(input), ([_0, input2]) => [_0, input2], () => If(Constructor2(input), ([_0, input2]) => [_0, input2], () => If(_Function_2(input), ([_0, input2]) => [_0, input2], () => If(Mapped(input), ([_0, input2]) => [_0, input2], () => If(Options(input), ([_0, input2]) => [_0, input2], () => If(GenericCall(input), ([_0, input2]) => [_0, input2], () => If(Reference(input), ([_0, input2]) => [_0, input2], () => [])))))))))))), ([_0, input2]) => [BaseMapping(_0), input2]);
@@ -2364,7 +2361,7 @@ var Readonly2 = (input) => If(If(If(Const("readonly", input), ([_0, input2]) => 
 var Optional3 = (input) => If(If(If(Const("?", input), ([_0, input2]) => [[_0], input2]), ([_0, input2]) => [_0, input2], () => If([[], input], ([_0, input2]) => [_0, input2], () => [])), ([_0, input2]) => [OptionalMapping(_0), input2]);
 var Property = (input) => If(If(Readonly2(input), ([_0, input2]) => If(PropertyKey(input2), ([_1, input3]) => If(Optional3(input3), ([_2, input4]) => If(Const(":", input4), ([_3, input5]) => If(Type(input5), ([_4, input6]) => [[_0, _1, _2, _3, _4], input6]))))), ([_0, input2]) => [PropertyMapping(_0), input2]);
 var PropertyDelimiter = (input) => If(If(If(Const(",", input), ([_0, input2]) => If(Const("\n", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [_0, input2], () => If(If(Const(";", input), ([_0, input2]) => If(Const("\n", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [_0, input2], () => If(If(Const(",", input), ([_0, input2]) => [[_0], input2]), ([_0, input2]) => [_0, input2], () => If(If(Const(";", input), ([_0, input2]) => [[_0], input2]), ([_0, input2]) => [_0, input2], () => If(If(Const("\n", input), ([_0, input2]) => [[_0], input2]), ([_0, input2]) => [_0, input2], () => []))))), ([_0, input2]) => [PropertyDelimiterMapping(_0), input2]);
-var PropertyList_0 = (input, result2 = []) => If(If(Property(input), ([_0, input2]) => If(PropertyDelimiter(input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => PropertyList_0(input2, [...result2, _0]), () => [result2, input]);
+var PropertyList_0 = (input, result3 = []) => If(If(Property(input), ([_0, input2]) => If(PropertyDelimiter(input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => PropertyList_0(input2, [...result3, _0]), () => [result3, input]);
 var PropertyList = (input) => If(If(PropertyList_0(input), ([_0, input2]) => If(If(If(Property(input2), ([_02, input3]) => [[_02], input3]), ([_02, input3]) => [_02, input3], () => If([[], input2], ([_02, input3]) => [_02, input3], () => [])), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [PropertyListMapping(_0), input2]);
 var Properties = (input) => If(If(Const("{", input), ([_0, input2]) => If(PropertyList(input2), ([_1, input3]) => If(Const("}", input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [PropertiesMapping(_0), input2]);
 var _Object_2 = (input) => If(Properties(input), ([_0, input2]) => [_Object_Mapping(_0), input2]);
@@ -2374,7 +2371,7 @@ var ElementReadonly = (input) => If(If(Const("readonly", input), ([_0, input2]) 
 var ElementOptional = (input) => If(If(Type(input), ([_0, input2]) => If(Const("?", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [ElementOptionalMapping(_0), input2]);
 var ElementBase = (input) => If(If(ElementNamed(input), ([_0, input2]) => [_0, input2], () => If(ElementReadonlyOptional(input), ([_0, input2]) => [_0, input2], () => If(ElementReadonly(input), ([_0, input2]) => [_0, input2], () => If(ElementOptional(input), ([_0, input2]) => [_0, input2], () => If(Type(input), ([_0, input2]) => [_0, input2], () => []))))), ([_0, input2]) => [ElementBaseMapping(_0), input2]);
 var Element = (input) => If(If(If(Const("...", input), ([_0, input2]) => If(ElementBase(input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [_0, input2], () => If(If(ElementBase(input), ([_0, input2]) => [[_0], input2]), ([_0, input2]) => [_0, input2], () => [])), ([_0, input2]) => [ElementMapping(_0), input2]);
-var ElementList_0 = (input, result2 = []) => If(If(Element(input), ([_0, input2]) => If(Const(",", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => ElementList_0(input2, [...result2, _0]), () => [result2, input]);
+var ElementList_0 = (input, result3 = []) => If(If(Element(input), ([_0, input2]) => If(Const(",", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => ElementList_0(input2, [...result3, _0]), () => [result3, input]);
 var ElementList = (input) => If(If(ElementList_0(input), ([_0, input2]) => If(If(If(Element(input2), ([_02, input3]) => [[_02], input3]), ([_02, input3]) => [_02, input3], () => If([[], input2], ([_02, input3]) => [_02, input3], () => [])), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [ElementListMapping(_0), input2]);
 var Tuple2 = (input) => If(If(Const("[", input), ([_0, input2]) => If(ElementList(input2), ([_1, input3]) => If(Const("]", input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [TupleMapping(_0), input2]);
 var ParameterReadonlyOptional = (input) => If(If(Ident(input), ([_0, input2]) => If(Const("?", input2), ([_1, input3]) => If(Const(":", input3), ([_2, input4]) => If(Const("readonly", input4), ([_3, input5]) => If(Type(input5), ([_4, input6]) => [[_0, _1, _2, _3, _4], input6]))))), ([_0, input2]) => [ParameterReadonlyOptionalMapping(_0), input2]);
@@ -2383,7 +2380,7 @@ var ParameterOptional = (input) => If(If(Ident(input), ([_0, input2]) => If(Cons
 var ParameterType = (input) => If(If(Ident(input), ([_0, input2]) => If(Const(":", input2), ([_1, input3]) => If(Type(input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [ParameterTypeMapping(_0), input2]);
 var ParameterBase = (input) => If(If(ParameterReadonlyOptional(input), ([_0, input2]) => [_0, input2], () => If(ParameterReadonly(input), ([_0, input2]) => [_0, input2], () => If(ParameterOptional(input), ([_0, input2]) => [_0, input2], () => If(ParameterType(input), ([_0, input2]) => [_0, input2], () => [])))), ([_0, input2]) => [ParameterBaseMapping(_0), input2]);
 var Parameter2 = (input) => If(If(If(Const("...", input), ([_0, input2]) => If(ParameterBase(input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [_0, input2], () => If(If(ParameterBase(input), ([_0, input2]) => [[_0], input2]), ([_0, input2]) => [_0, input2], () => [])), ([_0, input2]) => [ParameterMapping(_0), input2]);
-var ParameterList_0 = (input, result2 = []) => If(If(Parameter2(input), ([_0, input2]) => If(Const(",", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => ParameterList_0(input2, [...result2, _0]), () => [result2, input]);
+var ParameterList_0 = (input, result3 = []) => If(If(Parameter2(input), ([_0, input2]) => If(Const(",", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => ParameterList_0(input2, [...result3, _0]), () => [result3, input]);
 var ParameterList = (input) => If(If(ParameterList_0(input), ([_0, input2]) => If(If(If(Parameter2(input2), ([_02, input3]) => [[_02], input3]), ([_02, input3]) => [_02, input3], () => If([[], input2], ([_02, input3]) => [_02, input3], () => [])), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [ParameterListMapping(_0), input2]);
 var _Function_2 = (input) => If(If(Const("(", input), ([_0, input2]) => If(ParameterList(input2), ([_1, input3]) => If(Const(")", input3), ([_2, input4]) => If(Const("=>", input4), ([_3, input5]) => If(Type(input5), ([_4, input6]) => [[_0, _1, _2, _3, _4], input6]))))), ([_0, input2]) => [_Function_Mapping(_0), input2]);
 var Constructor2 = (input) => If(If(Const("new", input), ([_0, input2]) => If(Const("(", input2), ([_1, input3]) => If(ParameterList(input3), ([_2, input4]) => If(Const(")", input4), ([_3, input5]) => If(Const("=>", input5), ([_4, input6]) => If(Type(input6), ([_5, input7]) => [[_0, _1, _2, _3, _4, _5], input7])))))), ([_0, input2]) => [ConstructorMapping(_0), input2]);
@@ -2398,10 +2395,10 @@ var JsonBoolean = (input) => If(If(Const("true", input), ([_0, input2]) => [_0, 
 var JsonString = (input) => If(String3(['"', "'"], input), ([_0, input2]) => [JsonStringMapping(_0), input2]);
 var JsonNull = (input) => If(Const("null", input), ([_0, input2]) => [JsonNullMapping(_0), input2]);
 var JsonProperty = (input) => If(If(PropertyKey(input), ([_0, input2]) => If(Const(":", input2), ([_1, input3]) => If(Json(input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [JsonPropertyMapping(_0), input2]);
-var JsonPropertyList_0 = (input, result2 = []) => If(If(JsonProperty(input), ([_0, input2]) => If(PropertyDelimiter(input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => JsonPropertyList_0(input2, [...result2, _0]), () => [result2, input]);
+var JsonPropertyList_0 = (input, result3 = []) => If(If(JsonProperty(input), ([_0, input2]) => If(PropertyDelimiter(input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => JsonPropertyList_0(input2, [...result3, _0]), () => [result3, input]);
 var JsonPropertyList = (input) => If(If(JsonPropertyList_0(input), ([_0, input2]) => If(If(If(JsonProperty(input2), ([_02, input3]) => [[_02], input3]), ([_02, input3]) => [_02, input3], () => If([[], input2], ([_02, input3]) => [_02, input3], () => [])), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [JsonPropertyListMapping(_0), input2]);
 var JsonObject = (input) => If(If(Const("{", input), ([_0, input2]) => If(JsonPropertyList(input2), ([_1, input3]) => If(Const("}", input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [JsonObjectMapping(_0), input2]);
-var JsonElementList_0 = (input, result2 = []) => If(If(Json(input), ([_0, input2]) => If(Const(",", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => JsonElementList_0(input2, [...result2, _0]), () => [result2, input]);
+var JsonElementList_0 = (input, result3 = []) => If(If(Json(input), ([_0, input2]) => If(Const(",", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => JsonElementList_0(input2, [...result3, _0]), () => [result3, input]);
 var JsonElementList = (input) => If(If(JsonElementList_0(input), ([_0, input2]) => If(If(If(Json(input2), ([_02, input3]) => [[_02], input3]), ([_02, input3]) => [_02, input3], () => If([[], input2], ([_02, input3]) => [_02, input3], () => [])), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [JsonElementListMapping(_0), input2]);
 var JsonArray = (input) => If(If(Const("[", input), ([_0, input2]) => If(JsonElementList(input2), ([_1, input3]) => If(Const("]", input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [JsonArrayMapping(_0), input2]);
 var Json = (input) => If(If(JsonNumber(input), ([_0, input2]) => [_0, input2], () => If(JsonBoolean(input), ([_0, input2]) => [_0, input2], () => If(JsonString(input), ([_0, input2]) => [_0, input2], () => If(JsonNull(input), ([_0, input2]) => [_0, input2], () => If(JsonObject(input), ([_0, input2]) => [_0, input2], () => If(JsonArray(input), ([_0, input2]) => [_0, input2], () => [])))))), ([_0, input2]) => [JsonMapping(_0), input2]);
@@ -2417,7 +2414,7 @@ var PatternUnion = (input) => If(If(If(PatternTerm(input), ([_0, input2]) => If(
 var PatternTerm = (input) => If(If(PatternBase(input), ([_0, input2]) => If(PatternBody(input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [PatternTermMapping(_0), input2]);
 var PatternBody = (input) => If(If(PatternUnion(input), ([_0, input2]) => [_0, input2], () => If(PatternTerm(input), ([_0, input2]) => [_0, input2], () => [])), ([_0, input2]) => [PatternBodyMapping(_0), input2]);
 var Pattern = (input) => If(If(Const("^", input), ([_0, input2]) => If(PatternBody(input2), ([_1, input3]) => If(Const("$", input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [PatternMapping(_0), input2]);
-var InterfaceDeclarationHeritageList_0 = (input, result2 = []) => If(If(Type(input), ([_0, input2]) => If(Const(",", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => InterfaceDeclarationHeritageList_0(input2, [...result2, _0]), () => [result2, input]);
+var InterfaceDeclarationHeritageList_0 = (input, result3 = []) => If(If(Type(input), ([_0, input2]) => If(Const(",", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => InterfaceDeclarationHeritageList_0(input2, [...result3, _0]), () => [result3, input]);
 var InterfaceDeclarationHeritageList = (input) => If(If(InterfaceDeclarationHeritageList_0(input), ([_0, input2]) => If(If(If(Type(input2), ([_02, input3]) => [[_02], input3]), ([_02, input3]) => [_02, input3], () => If([[], input2], ([_02, input3]) => [_02, input3], () => [])), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [InterfaceDeclarationHeritageListMapping(_0), input2]);
 var InterfaceDeclarationHeritage = (input) => If(If(If(Const("extends", input), ([_0, input2]) => If(InterfaceDeclarationHeritageList(input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [_0, input2], () => If([[], input], ([_0, input2]) => [_0, input2], () => [])), ([_0, input2]) => [InterfaceDeclarationHeritageMapping(_0), input2]);
 var InterfaceDeclarationGeneric = (input) => If(If(Const("interface", input), ([_0, input2]) => If(Ident(input2), ([_1, input3]) => If(GenericParameters(input3), ([_2, input4]) => If(InterfaceDeclarationHeritage(input4), ([_3, input5]) => If(Properties(input5), ([_4, input6]) => [[_0, _1, _2, _3, _4], input6]))))), ([_0, input2]) => [InterfaceDeclarationGenericMapping(_0), input2]);
@@ -2426,7 +2423,7 @@ var TypeAliasDeclarationGeneric = (input) => If(If(Const("type", input), ([_0, i
 var TypeAliasDeclaration = (input) => If(If(Const("type", input), ([_0, input2]) => If(Ident(input2), ([_1, input3]) => If(Const("=", input3), ([_2, input4]) => If(Type(input4), ([_3, input5]) => [[_0, _1, _2, _3], input5])))), ([_0, input2]) => [TypeAliasDeclarationMapping(_0), input2]);
 var ExportKeyword = (input) => If(If(If(Const("export", input), ([_0, input2]) => [[_0], input2]), ([_0, input2]) => [_0, input2], () => If([[], input], ([_0, input2]) => [_0, input2], () => [])), ([_0, input2]) => [ExportKeywordMapping(_0), input2]);
 var ModuleDeclarationDelimiter = (input) => If(If(If(Const(";", input), ([_0, input2]) => If(Const("\n", input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [_0, input2], () => If(If(Const(";", input), ([_0, input2]) => [[_0], input2]), ([_0, input2]) => [_0, input2], () => If(If(Const("\n", input), ([_0, input2]) => [[_0], input2]), ([_0, input2]) => [_0, input2], () => []))), ([_0, input2]) => [ModuleDeclarationDelimiterMapping(_0), input2]);
-var ModuleDeclarationList_0 = (input, result2 = []) => If(If(ModuleDeclaration(input), ([_0, input2]) => If(ModuleDeclarationDelimiter(input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => ModuleDeclarationList_0(input2, [...result2, _0]), () => [result2, input]);
+var ModuleDeclarationList_0 = (input, result3 = []) => If(If(ModuleDeclaration(input), ([_0, input2]) => If(ModuleDeclarationDelimiter(input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => ModuleDeclarationList_0(input2, [...result3, _0]), () => [result3, input]);
 var ModuleDeclarationList = (input) => If(If(ModuleDeclarationList_0(input), ([_0, input2]) => If(If(If(ModuleDeclaration(input2), ([_02, input3]) => [[_02], input3]), ([_02, input3]) => [_02, input3], () => If([[], input2], ([_02, input3]) => [_02, input3], () => [])), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [ModuleDeclarationListMapping(_0), input2]);
 var ModuleDeclaration = (input) => If(If(ExportKeyword(input), ([_0, input2]) => If(If(InterfaceDeclarationGeneric(input2), ([_02, input3]) => [_02, input3], () => If(InterfaceDeclaration(input2), ([_02, input3]) => [_02, input3], () => If(TypeAliasDeclarationGeneric(input2), ([_02, input3]) => [_02, input3], () => If(TypeAliasDeclaration(input2), ([_02, input3]) => [_02, input3], () => [])))), ([_1, input3]) => If(OptionalSemiColon(input3), ([_2, input4]) => [[_0, _1, _2], input4]))), ([_0, input2]) => [ModuleDeclarationMapping(_0), input2]);
 var Module = (input) => If(If(ModuleDeclaration(input), ([_0, input2]) => If(ModuleDeclarationList(input2), ([_1, input3]) => [[_0, _1], input3])), ([_0, input2]) => [ModuleMapping(_0), input2]);
@@ -2435,8 +2432,8 @@ var Script = (input) => If(If(Module(input), ([_0, input2]) => [_0, input2], () 
 // node_modules/typebox/build/type/engine/patterns/template.mjs
 function ParseTemplateIntoTypes(template) {
   const parsed = TemplateLiteralTypes(`\`${template}\``);
-  const result2 = guard_exports.IsEqual(parsed.length, 2) ? parsed[0] : Unreachable();
-  return result2;
+  const result3 = guard_exports.IsEqual(parsed.length, 2) ? parsed[0] : Unreachable();
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/template_literal/encode.mjs
@@ -2469,15 +2466,15 @@ function EncodeTemplateLiteral(templatePattern, right, pattern) {
 }
 function EncodeTemplateLiteralDeferred(types, right, pattern) {
   const templateLiteral = TemplateLiteralAction(types, {});
-  const result2 = EncodeType(templateLiteral, right, pattern);
-  return result2;
+  const result3 = EncodeType(templateLiteral, right, pattern);
+  return result3;
 }
 function EncodeEnum(types, right, pattern) {
   const variants = EnumValuesToVariants(types);
   return EncodeUnion(variants, right, pattern);
 }
-function EncodeUnion(types, right, pattern, result2 = []) {
-  return guard_exports.TakeLeft(types, (head, tail) => EncodeUnion(tail, right, pattern, [...result2, EncodeType(head, [], "")]), () => EncodeTypes(right, `${pattern}(${JoinString(result2)})`));
+function EncodeUnion(types, right, pattern, result3 = []) {
+  return guard_exports.TakeLeft(types, (head, tail) => EncodeUnion(tail, right, pattern, [...result3, EncodeType(head, [], "")]), () => EncodeTypes(right, `${pattern}(${JoinString(result3)})`));
 }
 function EncodeType(type, right, pattern) {
   return IsEnum(type) ? EncodeEnum(type.enum, right, pattern) : IsInteger2(type) ? EncodeInteger(right, pattern) : IsLiteral(type) ? EncodeLiteral(type.const, right, pattern) : IsBigInt2(type) ? EncodeBigInt(right, pattern) : IsBoolean2(type) ? EncodeBoolean(right, pattern) : IsNumber2(type) ? EncodeNumber(right, pattern) : IsString2(type) ? EncodeString(right, pattern) : IsTemplateLiteral(type) ? EncodeTemplateLiteral(type.pattern, right, pattern) : IsTemplateLiteralDeferred(type) ? EncodeTemplateLiteralDeferred(type.parameters[0], right, pattern) : IsUnion(type) ? EncodeUnion(type.anyOf, right, pattern) : NeverPattern;
@@ -2487,19 +2484,19 @@ function EncodeTypes(types, pattern) {
 }
 function EncodePattern(types) {
   const encoded = EncodeTypes(types, "");
-  const result2 = `^${encoded}$`;
-  return result2;
+  const result3 = `^${encoded}$`;
+  return result3;
 }
 function TemplateLiteralEncode(types) {
   const pattern = EncodePattern(types);
-  const result2 = TemplateLiteralCreate(pattern);
-  return result2;
+  const result3 = TemplateLiteralCreate(pattern);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/template_literal/instantiate.mjs
 function TemplateLiteralAction(types, options) {
-  const result2 = CanInstantiate(types) ? memory_exports.Update(TemplateLiteralEncode(types), {}, options) : TemplateLiteralDeferred(types, options);
-  return result2;
+  const result3 = CanInstantiate(types) ? memory_exports.Update(TemplateLiteralEncode(types), {}, options) : TemplateLiteralDeferred(types, options);
+  return result3;
 }
 function TemplateLiteralInstantiate(context, state, types, options) {
   const instantiatedTypes = InstantiateTypes(context, state, types);
@@ -2561,8 +2558,8 @@ function IsExtendsFalse(value) {
 function IsExtendsTrueLike(value) {
   return IsExtendsUnion(value) || IsExtendsTrue(value);
 }
-function Match3(result2, true_, false_) {
-  return IsExtendsTrueLike(result2) ? true_(result2.inferred) : false_();
+function Match3(result3, true_, false_) {
+  return IsExtendsTrueLike(result3) ? true_(result3.inferred) : false_();
 }
 
 // node_modules/typebox/build/type/extends/extends_right.mjs
@@ -2720,8 +2717,8 @@ function ExtendsProperty(inferred, left, right) {
   );
 }
 function ExtractInferredProperties(keys, properties) {
-  return keys.reduce((result2, key) => {
-    return key in properties ? IsExtendsTrueLike(properties[key]) ? { ...result2, ...properties[key].inferred } : Unreachable() : Unreachable();
+  return keys.reduce((result3, key) => {
+    return key in properties ? IsExtendsTrueLike(properties[key]) ? { ...result3, ...properties[key].inferred } : Unreachable() : Unreachable();
   }, {});
 }
 function ExtendsPropertiesComparer(inferred, left, right) {
@@ -2729,7 +2726,7 @@ function ExtendsPropertiesComparer(inferred, left, right) {
   for (const rightKey of guard_exports.Keys(right)) {
     properties[rightKey] = rightKey in left ? ExtendsProperty({}, left[rightKey], right[rightKey]) : IsOptional(right[rightKey]) ? IsInfer(right[rightKey]) ? ExtendsTrue(memory_exports.Assign(inferred, { [right[rightKey].name]: right[rightKey].extends })) : ExtendsTrue(inferred) : ExtendsFalse();
   }
-  const checked = guard_exports.Values(properties).every((result2) => IsExtendsTrueLike(result2));
+  const checked = guard_exports.Values(properties).every((result3) => IsExtendsTrueLike(result3));
   const extracted = checked ? ExtractInferredProperties(guard_exports.Keys(properties), properties) : {};
   return checked ? ExtendsTrue(extracted) : ExtendsFalse();
 }
@@ -2778,8 +2775,8 @@ function TryRestInferable(type) {
 function TryInferable(type) {
   return IsInfer(type) ? Inferrable(type.name, type.extends) : void 0;
 }
-function TryInferResults(rest, right, result2 = []) {
-  return guard_exports.TakeLeft(rest, (head, tail) => Match3(ExtendsLeft({}, head, right), () => TryInferResults(tail, right, [...result2, head]), () => void 0), () => result2);
+function TryInferResults(rest, right, result3 = []) {
+  return guard_exports.TakeLeft(rest, (head, tail) => Match3(ExtendsLeft({}, head, right), () => TryInferResults(tail, right, [...result3, head]), () => void 0), () => result3);
 }
 function InferTupleResult(inferred, name, left, right) {
   const results = TryInferResults(left, right);
@@ -2866,12 +2863,12 @@ function ExtendsLeft(inferred, left, right) {
 
 // node_modules/typebox/build/type/engine/interface/instantiate.mjs
 function InterfaceOperation(heritage, properties) {
-  const result2 = EvaluateIntersect([...heritage, _Object_(properties)]);
-  return result2;
+  const result3 = EvaluateIntersect([...heritage, _Object_(properties)]);
+  return result3;
 }
 function InterfaceAction(heritage, properties, options) {
-  const result2 = CanInstantiate(heritage) ? memory_exports.Update(InterfaceOperation(heritage, properties), {}, options) : InterfaceDeferred(heritage, properties, options);
-  return result2;
+  const result3 = CanInstantiate(heritage) ? memory_exports.Update(InterfaceOperation(heritage, properties), {}, options) : InterfaceDeferred(heritage, properties, options);
+  return result3;
 }
 function InterfaceInstantiate(context, state, heritage, properties, options) {
   const instantiatedHeritage = InstantiateTypes(context, state, heritage);
@@ -2905,41 +2902,41 @@ function FromType3(stack, context, type) {
   return IsRef(type) ? FromRef(stack, context, type.$ref) : IsArray2(type) ? FromType3(stack, context, type.items) : IsAsyncIterator2(type) ? FromType3(stack, context, type.iteratorItems) : IsConstructor2(type) ? FromTypes2(stack, context, [...type.parameters, type.instanceType]) : IsFunction2(type) ? FromTypes2(stack, context, [...type.parameters, type.returnType]) : IsInterfaceDeferred(type) ? FromProperties(stack, context, type.parameters[1]) : IsIntersect(type) ? FromTypes2(stack, context, type.allOf) : IsIterator2(type) ? FromType3(stack, context, type.iteratorItems) : IsObject2(type) ? FromProperties(stack, context, type.properties) : IsPromise(type) ? FromType3(stack, context, type.item) : IsUnion(type) ? FromTypes2(stack, context, type.anyOf) : IsTuple(type) ? FromTypes2(stack, context, type.items) : IsRecord(type) ? FromType3(stack, context, RecordValue(type)) : false;
 }
 function CyclicCheck(stack, context, type) {
-  const result2 = FromType3(stack, context, type);
-  return result2;
+  const result3 = FromType3(stack, context, type);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/cyclic/candidates.mjs
 function ResolveCandidateKeys(context, keys) {
-  return keys.reduce((result2, left) => {
-    return left in context ? CyclicCheck([left], context, context[left]) ? [...result2, left] : result2 : Unreachable();
+  return keys.reduce((result3, left) => {
+    return left in context ? CyclicCheck([left], context, context[left]) ? [...result3, left] : result3 : Unreachable();
   }, []);
 }
 function CyclicCandidates(context) {
   const keys = PropertyKeys(context);
-  const result2 = ResolveCandidateKeys(context, keys);
-  return result2;
+  const result3 = ResolveCandidateKeys(context, keys);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/cyclic/dependencies.mjs
-function FromRef2(context, ref, result2) {
-  return result2.includes(ref) ? result2 : ref in context ? FromType4(context, context[ref], [...result2, ref]) : Unreachable();
+function FromRef2(context, ref, result3) {
+  return result3.includes(ref) ? result3 : ref in context ? FromType4(context, context[ref], [...result3, ref]) : Unreachable();
 }
-function FromProperties2(context, properties, result2) {
+function FromProperties2(context, properties, result3) {
   const types = PropertyValues(properties);
-  return FromTypes3(context, types, result2);
+  return FromTypes3(context, types, result3);
 }
-function FromTypes3(context, types, result2) {
-  return types.reduce((result3, left) => {
-    return FromType4(context, left, result3);
-  }, result2);
+function FromTypes3(context, types, result3) {
+  return types.reduce((result4, left) => {
+    return FromType4(context, left, result4);
+  }, result3);
 }
-function FromType4(context, type, result2) {
-  return IsRef(type) ? FromRef2(context, type.$ref, result2) : IsArray2(type) ? FromType4(context, type.items, result2) : IsAsyncIterator2(type) ? FromType4(context, type.iteratorItems, result2) : IsConstructor2(type) ? FromTypes3(context, [...type.parameters, type.instanceType], result2) : IsFunction2(type) ? FromTypes3(context, [...type.parameters, type.returnType], result2) : IsInterfaceDeferred(type) ? FromProperties2(context, type.parameters[1], result2) : IsIntersect(type) ? FromTypes3(context, type.allOf, result2) : IsIterator2(type) ? FromType4(context, type.iteratorItems, result2) : IsObject2(type) ? FromProperties2(context, type.properties, result2) : IsPromise(type) ? FromType4(context, type.item, result2) : IsUnion(type) ? FromTypes3(context, type.anyOf, result2) : IsTuple(type) ? FromTypes3(context, type.items, result2) : IsRecord(type) ? FromType4(context, RecordValue(type), result2) : result2;
+function FromType4(context, type, result3) {
+  return IsRef(type) ? FromRef2(context, type.$ref, result3) : IsArray2(type) ? FromType4(context, type.items, result3) : IsAsyncIterator2(type) ? FromType4(context, type.iteratorItems, result3) : IsConstructor2(type) ? FromTypes3(context, [...type.parameters, type.instanceType], result3) : IsFunction2(type) ? FromTypes3(context, [...type.parameters, type.returnType], result3) : IsInterfaceDeferred(type) ? FromProperties2(context, type.parameters[1], result3) : IsIntersect(type) ? FromTypes3(context, type.allOf, result3) : IsIterator2(type) ? FromType4(context, type.iteratorItems, result3) : IsObject2(type) ? FromProperties2(context, type.properties, result3) : IsPromise(type) ? FromType4(context, type.item, result3) : IsUnion(type) ? FromTypes3(context, type.anyOf, result3) : IsTuple(type) ? FromTypes3(context, type.items, result3) : IsRecord(type) ? FromType4(context, RecordValue(type), result3) : result3;
 }
 function CyclicDependencies(context, key, type) {
-  const result2 = FromType4(context, type, [key]);
-  return result2;
+  const result3 = FromType4(context, type, [key]);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/cyclic/extends.mjs
@@ -2947,13 +2944,13 @@ function FromRef3(_ref) {
   return Any();
 }
 function FromProperties3(properties) {
-  return guard_exports.Keys(properties).reduce((result2, key) => {
-    return { ...result2, [key]: FromType5(properties[key]) };
+  return guard_exports.Keys(properties).reduce((result3, key) => {
+    return { ...result3, [key]: FromType5(properties[key]) };
   }, {});
 }
 function FromTypes4(types) {
-  return types.reduce((result2, left) => {
-    return [...result2, FromType5(left)];
+  return types.reduce((result3, left) => {
+    return [...result3, FromType5(left)];
   }, []);
 }
 function FromType5(type) {
@@ -2975,17 +2972,17 @@ function CyclicInterface(context, heritage, properties) {
 }
 function CyclicDefinitions(context, dependencies) {
   const keys = guard_exports.Keys(context).filter((key) => dependencies.includes(key));
-  return keys.reduce((result2, key) => {
+  return keys.reduce((result3, key) => {
     const type = context[key];
     const instantiatedType = IsInterfaceDeferred(type) ? CyclicInterface(context, type.parameters[0], type.parameters[1]) : type;
-    return { ...result2, [key]: instantiatedType };
+    return { ...result3, [key]: instantiatedType };
   }, {});
 }
 function InstantiateCyclic(context, ref, type) {
   const dependencies = CyclicDependencies(context, ref, type);
   const definitions = CyclicDefinitions(context, dependencies);
-  const result2 = Cyclic(definitions, ref);
-  return result2;
+  const result3 = Cyclic(definitions, ref);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/cyclic/target.mjs
@@ -2993,8 +2990,8 @@ function Resolve(defs, ref) {
   return ref in defs ? IsRef(defs[ref]) ? Resolve(defs, defs[ref].$ref) : defs[ref] : Never();
 }
 function CyclicTarget(defs, ref) {
-  const result2 = Resolve(defs, ref);
-  return result2;
+  const result3 = Resolve(defs, ref);
+  return result3;
 }
 
 // node_modules/typebox/build/type/extends/extends.mjs
@@ -3027,23 +3024,23 @@ function BroadFilter(type, types) {
   });
 }
 function IsBroadestType(type, types) {
-  const result2 = types.some((left) => {
-    const result3 = Compare(type, left);
-    return guard_exports.IsEqual(result3, ResultLeftInside) || guard_exports.IsEqual(result3, ResultEqual);
+  const result3 = types.some((left) => {
+    const result4 = Compare(type, left);
+    return guard_exports.IsEqual(result4, ResultLeftInside) || guard_exports.IsEqual(result4, ResultEqual);
   });
-  return guard_exports.IsEqual(result2, false);
+  return guard_exports.IsEqual(result3, false);
 }
 function BroadenType(type, types) {
   const evaluated = EvaluateType(type);
   return IsAny(evaluated) ? [evaluated] : IsBroadestType(evaluated, types) ? [...BroadFilter(evaluated, types), evaluated] : types;
 }
 function BroadenTypes(types) {
-  return types.reduce((result2, left) => {
-    return IsObject2(left) ? [...result2, left] : (
+  return types.reduce((result3, left) => {
+    return IsObject2(left) ? [...result3, left] : (
       // push
-      IsNever(left) ? result2 : (
+      IsNever(left) ? result3 : (
         // ignore
-        BroadenType(left, result2)
+        BroadenType(left, result3)
       )
     );
   }, []);
@@ -3051,14 +3048,14 @@ function BroadenTypes(types) {
 function Broaden(types) {
   const broadened = BroadenTypes(types);
   const flattened = Flatten(broadened);
-  const result2 = flattened.length === 0 ? Never() : flattened.length === 1 ? flattened[0] : Union(flattened);
-  return result2;
+  const result3 = flattened.length === 0 ? Never() : flattened.length === 1 ? flattened[0] : Union(flattened);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/evaluate/instantiate.mjs
 function EvaluateAction(type, options) {
-  const result2 = memory_exports.Update(EvaluateType(type), {}, options);
-  return result2;
+  const result3 = memory_exports.Update(EvaluateType(type), {}, options);
+  return result3;
 }
 function EvaluateInstantiate(context, state, type, options) {
   const instantiatedType = InstantiateType(context, state, type);
@@ -3066,32 +3063,32 @@ function EvaluateInstantiate(context, state, type, options) {
 }
 
 // node_modules/typebox/build/type/engine/call/distribute_arguments.mjs
-function CollectDistributionNames(expression, result2 = []) {
+function CollectDistributionNames(expression, result3 = []) {
   return (
     // Conditional
-    IsDeferred(expression) && guard_exports.IsEqual(expression.action, "Conditional") ? IsRef(expression.parameters[0]) ? CollectDistributionNames(expression.parameters[2], CollectDistributionNames(expression.parameters[3], [...result2, expression.parameters[0]["$ref"]])) : CollectDistributionNames(expression.parameters[2], CollectDistributionNames(expression.parameters[3], result2)) : IsDeferred(expression) && guard_exports.IsEqual(expression.action, "Mapped") ? IsDeferred(expression.parameters[1]) && guard_exports.IsEqual(expression.parameters[1].action, "KeyOf") && IsRef(expression.parameters[1].parameters[0]) ? [...result2, expression.parameters[1].parameters[0]["$ref"]] : result2 : result2
+    IsDeferred(expression) && guard_exports.IsEqual(expression.action, "Conditional") ? IsRef(expression.parameters[0]) ? CollectDistributionNames(expression.parameters[2], CollectDistributionNames(expression.parameters[3], [...result3, expression.parameters[0]["$ref"]])) : CollectDistributionNames(expression.parameters[2], CollectDistributionNames(expression.parameters[3], result3)) : IsDeferred(expression) && guard_exports.IsEqual(expression.action, "Mapped") ? IsDeferred(expression.parameters[1]) && guard_exports.IsEqual(expression.parameters[1].action, "KeyOf") && IsRef(expression.parameters[1].parameters[0]) ? [...result3, expression.parameters[1].parameters[0]["$ref"]] : result3 : result3
   );
 }
 function BuildDistributionArray(parameters, names) {
-  return parameters.reduce((result2, left) => [...result2, names.includes(left.name)], []);
+  return parameters.reduce((result3, left) => [...result3, names.includes(left.name)], []);
 }
-function ZipDistributionArray(arguments_, distributionArray, result2 = []) {
-  return guard_exports.TakeLeft(arguments_, (argumentLeft, argumentRight) => guard_exports.TakeLeft(distributionArray, (booleanLeft, booleanRight) => ZipDistributionArray(argumentRight, booleanRight, [...result2, [booleanLeft, argumentLeft]]), () => result2), () => result2);
+function ZipDistributionArray(arguments_, distributionArray, result3 = []) {
+  return guard_exports.TakeLeft(arguments_, (argumentLeft, argumentRight) => guard_exports.TakeLeft(distributionArray, (booleanLeft, booleanRight) => ZipDistributionArray(argumentRight, booleanRight, [...result3, [booleanLeft, argumentLeft]]), () => result3), () => result3);
 }
 function Expand(type) {
   return IsUnion(type) ? [...type.anyOf] : [type];
 }
 function Append(current, type) {
-  return current.reduce((result2, left) => [...result2, [...left, type]], []);
+  return current.reduce((result3, left) => [...result3, [...left, type]], []);
 }
 function Cross(current, variants) {
-  return variants.reduce((result2, left) => {
-    return [...result2, ...Append(current, left)];
+  return variants.reduce((result3, left) => {
+    return [...result3, ...Append(current, left)];
   }, []);
 }
 function Distribute2(zipped) {
-  return zipped.reduce((result2, left) => {
-    return guard_exports.IsEqual(left[0], true) ? Cross(result2, Expand(left[1])) : Cross(result2, [left[1]]);
+  return zipped.reduce((result3, left) => {
+    return guard_exports.IsEqual(left[0], true) ? Cross(result3, Expand(left[1])) : Cross(result3, [left[1]]);
   }, [[]]);
 }
 function DistributeArguments(parameters, arguments_, expression) {
@@ -3147,12 +3144,12 @@ function ResolveArgumentsContext(context, state, parameters, arguments_) {
 
 // node_modules/typebox/build/type/engine/call/instantiate.mjs
 function Peek(state) {
-  const result2 = guard_exports.IsGreaterThan(state.callstack.length, 0) ? state.callstack[state.callstack.length - 1] : "";
-  return result2;
+  const result3 = guard_exports.IsGreaterThan(state.callstack.length, 0) ? state.callstack[state.callstack.length - 1] : "";
+  return result3;
 }
 function IsTailCall(state, name) {
-  const result2 = guard_exports.IsEqual(Peek(state), name);
-  return result2;
+  const result3 = guard_exports.IsEqual(Peek(state), name);
+  return result3;
 }
 function CallDispatch(context, state, target, parameters, expression, arguments_) {
   const argumentsContext = ResolveArgumentsContext(context, state, parameters, arguments_);
@@ -3160,21 +3157,21 @@ function CallDispatch(context, state, target, parameters, expression, arguments_
   return InstantiateType(context, state, returnType);
 }
 function CallDistributed(context, state, target, parameters, expression, distributedArguments) {
-  return distributedArguments.reduce((result2, arguments_) => [...result2, CallDispatch(context, state, target, parameters, expression, arguments_)], []);
+  return distributedArguments.reduce((result3, arguments_) => [...result3, CallDispatch(context, state, target, parameters, expression, arguments_)], []);
 }
 function CallImmediate(context, state, target, parameters, expression, arguments_) {
   const distributedArguments = DistributeArguments(parameters, arguments_, expression);
   const returnTypes = CallDistributed(context, state, target, parameters, expression, distributedArguments);
-  const result2 = guard_exports.IsEqual(returnTypes.length, 1) ? returnTypes[0] : EvaluateUnion(returnTypes);
-  return result2;
+  const result3 = guard_exports.IsEqual(returnTypes.length, 1) ? returnTypes[0] : EvaluateUnion(returnTypes);
+  return result3;
 }
 function CallInstantiate(context, state, target, arguments_) {
   const instantiatedArguments = InstantiateTypes(context, state, arguments_);
   const resolved = ResolveTarget(context, target, arguments_);
   const name = resolved[0];
   const type = resolved[1];
-  const result2 = IsGeneric(type) ? IsTailCall(state, name) ? CallConstruct(Ref(name), instantiatedArguments) : CallImmediate(context, state, Ref(name), type.parameters, type.expression, instantiatedArguments) : CallConstruct(target, instantiatedArguments);
-  return result2;
+  const result3 = IsGeneric(type) ? IsTailCall(state, name) ? CallConstruct(Ref(name), instantiatedArguments) : CallImmediate(context, state, Ref(name), type.parameters, type.expression, instantiatedArguments) : CallConstruct(target, instantiatedArguments);
+  return result3;
 }
 
 // node_modules/typebox/build/type/types/call.mjs
@@ -3201,14 +3198,14 @@ function FromLiteral3(mapping, value) {
 // node_modules/typebox/build/type/engine/intrinsics/from_template_literal.mjs
 function FromTemplateLiteral(mapping, pattern) {
   const decoded = TemplateLiteralDecode(pattern);
-  const result2 = FromType7(mapping, decoded);
-  return result2;
+  const result3 = FromType7(mapping, decoded);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/intrinsics/from_union.mjs
 function FromUnion2(mapping, types) {
-  const result2 = types.map((type) => FromType7(mapping, type));
-  return Union(result2);
+  const result3 = types.map((type) => FromType7(mapping, type));
+  return Union(result3);
 }
 
 // node_modules/typebox/build/type/engine/intrinsics/from_type.mjs
@@ -3254,20 +3251,20 @@ var LowercaseMapping = (input) => input.toLowerCase();
 var UncapitalizeMapping = (input) => input[0].toLowerCase() + input.slice(1);
 var UppercaseMapping = (input) => input.toUpperCase();
 function CapitalizeAction(type, options) {
-  const result2 = CanInstantiate([type]) ? memory_exports.Update(FromType7(CapitalizeMapping, type), {}, options) : CapitalizeDeferred(type, options);
-  return result2;
+  const result3 = CanInstantiate([type]) ? memory_exports.Update(FromType7(CapitalizeMapping, type), {}, options) : CapitalizeDeferred(type, options);
+  return result3;
 }
 function LowercaseAction(type, options) {
-  const result2 = CanInstantiate([type]) ? memory_exports.Update(FromType7(LowercaseMapping, type), {}, options) : LowercaseDeferred(type, options);
-  return result2;
+  const result3 = CanInstantiate([type]) ? memory_exports.Update(FromType7(LowercaseMapping, type), {}, options) : LowercaseDeferred(type, options);
+  return result3;
 }
 function UncapitalizeAction(type, options) {
-  const result2 = CanInstantiate([type]) ? memory_exports.Update(FromType7(UncapitalizeMapping, type), {}, options) : UncapitalizeDeferred(type, options);
-  return result2;
+  const result3 = CanInstantiate([type]) ? memory_exports.Update(FromType7(UncapitalizeMapping, type), {}, options) : UncapitalizeDeferred(type, options);
+  return result3;
 }
 function UppercaseAction(type, options) {
-  const result2 = CanInstantiate([type]) ? memory_exports.Update(FromType7(UppercaseMapping, type), {}, options) : UppercaseDeferred(type, options);
-  return result2;
+  const result3 = CanInstantiate([type]) ? memory_exports.Update(FromType7(UppercaseMapping, type), {}, options) : UppercaseDeferred(type, options);
+  return result3;
 }
 function CapitalizeInstantiate(context, state, type, options) {
   const instantiatedType = InstantiateType(context, state, type);
@@ -3300,8 +3297,8 @@ function ConditionalOperation(context, state, left, right, true_, false_) {
   return result_exports.IsExtendsUnion(extendsResult) ? Union([InstantiateType(extendsResult.inferred, state, true_), InstantiateType(context, state, false_)]) : result_exports.IsExtendsTrue(extendsResult) ? InstantiateType(extendsResult.inferred, state, true_) : InstantiateType(context, state, false_);
 }
 function ConditionalAction(context, state, left, right, true_, false_, options) {
-  const result2 = CanInstantiate([left, right]) ? memory_exports.Update(ConditionalOperation(context, state, left, right, true_, false_), {}, options) : ConditionalDeferred(left, right, true_, false_, options);
-  return result2;
+  const result3 = CanInstantiate([left, right]) ? memory_exports.Update(ConditionalOperation(context, state, left, right, true_, false_), {}, options) : ConditionalDeferred(left, right, true_, false_, options);
+  return result3;
 }
 function ConditionalInstantiate(context, state, left, right, true_, false_, options) {
   const instantiatedLeft = InstantiateType(context, state, left);
@@ -3321,12 +3318,12 @@ function ConstructorParameters(type, options = {}) {
 function ConstructorParametersOperation(type) {
   const parameters = IsConstructor2(type) ? type["parameters"] : [];
   const instantiatedParameters = InstantiateElements({}, { callstack: [] }, parameters);
-  const result2 = Tuple(instantiatedParameters);
-  return result2;
+  const result3 = Tuple(instantiatedParameters);
+  return result3;
 }
 function ConstructorParametersAction(type, options) {
-  const result2 = CanInstantiate([type]) ? memory_exports.Update(ConstructorParametersOperation(type), {}, options) : ConstructorParametersDeferred(type, options);
-  return result2;
+  const result3 = CanInstantiate([type]) ? memory_exports.Update(ConstructorParametersOperation(type), {}, options) : ConstructorParametersDeferred(type, options);
+  return result3;
 }
 function ConstructorParametersInstantiate(context, state, type, options) {
   const instantiatedType = InstantiateType(context, state, type);
@@ -3343,25 +3340,25 @@ function Exclude(left, right, options = {}) {
 
 // node_modules/typebox/build/type/engine/exclude/operation.mjs
 function ExcludeUnionLeft(types, right) {
-  return types.reduce((result2, head) => {
-    return [...result2, ...ExcludeTypeLeft(head, right)];
+  return types.reduce((result3, head) => {
+    return [...result3, ...ExcludeTypeLeft(head, right)];
   }, []);
 }
 function ExcludeTypeLeft(left, right) {
   const check = Extends2({}, left, right);
-  const result2 = result_exports.IsExtendsTrueLike(check) ? [] : [left];
-  return result2;
+  const result3 = result_exports.IsExtendsTrueLike(check) ? [] : [left];
+  return result3;
 }
 function ExcludeOperation(left, right) {
   const remaining = IsEnum(left) ? ExcludeUnionLeft(EnumValuesToVariants(left.enum), right) : IsUnion(left) ? ExcludeUnionLeft(Flatten(left.anyOf), right) : ExcludeTypeLeft(left, right);
-  const result2 = EvaluateUnion(remaining);
-  return result2;
+  const result3 = EvaluateUnion(remaining);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/exclude/instantiate.mjs
 function ExcludeAction(left, right, options) {
-  const result2 = CanInstantiate([left, right]) ? memory_exports.Update(ExcludeOperation(left, right), {}, options) : ExcludeDeferred(left, right, options);
-  return result2;
+  const result3 = CanInstantiate([left, right]) ? memory_exports.Update(ExcludeOperation(left, right), {}, options) : ExcludeDeferred(left, right, options);
+  return result3;
 }
 function ExcludeInstantiate(context, state, left, right, options) {
   const instantiatedLeft = InstantiateType(context, state, left);
@@ -3379,25 +3376,25 @@ function Extract(left, right, options = {}) {
 
 // node_modules/typebox/build/type/engine/extract/operation.mjs
 function ExtractUnionLeft(types, right) {
-  return types.reduce((result2, head) => {
-    return [...result2, ...ExtractTypeLeft(head, right)];
+  return types.reduce((result3, head) => {
+    return [...result3, ...ExtractTypeLeft(head, right)];
   }, []);
 }
 function ExtractTypeLeft(left, right) {
   const check = Extends2({}, left, right);
-  const result2 = result_exports.IsExtendsTrueLike(check) ? [left] : [];
-  return result2;
+  const result3 = result_exports.IsExtendsTrueLike(check) ? [left] : [];
+  return result3;
 }
 function ExtractOperation(left, right) {
   const remaining = IsEnum(left) ? ExtractUnionLeft(EnumValuesToVariants(left.enum), right) : IsUnion(left) ? ExtractUnionLeft(Flatten(left.anyOf), right) : ExtractTypeLeft(left, right);
-  const result2 = EvaluateUnion(remaining);
-  return result2;
+  const result3 = EvaluateUnion(remaining);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/extract/instantiate.mjs
 function ExtractAction(left, right, options) {
-  const result2 = CanInstantiate([left, right]) ? memory_exports.Update(ExtractOperation(left, right), {}, options) : ExtractDeferred(left, right, options);
-  return result2;
+  const result3 = CanInstantiate([left, right]) ? memory_exports.Update(ExtractOperation(left, right), {}, options) : ExtractDeferred(left, right, options);
+  return result3;
 }
 function ExtractInstantiate(context, state, left, right, options) {
   const instantiatedLeft = InstantiateType(context, state, left);
@@ -3407,14 +3404,14 @@ function ExtractInstantiate(context, state, left, right, options) {
 
 // node_modules/typebox/build/type/engine/helpers/keys_to_indexer.mjs
 function KeysToLiterals(keys) {
-  return keys.reduce((result2, left) => {
-    return IsLiteralValue(left) ? [...result2, Literal(left)] : result2;
+  return keys.reduce((result3, left) => {
+    return IsLiteralValue(left) ? [...result3, Literal(left)] : result3;
   }, []);
 }
 function KeysToIndexer(keys) {
   const literals = KeysToLiterals(keys);
-  const result2 = Union(literals);
-  return result2;
+  const result3 = Union(literals);
+  return result3;
 }
 
 // node_modules/typebox/build/type/action/indexed.mjs
@@ -3429,8 +3426,8 @@ function Index(type, indexer_or_keys, options = {}) {
 // node_modules/typebox/build/type/engine/object/from_cyclic.mjs
 function FromCyclic(defs, ref) {
   const target = CyclicTarget(defs, ref);
-  const result2 = FromType8(target);
-  return result2;
+  const result3 = FromType8(target);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/object/from_intersect.mjs
@@ -3438,16 +3435,16 @@ function CollapseIntersectProperties(left, right) {
   const leftKeys = guard_exports.Keys(left).filter((key) => !guard_exports.HasPropertyKey(right, key));
   const rightKeys = guard_exports.Keys(right).filter((key) => !guard_exports.HasPropertyKey(left, key));
   const sharedKeys = guard_exports.Keys(left).filter((key) => guard_exports.HasPropertyKey(right, key));
-  const leftProperties = leftKeys.reduce((result2, key) => ({ ...result2, [key]: left[key] }), {});
-  const rightProperties = rightKeys.reduce((result2, key) => ({ ...result2, [key]: right[key] }), {});
-  const sharedProperties = sharedKeys.reduce((result2, key) => ({ ...result2, [key]: EvaluateIntersect([left[key], right[key]]) }), {});
+  const leftProperties = leftKeys.reduce((result3, key) => ({ ...result3, [key]: left[key] }), {});
+  const rightProperties = rightKeys.reduce((result3, key) => ({ ...result3, [key]: right[key] }), {});
+  const sharedProperties = sharedKeys.reduce((result3, key) => ({ ...result3, [key]: EvaluateIntersect([left[key], right[key]]) }), {});
   const unique = memory_exports.Assign(leftProperties, rightProperties);
   const shared = memory_exports.Assign(unique, sharedProperties);
   return shared;
 }
 function FromIntersect(types) {
-  return types.reduce((result2, left) => {
-    return CollapseIntersectProperties(result2, FromType8(left));
+  return types.reduce((result3, left) => {
+    return CollapseIntersectProperties(result3, FromType8(left));
   }, {});
 }
 
@@ -3459,20 +3456,20 @@ function FromObject2(properties) {
 // node_modules/typebox/build/type/engine/object/from_tuple.mjs
 function FromTuple(types) {
   const object = TupleToObject(Tuple(types));
-  const result2 = FromType8(object);
-  return result2;
+  const result3 = FromType8(object);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/object/from_union.mjs
 function CollapseUnionProperties(left, right) {
   const sharedKeys = guard_exports.Keys(left).filter((key) => key in right);
-  const result2 = sharedKeys.reduce((result3, key) => {
-    return { ...result3, [key]: EvaluateUnion([left[key], right[key]]) };
+  const result3 = sharedKeys.reduce((result4, key) => {
+    return { ...result4, [key]: EvaluateUnion([left[key], right[key]]) };
   }, {});
-  return result2;
+  return result3;
 }
-function ReduceVariants(types, result2) {
-  return guard_exports.TakeLeft(types, (left, right) => ReduceVariants(right, CollapseUnionProperties(result2, FromType8(left))), () => result2);
+function ReduceVariants(types, result3) {
+  return guard_exports.TakeLeft(types, (left, right) => ReduceVariants(right, CollapseUnionProperties(result3, FromType8(left))), () => result3);
 }
 function FromUnion3(types) {
   return guard_exports.TakeLeft(types, (left, right) => ReduceVariants(right, FromType8(left)), () => Unreachable());
@@ -3486,8 +3483,8 @@ function FromType8(type) {
 // node_modules/typebox/build/type/engine/object/collapse.mjs
 function CollapseToObject(type) {
   const properties = FromType8(type);
-  const result2 = _Object_(properties);
-  return result2;
+  const result3 = _Object_(properties);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/helpers/keys.mjs
@@ -3510,52 +3507,52 @@ function NormalizeIndexer(type) {
 function FromArray2(type, indexer) {
   const normalizedIndexer = NormalizeIndexer(indexer);
   const check = Extends2({}, normalizedIndexer, Number2());
-  const result2 = (
+  const result3 = (
     // indexer
     result_exports.IsExtendsTrueLike(check) ? type : IsLiteral(indexer) && guard_exports.IsEqual(indexer.const, "length") ? Number2() : Never()
   );
-  return result2;
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/indexable/from_cyclic.mjs
 function FromCyclic2(defs, ref) {
   const target = CyclicTarget(defs, ref);
-  const result2 = FromType9(target);
-  return result2;
+  const result3 = FromType9(target);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/indexable/from_union.mjs
 function FromUnion4(types) {
-  return types.reduce((result2, left) => {
-    return [...result2, ...FromType9(left)];
+  return types.reduce((result3, left) => {
+    return [...result3, ...FromType9(left)];
   }, []);
 }
 
 // node_modules/typebox/build/type/engine/indexable/from_enum.mjs
 function FromEnum(values) {
   const variants = EnumValuesToVariants(values);
-  const result2 = FromUnion4(variants);
-  return result2;
+  const result3 = FromUnion4(variants);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/indexable/from_intersect.mjs
 function FromIntersect2(types) {
   const evaluated = EvaluateIntersect(types);
-  const result2 = FromType9(evaluated);
-  return result2;
+  const result3 = FromType9(evaluated);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/indexable/from_literal.mjs
 function FromLiteral4(value) {
-  const result2 = [`${value}`];
-  return result2;
+  const result3 = [`${value}`];
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/indexable/from_template_literal.mjs
 function FromTemplateLiteral2(pattern) {
   const decoded = TemplateLiteralDecode(pattern);
-  const result2 = FromType9(decoded);
-  return result2;
+  const result3 = FromType9(decoded);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/indexable/from_type.mjs
@@ -3565,8 +3562,8 @@ function FromType9(type) {
 
 // node_modules/typebox/build/type/engine/indexable/to_indexable_keys.mjs
 function ToIndexableKeys(type) {
-  const result2 = FromType9(type);
-  return result2;
+  const result3 = FromType9(type);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/this/expand_this.mjs
@@ -3577,42 +3574,42 @@ function FromType10(properties, type) {
   return IsArray2(type) ? _Array_(FromType10(properties, type.items)) : IsAsyncIterator2(type) ? AsyncIterator(FromType10(properties, type.iteratorItems)) : IsConstructor2(type) ? Constructor(FromTypes5(properties, type.parameters), FromType10(properties, type.instanceType)) : IsFunction2(type) ? _Function_(FromTypes5(properties, type.parameters), FromType10(properties, type.returnType)) : IsIterator2(type) ? Iterator(FromType10(properties, type.iteratorItems)) : IsPromise(type) ? _Promise_(FromType10(properties, type.item)) : IsTuple(type) ? Tuple(FromTypes5(properties, type.items)) : IsUnion(type) ? Union(FromTypes5(properties, type.anyOf)) : IsIntersect(type) ? Intersect(FromTypes5(properties, type.allOf)) : IsThis(type) ? _Object_(properties) : type;
 }
 function ExpandThis(properties, type) {
-  const result2 = FromType10(properties, type);
-  return result2;
+  const result3 = FromType10(properties, type);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/indexed/from_object.mjs
 function IndexProperty(properties, key) {
   const selectedType = key in properties ? properties[key] : Never();
-  const result2 = ExpandThis(properties, selectedType);
-  return result2;
+  const result3 = ExpandThis(properties, selectedType);
+  return result3;
 }
 function IndexProperties(properties, keys) {
-  return keys.reduce((result2, left) => {
-    return [...result2, IndexProperty(properties, left)];
+  return keys.reduce((result3, left) => {
+    return [...result3, IndexProperty(properties, left)];
   }, []);
 }
 function FromIndexer(properties, indexer) {
   const keys = ToIndexableKeys(indexer);
   const variants = IndexProperties(properties, keys);
-  const result2 = EvaluateUnion(variants);
-  return result2;
+  const result3 = EvaluateUnion(variants);
+  return result3;
 }
 var NumericKeyPattern = new RegExp(IntegerKey);
 function NumericKeys(keys) {
-  const result2 = keys.filter((key) => NumericKeyPattern.test(key));
-  return result2;
+  const result3 = keys.filter((key) => NumericKeyPattern.test(key));
+  return result3;
 }
 function FromIndexerNumber(properties) {
   const keys = PropertyKeys(properties);
   const numericKeys = NumericKeys(keys);
   const variants = IndexProperties(properties, numericKeys);
-  const result2 = EvaluateUnion(variants);
-  return result2;
+  const result3 = EvaluateUnion(variants);
+  return result3;
 }
 function FromObject3(properties, indexer) {
-  const result2 = IsNumber2(indexer) ? FromIndexerNumber(properties) : FromIndexer(properties, indexer);
-  return result2;
+  const result3 = IsNumber2(indexer) ? FromIndexerNumber(properties) : FromIndexer(properties, indexer);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/indexed/array_indexer.mjs
@@ -3628,9 +3625,9 @@ function FormatArrayIndexer(type) {
 
 // node_modules/typebox/build/type/engine/indexed/from_tuple.mjs
 function IndexElementsWithIndexer(types, indexer) {
-  return types.reduceRight((result2, right, index) => {
+  return types.reduceRight((result3, right, index) => {
     const check = Extends2({}, Literal(index), indexer);
-    return result_exports.IsExtendsTrueLike(check) ? [right, ...result2] : result2;
+    return result_exports.IsExtendsTrueLike(check) ? [right, ...result3] : result3;
   }, []);
 }
 function FromTupleWithIndexer(types, indexer) {
@@ -3655,12 +3652,12 @@ function FromType11(type, indexer) {
 
 // node_modules/typebox/build/type/engine/indexed/instantiate.mjs
 function NormalizeType(type) {
-  const result2 = IsCyclic(type) || IsIntersect(type) || IsUnion(type) ? CollapseToObject(type) : type;
-  return result2;
+  const result3 = IsCyclic(type) || IsIntersect(type) || IsUnion(type) ? CollapseToObject(type) : type;
+  return result3;
 }
 function IndexAction(type, indexer, options) {
-  const result2 = CanInstantiate([type, indexer]) ? memory_exports.Update(FromType11(NormalizeType(type), indexer), {}, options) : IndexDeferred(type, indexer, options);
-  return result2;
+  const result3 = CanInstantiate([type, indexer]) ? memory_exports.Update(FromType11(NormalizeType(type), indexer), {}, options) : IndexDeferred(type, indexer, options);
+  return result3;
 }
 function IndexInstantiate(context, state, type, indexer, options) {
   const instantiatedType = InstantiateType(context, state, type);
@@ -3681,8 +3678,8 @@ function InstanceTypeOperation(type) {
   return IsConstructor2(type) ? type["instanceType"] : Never();
 }
 function InstanceTypeAction(type, options) {
-  const result2 = CanInstantiate([type]) ? memory_exports.Update(InstanceTypeOperation(type), {}, options) : InstanceTypeDeferred(type, options);
-  return result2;
+  const result3 = CanInstantiate([type]) ? memory_exports.Update(InstanceTypeOperation(type), {}, options) : InstanceTypeDeferred(type, options);
+  return result3;
 }
 function InstanceTypeInstantiate(context, state, type, options = {}) {
   const instantiatedType = InstantiateType(context, state, type);
@@ -3709,16 +3706,16 @@ function FromArray3(_type) {
 
 // node_modules/typebox/build/type/engine/keyof/from_object.mjs
 function FromPropertyKeys(keys) {
-  const result2 = keys.reduce((result3, left) => {
-    return IsLiteralValue(left) ? [...result3, Literal(ConvertToIntegerKey(left))] : Unreachable();
+  const result3 = keys.reduce((result4, left) => {
+    return IsLiteralValue(left) ? [...result4, Literal(ConvertToIntegerKey(left))] : Unreachable();
   }, []);
-  return result2;
+  return result3;
 }
 function FromObject4(properties) {
   const propertyKeys = guard_exports.Keys(properties);
   const variants = FromPropertyKeys(propertyKeys);
-  const result2 = EvaluateUnionFast(variants);
-  return result2;
+  const result3 = EvaluateUnionFast(variants);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/keyof/from_record.mjs
@@ -3728,8 +3725,8 @@ function FromRecord(type) {
 
 // node_modules/typebox/build/type/engine/keyof/from_tuple.mjs
 function FromTuple3(types) {
-  const result2 = types.map((_, index) => Literal(index));
-  return EvaluateUnionFast(result2);
+  const result3 = types.map((_, index) => Literal(index));
+  return EvaluateUnionFast(result3);
 }
 
 // node_modules/typebox/build/type/engine/keyof/from_type.mjs
@@ -3739,8 +3736,8 @@ function FromType12(type) {
 
 // node_modules/typebox/build/type/engine/keyof/instantiate.mjs
 function NormalizeType2(type) {
-  const result2 = IsCyclic(type) || IsIntersect(type) || IsUnion(type) ? CollapseToObject(type) : type;
-  return result2;
+  const result3 = IsCyclic(type) || IsIntersect(type) || IsUnion(type) ? CollapseToObject(type) : type;
+  return result3;
 }
 function KeyOfAction(type, options) {
   return CanInstantiate([type]) ? memory_exports.Update(FromType12(NormalizeType2(type)), {}, options) : KeyOfDeferred(type, options);
@@ -3761,31 +3758,31 @@ function Mapped2(identifier, type, as, property, options = {}) {
 // node_modules/typebox/build/type/engine/mapped/mapped_variants.mjs
 function FromTemplateLiteral3(pattern) {
   const decoded = TemplateLiteralDecode(pattern);
-  const result2 = FromType13(decoded);
-  return result2;
+  const result3 = FromType13(decoded);
+  return result3;
 }
 function FromUnion5(types) {
-  return types.reduce((result2, left) => {
-    return [...result2, ...FromType13(left)];
+  return types.reduce((result3, left) => {
+    return [...result3, ...FromType13(left)];
   }, []);
 }
 function FromLiteral5(value) {
-  const result2 = guard_exports.IsNumber(value) ? [Literal(`${value}`)] : [Literal(value)];
-  return result2;
+  const result3 = guard_exports.IsNumber(value) ? [Literal(`${value}`)] : [Literal(value)];
+  return result3;
 }
 function FromType13(type) {
-  const result2 = IsEnum(type) ? FromUnion5(EnumValuesToVariants(type.enum)) : IsLiteral(type) ? FromLiteral5(type.const) : IsTemplateLiteral(type) ? FromTemplateLiteral3(type.pattern) : IsUnion(type) ? FromUnion5(type.anyOf) : [type];
-  return result2;
+  const result3 = IsEnum(type) ? FromUnion5(EnumValuesToVariants(type.enum)) : IsLiteral(type) ? FromLiteral5(type.const) : IsTemplateLiteral(type) ? FromTemplateLiteral3(type.pattern) : IsUnion(type) ? FromUnion5(type.anyOf) : [type];
+  return result3;
 }
 function MappedVariants(type) {
-  const result2 = FromType13(type);
-  return result2;
+  const result3 = FromType13(type);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/mapped/mapped_operation.mjs
 function CanonicalAs(instantiatedAs) {
-  const result2 = IsTemplateLiteral(instantiatedAs) ? TemplateLiteralDecode(instantiatedAs.pattern) : instantiatedAs;
-  return result2;
+  const result3 = IsTemplateLiteral(instantiatedAs) ? TemplateLiteralDecode(instantiatedAs.pattern) : instantiatedAs;
+  return result3;
 }
 function MappedVariant(context, state, identifier, variant, as, property) {
   const variantContext = memory_exports.Assign(context, { [identifier["name"]]: variant });
@@ -3795,27 +3792,27 @@ function MappedVariant(context, state, identifier, variant, as, property) {
   return IsLiteralNumber(canonicalAs) || IsLiteralString(canonicalAs) ? { [canonicalAs.const]: instantiatedProperty } : {};
 }
 function MappedProperties(context, state, identifier, variants, as, property) {
-  return variants.reduce((result2, left) => {
-    return [...result2, MappedVariant(context, state, identifier, left, as, property)];
+  return variants.reduce((result3, left) => {
+    return [...result3, MappedVariant(context, state, identifier, left, as, property)];
   }, []);
 }
 function MappedObjects(properties) {
-  return properties.reduce((result2, left) => {
-    return [...result2, _Object_(left)];
+  return properties.reduce((result3, left) => {
+    return [...result3, _Object_(left)];
   }, []);
 }
 function MappedOperation(context, state, identifier, type, as, property) {
   const variants = MappedVariants(type);
   const mappedProperties = MappedProperties(context, state, identifier, variants, as, property);
   const mappedObjects = MappedObjects(mappedProperties);
-  const result2 = EvaluateIntersect(mappedObjects);
-  return result2;
+  const result3 = EvaluateIntersect(mappedObjects);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/mapped/instantiate.mjs
 function MappedAction(context, state, identifier, type, as, property, options) {
-  const result2 = CanInstantiate([type]) ? memory_exports.Update(MappedOperation(context, state, identifier, type, as, property), {}, options) : MappedDeferred(identifier, type, as, property, options);
-  return result2;
+  const result3 = CanInstantiate([type]) ? memory_exports.Update(MappedOperation(context, state, identifier, type, as, property), {}, options) : MappedDeferred(identifier, type, as, property, options);
+  return result3;
 }
 function MappedInstantiate(context, state, identifier, type, as, property, options) {
   const instantiatedType = InstantiateType(context, state, type);
@@ -3825,14 +3822,14 @@ function MappedInstantiate(context, state, identifier, type, as, property, optio
 // node_modules/typebox/build/type/engine/module/instantiate.mjs
 function InstantiateCyclics(context, cyclicKeys) {
   const keys = guard_exports.Keys(context).filter((key) => cyclicKeys.includes(key));
-  return keys.reduce((result2, key) => {
-    return { ...result2, [key]: InstantiateCyclic(context, key, context[key]) };
+  return keys.reduce((result3, key) => {
+    return { ...result3, [key]: InstantiateCyclic(context, key, context[key]) };
   }, {});
 }
 function InstantiateNonCyclics(context, cyclicKeys) {
   const keys = guard_exports.Keys(context).filter((key) => !cyclicKeys.includes(key));
-  return keys.reduce((result2, key) => {
-    return { ...result2, [key]: InstantiateType(context, { callstack: [] }, context[key]) };
+  return keys.reduce((result3, key) => {
+    return { ...result3, [key]: InstantiateType(context, { callstack: [] }, context[key]) };
   }, {});
 }
 function InstantiateModule(context, options) {
@@ -3862,8 +3859,8 @@ function NonNullableOperation(type) {
   return ExcludeAction(type, excluded, {});
 }
 function NonNullableAction(type, options) {
-  const result2 = CanInstantiate([type]) ? memory_exports.Update(NonNullableOperation(type), {}, options) : NonNullableDeferred(type, options);
-  return result2;
+  const result3 = CanInstantiate([type]) ? memory_exports.Update(NonNullableOperation(type), {}, options) : NonNullableDeferred(type, options);
+  return result3;
 }
 function NonNullableInstantiate(context, state, type, options) {
   const instantiatedType = InstantiateType(context, state, type);
@@ -3882,29 +3879,29 @@ function Omit(type, indexer_or_keys, options = {}) {
 // node_modules/typebox/build/type/engine/indexable/to_indexable.mjs
 function ToIndexable(type) {
   const collapsed = CollapseToObject(type);
-  const result2 = IsObject2(collapsed) ? collapsed.properties : Unreachable();
-  return result2;
+  const result3 = IsObject2(collapsed) ? collapsed.properties : Unreachable();
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/omit/from_type.mjs
 function FromKeys(properties, keys) {
-  const result2 = guard_exports.Keys(properties).reduce((result3, key) => {
-    return keys.includes(key) ? result3 : { ...result3, [key]: properties[key] };
+  const result3 = guard_exports.Keys(properties).reduce((result4, key) => {
+    return keys.includes(key) ? result4 : { ...result4, [key]: properties[key] };
   }, {});
-  return result2;
+  return result3;
 }
 function FromType14(type, indexer) {
   const indexable = ToIndexable(type);
   const indexableKeys = ToIndexableKeys(indexer);
   const omitted = FromKeys(indexable, indexableKeys);
-  const result2 = _Object_(omitted);
-  return result2;
+  const result3 = _Object_(omitted);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/omit/instantiate.mjs
 function OmitAction(type, indexer, options) {
-  const result2 = CanInstantiate([type, indexer]) ? memory_exports.Update(FromType14(type, indexer), {}, options) : OmitDeferred(type, indexer, options);
-  return result2;
+  const result3 = CanInstantiate([type, indexer]) ? memory_exports.Update(FromType14(type, indexer), {}, options) : OmitDeferred(type, indexer, options);
+  return result3;
 }
 function OmitInstantiate(context, state, type, indexer, options) {
   const instantiatedType = InstantiateType(context, state, type);
@@ -3922,8 +3919,8 @@ function Options2(type, options) {
 
 // node_modules/typebox/build/type/engine/options/instantiate.mjs
 function OptionsAction(type, options) {
-  const result2 = CanInstantiate([type]) ? memory_exports.Update(type, {}, options) : OptionsDeferred(type, options);
-  return result2;
+  const result3 = CanInstantiate([type]) ? memory_exports.Update(type, {}, options) : OptionsDeferred(type, options);
+  return result3;
 }
 function OptionsInstantiate(context, state, type, options) {
   const instaniatedType = InstantiateType(context, state, type);
@@ -3942,12 +3939,12 @@ function Parameters(type, options = {}) {
 function ParametersOperation(type) {
   const parameters = IsFunction2(type) ? type["parameters"] : [];
   const instantiatedParameters = InstantiateElements({}, { callstack: [] }, parameters);
-  const result2 = Tuple(instantiatedParameters);
-  return result2;
+  const result3 = Tuple(instantiatedParameters);
+  return result3;
 }
 function ParametersAction(type, options) {
-  const result2 = CanInstantiate([type]) ? memory_exports.Update(ParametersOperation(type), {}, options) : ParametersDeferred(type, options);
-  return result2;
+  const result3 = CanInstantiate([type]) ? memory_exports.Update(ParametersOperation(type), {}, options) : ParametersDeferred(type, options);
+  return result3;
 }
 function ParametersInstantiate(context, state, type, options) {
   const instantiatedType = InstantiateType(context, state, type);
@@ -3966,29 +3963,29 @@ function Partial(type, options = {}) {
 function FromCyclic3(defs, ref) {
   const target = CyclicTarget(defs, ref);
   const partial = FromType15(target);
-  const result2 = Cyclic(memory_exports.Assign(defs, { [ref]: partial }), ref);
-  return result2;
+  const result3 = Cyclic(memory_exports.Assign(defs, { [ref]: partial }), ref);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/partial/from_intersect.mjs
 function FromIntersect3(types) {
-  const result2 = types.map((type) => FromType15(type));
-  return EvaluateIntersect(result2);
+  const result3 = types.map((type) => FromType15(type));
+  return EvaluateIntersect(result3);
 }
 
 // node_modules/typebox/build/type/engine/partial/from_union.mjs
 function FromUnion6(types) {
-  const result2 = types.map((type) => FromType15(type));
-  return Union(result2);
+  const result3 = types.map((type) => FromType15(type));
+  return Union(result3);
 }
 
 // node_modules/typebox/build/type/engine/partial/from_object.mjs
 function FromObject5(properties) {
-  const mapped = guard_exports.Keys(properties).reduce((result3, left) => {
-    return { ...result3, [left]: Optional(properties[left]) };
+  const mapped = guard_exports.Keys(properties).reduce((result4, left) => {
+    return { ...result4, [left]: Optional(properties[left]) };
   }, {});
-  const result2 = _Object_(mapped);
-  return result2;
+  const result3 = _Object_(mapped);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/partial/from_type.mjs
@@ -3998,8 +3995,8 @@ function FromType15(type) {
 
 // node_modules/typebox/build/type/engine/partial/instantiate.mjs
 function PartialAction(type, options) {
-  const result2 = CanInstantiate([type]) ? memory_exports.Update(FromType15(type), {}, options) : PartialDeferred(type, options);
-  return result2;
+  const result3 = CanInstantiate([type]) ? memory_exports.Update(FromType15(type), {}, options) : PartialDeferred(type, options);
+  return result3;
 }
 function PartialInstantiate(context, state, type, options) {
   const instantiatedType = InstantiateType(context, state, type);
@@ -4017,23 +4014,23 @@ function Pick(type, indexer_or_keys, options = {}) {
 
 // node_modules/typebox/build/type/engine/pick/from_type.mjs
 function FromKeys2(properties, keys) {
-  const result2 = guard_exports.Keys(properties).reduce((result3, key) => {
-    return keys.includes(key) ? memory_exports.Assign(result3, { [key]: properties[key] }) : result3;
+  const result3 = guard_exports.Keys(properties).reduce((result4, key) => {
+    return keys.includes(key) ? memory_exports.Assign(result4, { [key]: properties[key] }) : result4;
   }, {});
-  return result2;
+  return result3;
 }
 function FromType16(type, indexer) {
   const indexable = ToIndexable(type);
   const keys = ToIndexableKeys(indexer);
   const applied = FromKeys2(indexable, keys);
-  const result2 = _Object_(applied);
-  return result2;
+  const result3 = _Object_(applied);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/pick/instantiate.mjs
 function PickAction(type, indexer, options) {
-  const result2 = CanInstantiate([type, indexer]) ? memory_exports.Update(FromType16(type, indexer), {}, options) : PickDeferred(type, indexer, options);
-  return result2;
+  const result3 = CanInstantiate([type, indexer]) ? memory_exports.Update(FromType16(type, indexer), {}, options) : PickDeferred(type, indexer, options);
+  return result3;
 }
 function PickInstantiate(context, state, type, indexer, options) {
   const instantiatedType = InstantiateType(context, state, type);
@@ -4052,43 +4049,43 @@ var ReadonlyType = ReadonlyObject;
 
 // node_modules/typebox/build/type/engine/readonly_object/from_array.mjs
 function FromArray4(type) {
-  const result2 = Immutable(_Array_(type));
-  return result2;
+  const result3 = Immutable(_Array_(type));
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/readonly_object/from_cyclic.mjs
 function FromCyclic4(defs, ref) {
   const target = CyclicTarget(defs, ref);
   const partial = FromType17(target);
-  const result2 = Cyclic(memory_exports.Assign(defs, { [ref]: partial }), ref);
-  return result2;
+  const result3 = Cyclic(memory_exports.Assign(defs, { [ref]: partial }), ref);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/readonly_object/from_intersect.mjs
 function FromIntersect4(types) {
-  const result2 = types.map((type) => FromType17(type));
-  return EvaluateIntersect(result2);
+  const result3 = types.map((type) => FromType17(type));
+  return EvaluateIntersect(result3);
 }
 
 // node_modules/typebox/build/type/engine/readonly_object/from_object.mjs
 function FromObject6(properties) {
-  const mapped = guard_exports.Keys(properties).reduce((result3, left) => {
-    return { ...result3, [left]: Readonly(properties[left]) };
+  const mapped = guard_exports.Keys(properties).reduce((result4, left) => {
+    return { ...result4, [left]: Readonly(properties[left]) };
   }, {});
-  const result2 = _Object_(mapped);
-  return result2;
+  const result3 = _Object_(mapped);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/readonly_object/from_tuple.mjs
 function FromTuple4(types) {
-  const result2 = Immutable(Tuple(types));
-  return result2;
+  const result3 = Immutable(Tuple(types));
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/readonly_object/from_union.mjs
 function FromUnion7(types) {
-  const result2 = types.map((type) => FromType17(type));
-  return Union(result2);
+  const result3 = types.map((type) => FromType17(type));
+  return Union(result3);
 }
 
 // node_modules/typebox/build/type/engine/readonly_object/from_type.mjs
@@ -4098,8 +4095,8 @@ function FromType17(type) {
 
 // node_modules/typebox/build/type/engine/readonly_object/instantiate.mjs
 function ReadonlyObjectAction(type, options) {
-  const result2 = CanInstantiate([type]) ? memory_exports.Update(FromType17(type), {}, options) : ReadonlyObjectDeferred(type);
-  return result2;
+  const result3 = CanInstantiate([type]) ? memory_exports.Update(FromType17(type), {}, options) : ReadonlyObjectDeferred(type);
+  return result3;
 }
 function ReadonlyObjectInstantiate(context, state, type, options) {
   const instantiatedType = InstantiateType(context, state, type);
@@ -4115,29 +4112,29 @@ function RefInstantiate(context, state, type, ref) {
 function FromCyclic5(defs, ref) {
   const target = CyclicTarget(defs, ref);
   const partial = FromType18(target);
-  const result2 = Cyclic(memory_exports.Assign(defs, { [ref]: partial }), ref);
-  return result2;
+  const result3 = Cyclic(memory_exports.Assign(defs, { [ref]: partial }), ref);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/required/from_intersect.mjs
 function FromIntersect5(types) {
-  const result2 = types.map((type) => FromType18(type));
-  return EvaluateIntersect(result2);
+  const result3 = types.map((type) => FromType18(type));
+  return EvaluateIntersect(result3);
 }
 
 // node_modules/typebox/build/type/engine/required/from_union.mjs
 function FromUnion8(types) {
-  const result2 = types.map((type) => FromType18(type));
-  return Union(result2);
+  const result3 = types.map((type) => FromType18(type));
+  return Union(result3);
 }
 
 // node_modules/typebox/build/type/engine/required/from_object.mjs
 function FromObject7(properties) {
-  const mapped = guard_exports.Keys(properties).reduce((result3, left) => {
-    return { ...result3, [left]: OptionalRemove(properties[left]) };
+  const mapped = guard_exports.Keys(properties).reduce((result4, left) => {
+    return { ...result4, [left]: OptionalRemove(properties[left]) };
   }, {});
-  const result2 = _Object_(mapped);
-  return result2;
+  const result3 = _Object_(mapped);
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/required/from_type.mjs
@@ -4155,8 +4152,8 @@ function Required(type, options = {}) {
 
 // node_modules/typebox/build/type/engine/required/instantiate.mjs
 function RequiredAction(type, options) {
-  const result2 = CanInstantiate([type]) ? memory_exports.Update(FromType18(type), {}, options) : RequiredDeferred(type, options);
-  return result2;
+  const result3 = CanInstantiate([type]) ? memory_exports.Update(FromType18(type), {}, options) : RequiredDeferred(type, options);
+  return result3;
 }
 function RequiredInstantiate(context, state, type, options) {
   const instaniatedType = InstantiateType(context, state, type);
@@ -4176,8 +4173,8 @@ function ReturnTypeOperation(type) {
   return IsFunction2(type) ? type["returnType"] : Never();
 }
 function ReturnTypeAction(type, options) {
-  const result2 = CanInstantiate([type]) ? memory_exports.Update(ReturnTypeOperation(type), {}, options) : ReturnTypeDeferred(type, options);
-  return result2;
+  const result3 = CanInstantiate([type]) ? memory_exports.Update(ReturnTypeOperation(type), {}, options) : ReturnTypeDeferred(type, options);
+  return result3;
 }
 function ReturnTypeInstantiate(context, state, type, options = {}) {
   const instantiatedType = InstantiateType(context, state, type);
@@ -4186,14 +4183,14 @@ function ReturnTypeInstantiate(context, state, type, options = {}) {
 
 // node_modules/typebox/build/type/engine/rest/spread.mjs
 function SpreadElement(type) {
-  const result2 = IsRest(type) ? IsTuple(type.items) ? RestSpread(type.items.items) : IsInfer(type.items) ? [type] : IsRef(type.items) ? [type] : [Never()] : [type];
-  return result2;
+  const result3 = IsRest(type) ? IsTuple(type.items) ? RestSpread(type.items.items) : IsInfer(type.items) ? [type] : IsRef(type.items) ? [type] : [Never()] : [type];
+  return result3;
 }
 function RestSpread(types) {
-  const result2 = types.reduce((result3, left) => {
-    return [...result3, ...SpreadElement(left)];
+  const result3 = types.reduce((result4, left) => {
+    return [...result4, ...SpreadElement(left)];
   }, []);
-  return result2;
+  return result3;
 }
 
 // node_modules/typebox/build/type/engine/instantiate.mjs
@@ -4210,14 +4207,14 @@ function ApplyOptional2(action, type) {
   return guard_exports.IsEqual(action, "remove") ? OptionalRemove(type) : guard_exports.IsEqual(action, "add") ? OptionalAdd(type) : type;
 }
 function InstantiateProperties(context, state, properties) {
-  return guard_exports.Keys(properties).reduce((result2, key) => {
-    return { ...result2, [key]: InstantiateType(context, state, properties[key]) };
+  return guard_exports.Keys(properties).reduce((result3, key) => {
+    return { ...result3, [key]: InstantiateType(context, state, properties[key]) };
   }, {});
 }
 function InstantiateElements(context, state, types) {
   const elements = InstantiateTypes(context, state, types);
-  const result2 = RestSpread(elements);
-  return result2;
+  const result3 = RestSpread(elements);
+  return result3;
 }
 function InstantiateTypes(context, state, types) {
   return types.map((type) => InstantiateType(context, state, type));
@@ -4243,8 +4240,8 @@ function AwaitedOperation(type) {
   return IsPromise(type) ? AwaitedOperation(type.item) : type;
 }
 function AwaitedAction(type, options) {
-  const result2 = CanInstantiate([type]) ? memory_exports.Update(AwaitedOperation(type), {}, options) : AwaitedDeferred(type, options);
-  return result2;
+  const result3 = CanInstantiate([type]) ? memory_exports.Update(AwaitedOperation(type), {}, options) : AwaitedDeferred(type, options);
+  return result3;
 }
 function AwaitedInstantiate(context, state, type, options) {
   const instantiatedType = InstantiateType(context, state, type);
@@ -4282,8 +4279,8 @@ function Script2(...args) {
     3: (context2, script, options2) => [context2, script, options2],
     1: (script) => [{}, script, {}]
   });
-  const result2 = Script(input);
-  const parsed = guard_exports.IsArray(result2) && guard_exports.IsEqual(result2.length, 2) ? InstantiateType(context, { callstack: [] }, result2[0]) : Never();
+  const result3 = Script(input);
+  const parsed = guard_exports.IsArray(result3) && guard_exports.IsEqual(result3.length, 2) ? InstantiateType(context, { callstack: [] }, result3[0]) : Never();
   return memory_exports.Update(parsed, {}, options);
 }
 
@@ -4415,7 +4412,292 @@ __export(typebox_exports, {
   Void: () => Void
 });
 
+// src/task-card.ts
+var PROJECT = "task-cards";
+var DONE_PROJECT = "task-cards-done";
+var MARK = "[memnest-task-card]";
+var ENTRY = "memnest-task-card";
+var PIN = "memnest task card: ";
+var MAX_CHARS = 12e3;
+var MAX_OPEN = 3;
+var LIST = 20;
+var PAGE = 50;
+var LOG = "## User's own words (kept verbatim by memnest, oldest first)";
+var LOG_MAX = 8e3;
+var MESSAGE_MAX = 1e3;
+var RULE = "The user's stated policies and prohibitions for this task take priority over your own analysis and earlier plans. If a proposal would go against one, first quote the user's words it conflicts with and ask before proposing it. The card's next steps are a plan, not approval: before changing, submitting, publishing, or deleting anything the user has not approved in this conversation, say what you will do and ask.";
+var FORMAT = "Sections: Goal; User policies and prohibitions (dated, close to the user's words, note repeats); Decisions and reasons; Done (what, where); Tried and failed (why); Current state (numbers); Next and waiting; Unverified. Keep what is still valid, move finished items to Done, no tool output, no guesses, under about 6000 characters. Do not copy the user's-own-words section; memnest keeps it.";
+function within(promise, fallback) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(fallback), 1500).unref?.())
+  ]);
+}
+function result(text, error = false) {
+  return {
+    content: [{ type: "text", text: error ? `Error: ${text}` : text }],
+    details: void 0
+  };
+}
+var titleOf = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
+var line = (c) => `- ${c.title} (updated ${c.updated || "unknown"})`;
+async function findCards(call2, request = "", project = PROJECT) {
+  const r = await call2("/search", {
+    // The core drops bracketed queries, so search the bare marker word.
+    query: request ? `${ENTRY} ${request.slice(0, 300)}` : ENTRY,
+    project,
+    n_results: PAGE,
+    recent_first: !request,
+    adapter: "pi"
+  });
+  if (r.error) return [];
+  try {
+    const seen = /* @__PURE__ */ new Set();
+    const cards = [];
+    for (const item of JSON.parse(r.text).results ?? []) {
+      if (typeof item?.id !== "string" || typeof item?.document !== "string") continue;
+      if (!item.document.startsWith(MARK)) continue;
+      const title = titleOf(item.document.slice(MARK.length).split("\n")[0]);
+      if (!title || seen.has(title)) continue;
+      seen.add(title);
+      cards.push({ id: item.id, title, updated: String(item.timestamp ?? "").slice(0, 16) });
+    }
+    return cards;
+  } catch {
+    return [];
+  }
+}
+async function byTitle(call2, title, project = PROJECT) {
+  return (await findCards(call2, "", project)).find((c) => c.title === title) ?? (await findCards(call2, title, project)).find((c) => c.title === title);
+}
+async function readCard(call2, id) {
+  const r = await call2(`/chunk/${encodeURIComponent(id)}?max_chars=${MAX_CHARS + LOG_MAX + 400}`, void 0, "GET");
+  if (r.error) return null;
+  try {
+    const doc = JSON.parse(r.text)?.document;
+    return typeof doc === "string" ? doc.split("\n").slice(1).join("\n").trim() : null;
+  } catch {
+    return null;
+  }
+}
+function split(text) {
+  const at = text.indexOf(LOG);
+  if (at < 0) return { body: text.trim(), log: [] };
+  const log = text.slice(at + LOG.length).split("\n").filter((l) => l.startsWith("- "));
+  return { body: text.slice(0, at).trim(), log };
+}
+var TRIMMED = "- (older messages trimmed; memory_search finds them)";
+function compose(body, log) {
+  const kept = log.filter((l) => l !== TRIMMED);
+  let dropped = kept.length < log.length;
+  while (kept.join("\n").length > LOG_MAX && kept.length > 1) {
+    kept.shift();
+    dropped = true;
+  }
+  if (!kept.length) return body;
+  return `${body}
+
+${LOG}
+${dropped ? `${TRIMMED}
+` : ""}${kept.join("\n")}`;
+}
+function stamp() {
+  const d = /* @__PURE__ */ new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function installTaskCards(pi, call2) {
+  let open = [];
+  let pending = [];
+  let listed = false;
+  let lastCompaction;
+  const newestCompaction = (ctx) => {
+    const branch = ctx?.sessionManager?.getBranch?.() ?? [];
+    for (let i = branch.length - 1; i >= 0; i--) if (branch[i]?.type === "compaction") return branch[i].id;
+    return void 0;
+  };
+  const remember = () => pi.appendEntry?.(ENTRY, { titles: open.map((c) => c.title) });
+  const setOpen = (card) => {
+    open = [...open.filter((c) => c.title !== card.title), card].slice(-MAX_OPEN);
+    remember();
+  };
+  const close = (title) => {
+    open = open.filter((c) => c.title !== title);
+    remember();
+  };
+  let writing = Promise.resolve();
+  const attachPending = (card, batch = pending.splice(0)) => {
+    if (!batch.length) return writing;
+    card.log = [...card.log ?? [], ...batch];
+    const write = () => appendLog(card, batch);
+    writing = writing.then(write, write);
+    return writing;
+  };
+  const appendLog = async (card, batch) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const latest = await byTitle(call2, card.title);
+      const text = latest ? await readCard(call2, latest.id) : null;
+      if (!latest || text === null) return;
+      const fresh = split(text);
+      const missing = batch.filter((e) => !fresh.log.includes(e));
+      Object.assign(card, { id: latest.id, body: fresh.body, log: [...fresh.log, ...missing] });
+      if (!missing.length) return;
+      await call2("/update", { id: latest.id, text: `${MARK} ${card.title}
+${compose(fresh.body, card.log)}` });
+    }
+  };
+  pi.on("session_start", (_event, ctx) => {
+    listed = false;
+    pending = [];
+    lastCompaction = newestCompaction(ctx);
+    open = [];
+    for (const entry of ctx?.sessionManager?.getBranch?.() ?? [])
+      if (entry?.type === "custom" && entry.customType === ENTRY) {
+        const titles = entry.data?.titles ?? (entry.data?.title ? [entry.data.title] : []);
+        if (Array.isArray(titles)) open = titles.filter((t) => typeof t === "string").map((title) => ({ title }));
+      }
+  });
+  pi.on("before_agent_start", async (event, ctx) => {
+    const prompt = event?.messageType === "custom" || typeof event?.prompt !== "string" ? "" : event.prompt.trim();
+    if (prompt && !prompt.startsWith("/")) pending.push(`- ${stamp()} ${prompt.replace(/\s+/g, " ").slice(0, MESSAGE_MAX)}`);
+    if (!memoryReadAllowed(ctx)) return;
+    for (const c of open)
+      if (c.body === void 0) {
+        const card = await within(byTitle(call2, c.title), void 0);
+        const text = card ? await within(readCard(call2, card.id), null) : null;
+        Object.assign(c, text === null ? { body: "" } : { id: card.id, ...split(text) });
+      }
+    const current = open.at(-1);
+    if (current?.id) void attachPending(current).catch(() => {
+    });
+    const files = event?.systemPromptOptions?.contextFiles;
+    if (Array.isArray(files)) {
+      const kept = files.filter((f) => !f?.path?.startsWith(PIN));
+      files.splice(0, files.length, ...kept, ...open.filter((c) => c.body).map((c) => ({ path: `${PIN}${c.title}`, content: `${RULE}
+
+${compose(c.body, c.log ?? [])}` })));
+    }
+    const notes = [];
+    const compaction = newestCompaction(ctx);
+    const compacted = compaction !== lastCompaction;
+    lastCompaction = compaction;
+    if (compacted && open.length) {
+      notes.push(`[memnest task cards] The conversation was just compacted. If decisions or user corrections since the last save of ${open.map((c) => `"${c.title}"`).join(", ")} are missing from the card, save it now.`);
+    }
+    if (!listed && !open.length) {
+      listed = true;
+      const [matching, recent] = await Promise.all([
+        prompt ? within(findCards(call2, prompt), []) : Promise.resolve([]),
+        within(findCards(call2), [])
+      ]);
+      const cards = [...matching, ...recent.filter((c) => !matching.some((m) => m.title === c.title))].slice(0, LIST);
+      const crowded = recent.length >= PAGE ? `
+${PAGE} or more active cards. When it fits the conversation, ask the user which finished tasks to mark done.` : "";
+      if (cards.length)
+        notes.push(
+          `[memnest task cards] Saved handoff cards${matching.length ? ", most relevant to this request first" : ", newest first"}. Open one with task_card action=get when the request is about that task: continuing it or asking about it. A new task that only shares a word or an area with a card is not about it, so answer without opening a card. If the user is continuing something but it is unclear which task, ask.
+${cards.map(line).join("\n")}${recent[0] ? `
+Most recently saved: ${recent[0].title}` : ""}${crowded}`
+        );
+    }
+    if (!notes.length) return;
+    return { message: { customType: ENTRY, display: false, content: `<system-reminder>
+${notes.join("\n\n")}
+</system-reminder>` } };
+  });
+  pi.registerTool({
+    name: "task_card",
+    label: "Memory: task card",
+    description: `Handoff card for work that continues across sessions or days. Cards are shared across folders. get opens a card and keeps it pinned in your instructions for the rest of the session, up to ${MAX_OPEN} at once, so compaction cannot drop it. While a card is open, memnest appends every user message to it verbatim, so the user's instructions are kept without a save. When the user moves on to unrelated work, call close for that card so later messages are not recorded in it. save writes the newest body and replaces the previous version with the same title; the verbatim user messages carry over. Create a card when a task will continue in a later session. After that, save when work progressed or a decision changed the plan, and when the user stops for the day, not after every message. close unpins a card and stops recording into it. done moves a finished task out of the list; get still opens it and saving it again reopens it. list with text searches cards by topic. If no card list was shown at the start of this session, no cards are saved, so do not call list to look for one. ${FORMAT}`,
+    parameters: typebox_exports.Object({
+      action: typebox_exports.Union([typebox_exports.Literal("list"), typebox_exports.Literal("get"), typebox_exports.Literal("save"), typebox_exports.Literal("done"), typebox_exports.Literal("close")]),
+      title: typebox_exports.Optional(typebox_exports.String({ description: "Short task name; the same title updates the same card." })),
+      text: typebox_exports.Optional(typebox_exports.String({ description: "Card body for save (without the user's-own-words section), or a topic to search for list." }))
+    }),
+    async execute(_id, p, _s, _u, ctx) {
+      const title = titleOf(p.title);
+      if (p.action === "close") {
+        if (!open.some((c) => c.title === title)) return result(`task card "${title}" is not open`, true);
+        close(title);
+        pending = [];
+        return result(`closed task card "${title}"; it is no longer pinned or recorded into`);
+      }
+      if (p.action === "save" || p.action === "done") {
+        if (!title) return result(`${p.action} needs a title`, true);
+        let previous = await byTitle(call2, title);
+        if (p.action === "done") {
+          if (!previous) return result(`no active task card titled "${title}"`, true);
+          const moved = await call2("/update", { id: previous.id, project: DONE_PROJECT });
+          if (moved.error) return result(moved.text, true);
+          close(title);
+          return result(`marked task card "${title}" done; it no longer appears in the list`);
+        }
+        const body = split(String(p.text ?? "")).body;
+        if (!body) return result("save needs title and text", true);
+        if (body.length > MAX_CHARS)
+          return result(`card is ${body.length} characters; shorten it below ${MAX_CHARS} and save again`, true);
+        if (!previous) {
+          const finished = await byTitle(call2, title, DONE_PROJECT);
+          if (finished && !(await call2("/update", { id: finished.id, project: PROJECT })).error) previous = finished;
+        }
+        const opened2 = open.find((c) => c.title === title);
+        const stored = previous ? split(await readCard(call2, previous.id) ?? "").log : [];
+        const log = [...stored, ...[...opened2?.log ?? [], ...pending].filter((e) => !stored.includes(e))];
+        const r = await call2("/add", {
+          text: `${MARK} ${title}
+${compose(body, log)}`,
+          project: PROJECT,
+          metadata: {
+            chunk_type: "manual",
+            importance: "decision",
+            memory_kind: "record",
+            supersedes: previous?.id,
+            cwd: ctx?.cwd,
+            sensitive: false,
+            adapter: "pi"
+          }
+        });
+        if (r.error) return result(r.text, true);
+        pending = [];
+        const id = (() => {
+          try {
+            return JSON.parse(r.text)?.id;
+          } catch {
+            return void 0;
+          }
+        })();
+        setOpen({ title, id, body, log });
+        return result(`saved task card "${title}"${previous ? ` (replaces ${previous.id})` : ""}; it stays pinned for this session`);
+      }
+      if (!memoryReadAllowed(ctx)) return result(MODEL_POLICY_ERROR, true);
+      if (p.action === "list") {
+        const topic = String(p.text ?? "").trim();
+        const cards = await findCards(call2, topic);
+        return result(cards.length ? cards.map(line).join("\n") : "no task cards are saved; treat this as a new task and do not search again");
+      }
+      const active = await byTitle(call2, title);
+      const card = active ?? await byTitle(call2, title, DONE_PROJECT);
+      if (!card) {
+        const near = (await findCards(call2, title)).slice(0, 5);
+        return result(`no task card titled "${title}"${near.length ? `; closest titles:
+${near.map(line).join("\n")}` : ""}`, true);
+      }
+      const text = await readCard(call2, card.id);
+      if (!text) return result("could not read the task card", true);
+      const opened = { title, id: card.id, ...split(text) };
+      const last = pending.slice(-1);
+      pending = [];
+      if (active) await attachPending(opened, last);
+      setOpen(opened);
+      return result(`${active ? "" : "(this task was marked done; save it again to reopen)\n\n"}${RULE}
+
+${compose(opened.body, opened.log ?? [])}`);
+    }
+  });
+}
+
 // src/index.ts
+import { execFile } from "node:child_process";
 var env2 = globalThis.process?.env ?? {};
 var URL = (env2.MEMNEST_URL ?? "http://127.0.0.1:3111").replace(/\/$/, "");
 var TOKEN = env2.MEMNEST_TOKEN?.trim() || void 0;
@@ -4461,7 +4743,7 @@ async function codeEvidence(args, cwd, baseline) {
     child.stdin?.end(baseline === void 0 ? "" : JSON.stringify(baseline));
   });
 }
-function result(text, error = false) {
+function result2(text, error = false) {
   return {
     content: [{ type: "text", text: error ? `Error: ${text}` : text }],
     details: void 0
@@ -4472,6 +4754,7 @@ function registerTool(pi, name, label, description, parameters, execute) {
 }
 function register(pi) {
   const autocontextEnabled = installAutocontext(pi);
+  installTaskCards(pi, call);
   pi.registerCommand?.("memnest", {
     description: "Show Memnest status, stored memory count, and search latency",
     handler: async (_args, ctx) => {
@@ -4587,17 +4870,17 @@ function register(pi) {
     async (_id, p, _s, _u, ctx) => {
       const cwd = ctx.cwd?.trim();
       if (!p.project && !cwd)
-        return result(
+        return result2(
           "current workspace is unavailable; pass project explicitly",
           true
         );
       let code_evidence;
       if (p.code_files !== void 0) {
-        if (!cwd) return result("code_files requires the current workspace", true);
+        if (!cwd) return result2("code_files requires the current workspace", true);
         try {
           code_evidence = await codeEvidence(["capture", ...p.code_files.flatMap((file) => ["--file", file])], cwd);
         } catch {
-          return result("Cannot capture code evidence; use the matching core and safe relative files.", true);
+          return result2("Cannot capture code evidence; use the matching core and safe relative files.", true);
         }
       }
       const r = await call("/add", {
@@ -4618,7 +4901,7 @@ function register(pi) {
           adapter: "pi"
         }
       });
-      return result(r.text, r.error);
+      return result2(r.text, r.error);
     }
   );
   registerTool(
@@ -4639,11 +4922,11 @@ function register(pi) {
     async (_id, p, _s, _u, ctx) => {
       const cwd = ctx.cwd?.trim();
       if (!p.project && !cwd)
-        return result(
+        return result2(
           "current workspace is unavailable; pass project explicitly (use project=all for cross-project search)",
           true
         );
-      if (!memoryReadAllowed(ctx)) return result(MODEL_POLICY_ERROR, true);
+      if (!memoryReadAllowed(ctx)) return result2(MODEL_POLICY_ERROR, true);
       const body = {
         ...p,
         project: p.project ?? "",
@@ -4651,7 +4934,7 @@ function register(pi) {
         adapter: "pi"
       };
       const r = await call("/search", body);
-      if (r.error) return result(r.text, true);
+      if (r.error) return result2(r.text, true);
       try {
         const data = JSON.parse(r.text);
         const lines = [`=== memory search results (${p.query}) ===`];
@@ -4663,9 +4946,9 @@ function register(pi) {
     evidence=${JSON.stringify(item.evidence)} (local-model selection, not verified truth)` : ""}`
           );
         if (!(data.results ?? []).length) lines.push("no results");
-        return result(lines.join("\n"));
+        return result2(lines.join("\n"));
       } catch {
-        return result(r.text);
+        return result2(r.text);
       }
     }
   );
@@ -4683,7 +4966,7 @@ function register(pi) {
       check_code: typebox_exports.Optional(typebox_exports.Boolean({ default: false, description: "Explicitly compare the saved file baseline in the current workspace. Changes do not invalidate the solution." }))
     }),
     async (_id, p, _s, _u, ctx) => {
-      if (!memoryReadAllowed(ctx)) return result(MODEL_POLICY_ERROR, true);
+      if (!memoryReadAllowed(ctx)) return result2(MODEL_POLICY_ERROR, true);
       const query = new URLSearchParams();
       for (const key of ["offset", "max_chars", "before", "after"])
         if (p[key] !== void 0) query.set(key, String(p[key]));
@@ -4692,14 +4975,14 @@ function register(pi) {
         void 0,
         "GET"
       );
-      if (r.error) return result(r.text, true);
+      if (r.error) return result2(r.text, true);
       try {
         const c = JSON.parse(r.text);
         if (!c || typeof c.document !== "string")
-          return result("Invalid memory response from Memnest core.", true);
+          return result2("Invalid memory response from Memnest core.", true);
         if (c.next_offset === void 0) {
           if (p.before > 0 || p.after > 0)
-            return result(
+            return result2(
               "Memnest core does not support transcript neighbors; upgrade the core service or read this id without before/after.",
               true
             );
@@ -4720,13 +5003,13 @@ function register(pi) {
           });
         }
         if (p.check_code) {
-          if (!ctx?.cwd) return result("check_code requires the current workspace", true);
-          if (!("code_evidence" in c)) return result("Upgrade the core for code evidence checks.", true);
+          if (!ctx?.cwd) return result2("check_code requires the current workspace", true);
+          if (!("code_evidence" in c)) return result2("Upgrade the core for code evidence checks.", true);
           c.code_check = c.code_evidence === null ? { status: "not_recorded" } : await codeEvidence(["compare"], ctx.cwd, c.code_evidence);
         }
-        return result(JSON.stringify(c));
+        return result2(JSON.stringify(c));
       } catch {
-        return result("Invalid memory response from Memnest core.", true);
+        return result2("Invalid memory response from Memnest core.", true);
       }
     }
   );
@@ -4762,7 +5045,7 @@ function register(pi) {
     async (_id, p) => {
       const body = p.sensitive ? { ...p, metadata: { sensitive: true } } : p;
       const r = await call("/update", body);
-      return result(r.text, r.error);
+      return result2(r.text, r.error);
     }
   );
   registerTool(
@@ -4773,7 +5056,7 @@ function register(pi) {
     typebox_exports.Object({ id: typebox_exports.String() }),
     async (_id, p) => {
       const r = await call("/delete", { ids: [p.id] });
-      return result(r.text, r.error);
+      return result2(r.text, r.error);
     }
   );
   if (secretToolsEnabled) {
@@ -4790,7 +5073,7 @@ function register(pi) {
       }),
       async (_id, p) => {
         const r = await call("/secrets", p);
-        return result(r.text, r.error);
+        return result2(r.text, r.error);
       }
     );
     registerTool(
@@ -4800,13 +5083,13 @@ function register(pi) {
       "Retrieve and decrypt a credential.",
       typebox_exports.Object({ key: typebox_exports.String() }),
       async (_id, p, _s, _u, ctx) => {
-        if (!memoryReadAllowed(ctx)) return result(MODEL_POLICY_ERROR, true);
+        if (!memoryReadAllowed(ctx)) return result2(MODEL_POLICY_ERROR, true);
         const r = await call(
           `/secrets/${encodeURIComponent(p.key)}`,
           void 0,
           "GET"
         );
-        return result(r.text, r.error);
+        return result2(r.text, r.error);
       }
     );
     registerTool(
@@ -4816,9 +5099,9 @@ function register(pi) {
       "List credential metadata without values.",
       Empty,
       async (_id, _p, _s, _u, ctx) => {
-        if (!memoryReadAllowed(ctx)) return result(MODEL_POLICY_ERROR, true);
+        if (!memoryReadAllowed(ctx)) return result2(MODEL_POLICY_ERROR, true);
         const r = await call("/secrets", void 0, "GET");
-        return result(r.text, r.error);
+        return result2(r.text, r.error);
       }
     );
     registerTool(
@@ -4833,7 +5116,7 @@ function register(pi) {
           void 0,
           "DELETE"
         );
-        return result(r.text, r.error);
+        return result2(r.text, r.error);
       }
     );
   }

@@ -86,6 +86,9 @@ enum CliCommand {
         /// Give up on the service after this long and inject nothing.
         #[arg(long, default_value_t = 2000)]
         timeout_ms: u64,
+        /// Task cards only: skip automatic recall, which stays opt-in.
+        #[arg(long)]
+        no_recall: bool,
     },
     /// Follow local session transcripts and store new turns automatically, so
     /// any host that writes one gets AutoLog without an extension.
@@ -160,8 +163,9 @@ async fn main() -> anyhow::Result<()> {
                 url,
                 format,
                 timeout_ms,
+                no_recall,
             } => {
-                memnest::hook::run(url.as_deref(), *format, *timeout_ms).await;
+                memnest::hook::run(url.as_deref(), *format, *timeout_ms, !*no_recall).await;
             }
             // Talks to the service over HTTP like any other adapter, so it also
             // stays off the paths that open the data directory.

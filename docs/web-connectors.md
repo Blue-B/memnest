@@ -1,14 +1,16 @@
-# Connecting ChatGPT and Grok to Memnest
+# Connecting ChatGPT, Claude, and Grok to Memnest
 
 <!-- markdownlint-disable MD013 -->
 
-Memnest serves a remote MCP endpoint already. This guide covers what is missing to reach it from ChatGPT on the web and from Grok on the web, and what to check before you expose anything.
+[English](web-connectors.md) | [한국어](web-connectors.ko.md)
+
+Memnest serves a remote MCP endpoint already. This guide covers what is missing to reach it from cloud-hosted assistants (ChatGPT, Claude custom connectors, and Grok) and what to check before you expose anything. Claude Code, Codex, Cursor, and pi run on your machine and connect to `127.0.0.1` directly; they do not need any of this.
 
 For what Memnest is and how to connect a local agent, start at the [README](../README.md).
 
 The gateway this guide uses is [`scripts/mcp-readonly-gateway.mjs`](../scripts/mcp-readonly-gateway.mjs).
 
-Short version: the MCP endpoint exists and works, but both services call it from their own infrastructure. That needs a public HTTPS URL, and ChatGPT's custom MCP dialog cannot send a static bearer header. A small read-only gateway covers both gaps.
+Short version: the MCP endpoint exists and works, but these services call it from their own infrastructure. That needs a public HTTPS URL, and ChatGPT's custom MCP dialog cannot send a static bearer header. A small read-only gateway covers both gaps.
 
 ## What the service already serves
 
@@ -25,11 +27,11 @@ Short version: the MCP endpoint exists and works, but both services call it from
 
 Named principals with per-project read and write grants are a separate, optional layer. See [team access](team-access.md). A principal without a write grant is refused writes over both HTTP and MCP.
 
-## What ChatGPT and Grok require
+## What cloud assistants require
 
 - A URL that their servers can reach over the public internet. `127.0.0.1`, `10.x.x.x` and `192.168.x.x` are rejected, so a tunnel is required. Grok documents the tunnel step in [Custom MCP server tunneling](https://docs.x.ai/grok/connectors/custom-mcp-tunneling); the same idea applies to ChatGPT.
-- A remote MCP client. Both connect outbound and treat the server as untrusted input.
-- ChatGPT, on the web, offers these authentication choices for a custom MCP server: OAuth, no authentication, or OAuth-or-none. There is no field for a static `Authorization` header. Grok asks for authentication during connector setup; whether its dialog accepts a static header is not confirmed here.
+- A remote MCP client. They connect outbound and treat the server as untrusted input.
+- ChatGPT, on the web, offers these authentication choices for a custom MCP server: OAuth, no authentication, or OAuth-or-none. There is no field for a static `Authorization` header. Claude offers OAuth or "No sign in", plus fixed request headers such as `authorization`; Anthropic documents request headers as a beta available to a limited set of organizations. Grok asks for authentication during connector setup; whether its dialog accepts a static header is not confirmed here.
 
 So there are two things to decide, and they are separate: how the URL becomes reachable, and who is allowed to use it.
 
@@ -88,6 +90,15 @@ Do not select "no authentication" in a connector while the endpoint is reachable
 
 Custom MCP servers can be restricted by workspace permissions and security settings. If the entry is missing, check your workspace policy.
 
+## Claude
+
+Claude custom connectors connect from Anthropic's cloud, in every Claude app that offers them: claude.ai, Claude Desktop, Cowork, and the mobile apps ([Anthropic's guide](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)).
+
+1. Open **Customize > Connectors** and add a custom connector (Team and Enterprise: an owner adds it under **Organization settings > Connectors**).
+2. Enter a name and the connector URL, then continue.
+3. Set **Authentication** to **No sign in** when the gateway holds the secret. If your organization has request headers, you can instead use Option B and add `authorization: Bearer <MEMNEST_TOKEN>` under **Request headers**.
+4. Enable the connector in a conversation.
+
 ## Grok
 
 1. Open `https://grok.com/connectors`.
@@ -123,7 +134,7 @@ Then send a question whose answer is only in your memories, and confirm the tool
 - **A remote model can be manipulated.** A retrieved memory can contain instructions aimed at the model reading it. Prompt injection is a real risk on this path. Consider exposing a narrow project instead of the whole store.
 - **Availability is your machine.** Tool calls fail whenever the service, the gateway or the tunnel is stopped.
 - **The gateway is not covered by the repository test suite.** It was exercised against a running 0.4.0 service on 2026-10-16: allowlist filtering, refusal of a write tool, 404 on a wrong secret, batch rejection, and a live `memory_search`. Treat that as one manual check, not as continuous verification.
-- **Client-side confirmation.** ChatGPT completed the handshake and a `memory_search` plus `memory_get` round trip through the gateway on 2026-10-16. Grok was not exercised; the account used was not signed in.
+- **Client-side confirmation.** ChatGPT completed the handshake and a `memory_search` plus `memory_get` round trip through the gateway on 2026-10-16. On 2026-11-04 the same public gateway answered `initialize` and `tools/list` from outside the machine, which is the handshake a Claude connector performs; adding it in a Claude account was not done. Grok was not exercised; the account used was not signed in.
 
 ## Turning it off
 

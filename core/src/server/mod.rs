@@ -1,6 +1,7 @@
 pub mod api;
 pub mod mcp;
 pub mod operations;
+pub mod task_cards;
 
 use axum::{
     Router,
@@ -82,6 +83,8 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
         // MCP over Streamable HTTP: same auth and security layers as every other
         // route, so one service covers the API and MCP clients.
         .route("/mcp", post(mcp::http_endpoint))
+        .route("/task-card", post(task_cards::endpoint))
+        .route("/task-card/hook", post(task_cards::hook_endpoint))
         .layer(middleware::from_fn(security_headers_middleware))
         .layer(middleware::from_fn_with_state(
             system.clone(),

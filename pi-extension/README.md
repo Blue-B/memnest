@@ -2,9 +2,11 @@
 
 <!-- markdownlint-disable MD013 -->
 
+[English](README.md) | [한국어](README.ko.md)
+
 A local memnest bridge for pi.
 
-`pi-memnest` connects [pi](https://github.com/badlogic/pi-mono) to a running [memnest](https://github.com/Blue-B/memnest) HTTP service. It gives pi the canonical five memory tools. Four secret tools are an explicit opt-in. Automatic memory cards are off by default; explicit memory tools work without them.
+`pi-memnest` connects [pi](https://github.com/badlogic/pi-mono) to a running [memnest](https://github.com/Blue-B/memnest) HTTP service. It gives pi the canonical five memory tools and task cards. Four secret tools are an explicit opt-in. Automatic memory cards are off by default; explicit memory tools work without them.
 
 This extension does not contain the memory engine. Start the Rust core before installing it.
 
@@ -19,7 +21,7 @@ This extension does not contain the memory engine. Start the Rust core before in
 Start the [memnest core service](https://github.com/Blue-B/memnest#install), then install the matching extension:
 
 ```bash
-pi install npm:pi-memnest@0.3.1
+pi install npm:pi-memnest@0.4.0
 ```
 
 If Memnest is already registered from a local path or another pinned version, remove that package declaration first to avoid duplicate tools. A pinned package is not changed by `pi update --extensions`. Keep the core and extension versions aligned.
@@ -44,7 +46,7 @@ The command reports service health, memory count, the active data directory, and
 
 ## Tools
 
-The extension registers exactly five memory tools by default. Set `MEMNEST_EXPOSE_SECRET_TOOLS=1` before starting pi to register the four vault tools too. The `/memnest` command and Autocontext hook remain available without adding status or admin tools to the model surface.
+The extension registers the five memory tools and `task_card`. Set `MEMNEST_EXPOSE_SECRET_TOOLS=1` before starting pi to register the four vault tools too. The `/memnest` command and Autocontext hook remain available without adding status or admin tools to the model surface.
 
 | Tool | Purpose |
 | --- | --- |
@@ -110,6 +112,22 @@ Common controls:
 
 See [bounded retrieval](https://github.com/Blue-B/memnest/blob/main/docs/bounded-retrieval.md) for character budgets and capture-order limits.
 
+## Task cards
+
+`task_card` keeps a handoff card for work that continues across sessions or days. It is always registered. The core offers the same cards to Claude Code, Codex, and other MCP clients, so a card saved in pi opens there too. This extension keeps its own implementation so it also works with older cores.
+
+```text
+task_card action=save title="blog migration" text="# Goal ..."   # same title replaces the previous card
+task_card action=list text="images"                              # rank by topic; omit text for newest
+task_card action=get title="blog migration"                      # pins the card for this session
+task_card action=close title="blog migration"                    # stop recording when the user moves on
+task_card action=done title="blog migration"                     # move to the finished collection; save again to reopen
+```
+
+Cards are ordinary Manual memories in one shared `task-cards` collection, so they are visible from any folder. Finished cards move to `task-cards-done`, so the session-start search only scans active work. The newest version supersedes the old one, so the old version stays auditable. On a session's first prompt, the extension searches the cards with that prompt. It lists up to 20 active titles, most relevant first, then the newest. Card bodies are not read until one is opened. While a card is open, the extension appends every user message to it verbatim. The model's save replaces only its own summary, so a weaker model cannot drop or reverse what the user said. Up to three opened cards are pinned into the system prompt on every run, together with one fixed line: the user's stated policies take priority over the model's own analysis. Compaction therefore cannot summarize them away, and the next prompt after a compaction reminds the model to save what changed. A resumed session reopens its cards, and cards longer than 12,000 characters are rejected. With no cards the only cost is the session-start search, which is skipped after 1.5 seconds if the core does not answer. A 20-title list is about 1,000 characters.
+
+In a replay of a real five-day session, the reply read 174,118 context tokens instead of 321,213. Calculated over the whole session, starting a new session each day with a card cut context tokens by 39%. The pinned card with the rule line stopped the replayed failure in 3 of 3 blind-graded runs, against 0 of 3 before. [Measurement and limits](https://github.com/Blue-B/memnest/blob/main/docs/task-cards.md)
+
 ## Automatic conversation capture
 
 The extension does not install AutoLog event hooks. Use `memnest watch` as the single capture path so pi conversations are not stored twice. Watch stores redacted user and assistant transcript text without summarization, keeps long turns in ordered chunks without truncation, and retains new identified transcript AutoLog until explicit deletion. Legacy AutoLog keeps the core's configured retention policy.
@@ -118,7 +136,7 @@ The extension does not install AutoLog event hooks. Use `memnest watch` as the s
 
 MCP does not describe host session events. The core provides host-neutral automatic behavior instead:
 
-- `memnest hook` reads a host's hook payload on stdin and answers with a context pack, in the shape that host expects.
+- `memnest hook` reads a host's hook payload on stdin and answers with task cards and a context pack, in the shape that host expects.
 - `memnest watch` follows Claude Code, pi, and Codex transcripts and stores visible conversation text, with no host extension hooks.
 
 See [conversation capture and history import](https://github.com/Blue-B/memnest/blob/main/docs/history-import.md). Inside pi the extension exposes the same five-tool memory contract, optionally adds four vault tools, and provides the `/memnest` command.

@@ -1,5 +1,7 @@
 # Contributing to memnest
 
+[English](CONTRIBUTING.md) | [한국어](CONTRIBUTING.ko.md)
+
 Thanks for taking the time to look at this. memnest is a small project, so the
 process is short.
 
@@ -11,9 +13,15 @@ For anything larger than a bug fix, open an issue first and describe the problem
 you hit. That avoids the case where a change is finished before we find out it
 does not fit the design. Small fixes can go straight to a pull request.
 
-Core v0.3.1 and pi extension v0.3.1 are versioned together. No crates.io
+The core and the pi extension are versioned together. No crates.io
 publication is implied. Source-only macOS support remains unverified, and the
 layout and interfaces may still move before 1.0.
+
+## Branches
+
+`main` holds released versions only. Work in progress goes to `develop`; a
+release merges `develop` into `main` and adds a `v*` tag. Open pull requests
+against `develop`.
 
 ## Repository layout
 

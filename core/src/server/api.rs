@@ -343,7 +343,7 @@ pub struct StatsResponse {
 
 // ── API Handlers ─────────────────────────────────────────────
 
-fn operation_error_response(error: super::operations::OperationError) -> Response {
+pub(crate) fn operation_error_response(error: super::operations::OperationError) -> Response {
     let status = match error.kind {
         super::operations::ErrorKind::BadRequest => axum::http::StatusCode::BAD_REQUEST,
         super::operations::ErrorKind::Forbidden => axum::http::StatusCode::FORBIDDEN,

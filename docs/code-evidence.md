@@ -1,5 +1,7 @@
 # Selected-file evidence checks
 
+[English](code-evidence.md) | [한국어](code-evidence.ko.md)
+
 Core 0.4.0 saves a caller-reported approach together with fingerprints of explicitly selected working files. A later, explicit check compares those files with the saved fingerprints. It does not warn on every edit, change retrieval ranking, validate a solution, or execute a remembered command.
 
 Use matching core/CLI 0.4.0. The CLI refuses to save against an older core before making a write. Basic reads remain compatible; the new options require the updated core.

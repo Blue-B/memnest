@@ -106,7 +106,7 @@ ruff check scripts/test-memory-lifecycle.py
 
 `memnest --host 127.0.0.1 --port <실제 포트> status --diagnose`는 기존 health와 MCP tools/list만 사용합니다. HTTP 전체 5초, 응답당 256KiB 제한, redirect/proxy 차단, 인증 오류/연결 실패/구버전 schema를 구분합니다. 토큰은 기존 `MEMNEST_TOKEN` 환경변수에서만 받고 출력하지 않습니다. 도구 **실행**/DB 열기/모델 초기화는 없습니다. 광고된 source search/get 필드만 확인하며 전체 클라이언트 호환성이나 준비 완료를 보증하지 않습니다.
 
-v0.3.0 health는 임베딩 모델의 현재 load 여부, 색인 대기 건수와 재구축 필요 여부를 제공합니다. load 전 상태는 실패가 아니라 첫 검색이나 저장을 기다리는 lazy 상태입니다. 원격 수집 heartbeat는 health에 없으므로 unknown으로 표시합니다. 기존 `status`는 지정한 watcher data-dir의 로컬 heartbeat/last stored를 읽습니다. 진단 경로는 시간과 읽기 범위를 제한하기 위해 그 파일을 읽지 않습니다. 기존 `--doctor`는 write-test와 index open을 하므로 읽기 전용이라고 안내하지 않습니다. [운영 문서](operations.md)에 실제 데이터와 임시 데모, source/배포 구분, 오류별 복구 안내를 추가했고 CONTRIBUTING의 미게시 주장을 바로잡았습니다. 안전하지 않은 legacy `preflight.sh`는 이번 실행에 사용하지 않았고 대체 격리 harness를 안내합니다.
+v0.3.0 health는 임베딩 모델의 현재 load 여부, 색인 대기 건수와 재구축 필요 여부를 제공합니다. load 전 상태는 실패가 아니라 첫 검색이나 저장을 기다리는 lazy 상태입니다. 원격 수집 heartbeat는 health에 없으므로 unknown으로 표시합니다. 기존 `status`는 지정한 watcher data-dir의 로컬 heartbeat/last stored를 읽습니다. 진단 경로는 시간과 읽기 범위를 제한하기 위해 그 파일을 읽지 않습니다. 기존 `--doctor`는 write-test와 index open을 하므로 읽기 전용이라고 안내하지 않습니다. [운영 문서](operations.ko.md)에 실제 데이터와 임시 데모, source/배포 구분, 오류별 복구 안내를 추가했고 CONTRIBUTING의 미게시 주장을 바로잡았습니다. 안전하지 않은 legacy `preflight.sh`는 이번 실행에 사용하지 않았고 대체 격리 harness를 안내합니다.
 
 검증: 새 CLI test double 8종(정상/401/구 schema/잘못된 JSON/과대 응답/redirect/timeout/unreachable), metric/fixture 단위 3개, 실제 서비스 인증과 평가, 기존 HTTP/MCP bounded retrieval 모두 통과. Rust lib 115 + binary 4 통과. `cargo fmt --check`, offline build/check all-targets, lib clippy 및 Python ruff 통과. pi 확장은 다시 빌드하고 패키지 내용도 검사합니다. 네이티브 macOS/유료 비교/대규모 평가는 여전히 미실행입니다.
 

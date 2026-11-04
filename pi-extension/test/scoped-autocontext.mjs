@@ -47,7 +47,7 @@ const hooks = new Map();
 const pi = {
 	registerTool() {},
 	on(name, fn) {
-		hooks.set(name, fn);
+		if (!hooks.has(name)) hooks.set(name, fn);
 	},
 	registerCommand() {},
 };

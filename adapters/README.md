@@ -1,5 +1,7 @@
 # Memnest adapters
 
+[English](README.md) | [한국어](README.ko.md)
+
 Memnest keeps the core platform-neutral. Any agent can use the HTTP API or the MCP server, over Streamable HTTP or stdio. An adapter only translates host lifecycle events into those stable operations.
 
 ## Supported surfaces
@@ -9,7 +11,8 @@ Memnest keeps the core platform-neutral. Any agent can use the HTTP API or the M
 | HTTP API | Long-running local service shared by several clients. |
 | MCP over Streamable HTTP | `POST /mcp` on the same port as the API, so several hosts share one process and one store. |
 | MCP over stdio | Tool access for a client that spawns its own child process. |
-| `memnest hook`, `memnest watch` | Core subcommands that give any host prompt-time injection and transcript capture without an extension. |
+| `memnest hook`, `memnest watch` | Core subcommands that give any host prompt-time injection and transcript capture without an extension. On `SessionStart` and `UserPromptSubmit` the hook also runs [task cards](../docs/task-cards.md). |
+| MCP `task_card`, `POST /task-card` | The task card tool for any MCP client or plain HTTP adapter. |
 | `pi-extension/` | Five canonical memory tools, four opt-in vault tools, scoped Autocontext, and `/memnest`. |
 | `adapters/generic-http/` | Dependency-free JSONL reference adapter for other hosts. |
 

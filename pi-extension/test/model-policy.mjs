@@ -9,7 +9,7 @@ globalThis.fetch = async () => {
     evidence:{quote:"policy fixture",assertion:"local_model_selected_not_truth_verified"}}]}));
 };
 const tools=new Map(), hooks=new Map();
-(await import("../dist/index.mjs")).default({registerTool(t){tools.set(t.name,t);},registerCommand(){},on(n,f){hooks.set(n,f);}});
+(await import("../dist/index.mjs")).default({registerTool(t){tools.set(t.name,t);},registerCommand(){},on(n,f){if(!hooks.has(n))hooks.set(n,f);}});
 const blocked = {cwd:"/tmp/alpha",model:{provider:"unapproved-cloud"}};
 const approved = {cwd:"/tmp/alpha",model:{provider:"approved-local"}};
 for (const [name,args] of [["memory_search",{query:"What was the deployment decision?",project:"alpha"}], ["memory_get",{id:"a"}], ["secret_get",{key:"a"}], ["secret_list",{}]]) {

@@ -8,10 +8,13 @@
 //!
 //! ```text
 //! "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "memnest hook" }] }]
+//! "SessionStart":     [{ "hooks": [{ "type": "command", "command": "memnest hook" }] }]
 //! ```
 //!
-//! It reads the payload, asks a running memnest service for a context pack, and
-//! answers in the shape the host expects. It never opens the data directory or
+//! It reads the payload, asks a running memnest service for a context pack and
+//! for task cards, and answers in the shape the host expects. Claude Code and
+//! Codex share that shape. With a session id, the prompt is also recorded
+//! verbatim into the session's open task card. It never opens the data directory or
 //! loads the embedder, and it never fails loudly: a hook that errors out would
 //! block the user's prompt, so every failure path prints nothing and exits 0.
 
@@ -25,8 +28,8 @@ use std::time::Duration;
 /// means the same thing for Korean as for English.
 const MIN_PROMPT_CHARS: usize = 12;
 
-/// Keys that mark a payload as a Claude Code hook event rather than some other
-/// host's JSON. `prompt` alone is too common to identify anything.
+/// Keys that mark a payload as a Claude Code or Codex hook event rather than some
+/// other host's JSON. `prompt` alone is too common to identify anything.
 const CLAUDE_CODE_MARKERS: &[&str] = &["hook_event_name", "session_id", "transcript_path"];
 
 /// Where to look for the user's prompt, most specific first.
@@ -40,6 +43,7 @@ pub enum HookFormat {
     Auto,
     /// `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"..."}}`.
     /// The nesting is required; Claude Code ignores a top-level `additionalContext`.
+    /// Codex reads the same shape.
     ClaudeCode,
     /// The context pack on its own, for hosts that append stdout to the prompt.
     Text,
@@ -53,6 +57,10 @@ pub struct Resolved {
     pub prompt: String,
     pub project: Option<String>,
     pub cwd: Option<String>,
+    /// Host session, event, and SessionStart source; task cards need all three.
+    pub session_id: Option<String>,
+    pub event: String,
+    pub source: String,
     /// Never `Auto`: detection has already run.
     pub format: HookFormat,
 }
@@ -60,6 +68,21 @@ pub struct Resolved {
 /// Read the payload. Unknown shapes fall back to plain text rather than
 /// failing, because an unrecognised host should still get memory.
 pub fn resolve(raw: &str, requested: HookFormat) -> Resolved {
+    let text = |map: &serde_json::Map<String, Value>, key: &str| {
+        map.get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    };
+    let (session_id, event, source) = match serde_json::from_str::<Value>(raw) {
+        Ok(Value::Object(map)) => (
+            text(&map, "session_id"),
+            text(&map, "hook_event_name").unwrap_or_default(),
+            text(&map, "source").unwrap_or_default(),
+        ),
+        _ => (None, String::new(), String::new()),
+    };
     let (prompt, project, cwd, detected) = match serde_json::from_str::<Value>(raw) {
         Ok(Value::Object(map)) => {
             let prompt = PROMPT_KEYS
@@ -67,8 +90,10 @@ pub fn resolve(raw: &str, requested: HookFormat) -> Resolved {
                 .find_map(|key| map.get(*key).and_then(Value::as_str))
                 .unwrap_or_default()
                 .to_string();
-            let claude_code = map.contains_key("prompt")
-                && CLAUDE_CODE_MARKERS.iter().any(|key| map.contains_key(*key));
+            // SessionStart carries no prompt, but its event name is just as clear.
+            let claude_code = map.contains_key("hook_event_name")
+                || (map.contains_key("prompt")
+                    && CLAUDE_CODE_MARKERS.iter().any(|key| map.contains_key(*key)));
             let format = if claude_code {
                 HookFormat::ClaudeCode
             } else {
@@ -96,6 +121,9 @@ pub fn resolve(raw: &str, requested: HookFormat) -> Resolved {
         prompt: prompt.trim().to_string(),
         project,
         cwd,
+        session_id,
+        event,
+        source,
         format: match requested {
             HookFormat::Auto => detected,
             explicit => explicit,
@@ -113,14 +141,19 @@ pub fn should_search(prompt: &str) -> bool {
 
 /// Wrap the context pack for the host. An empty pack renders as empty output so
 /// the host appends nothing at all.
-pub fn render(format: HookFormat, context: &str) -> String {
+pub fn render(format: HookFormat, event: &str, context: &str) -> String {
     if context.trim().is_empty() {
         return String::new();
     }
+    let event = if event == "SessionStart" {
+        "SessionStart"
+    } else {
+        "UserPromptSubmit"
+    };
     match format {
         HookFormat::ClaudeCode => json!({
             "hookSpecificOutput": {
-                "hookEventName": "UserPromptSubmit",
+                "hookEventName": event,
                 "additionalContext": context,
             }
         })
@@ -145,6 +178,41 @@ pub fn resolve_url(flag: Option<&str>) -> String {
         .unwrap_or_else(|| "http://127.0.0.1:3111".to_string())
 }
 
+fn client(timeout_ms: u64) -> Result<reqwest::Client> {
+    Ok(reqwest::Client::builder()
+        .timeout(Duration::from_millis(timeout_ms))
+        .build()?)
+}
+
+fn authorized(request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    match std::env::var("MEMNEST_TOKEN") {
+        Ok(token) if !token.trim().is_empty() => request.bearer_auth(token.trim()),
+        _ => request,
+    }
+}
+
+/// Task-card context for this event; also records the prompt into an open card.
+async fn fetch_cards(base_url: &str, resolved: &Resolved, timeout_ms: u64) -> Result<String> {
+    let url = format!("{}/task-card/hook", base_url.trim().trim_end_matches('/'));
+    let response = authorized(client(timeout_ms)?.post(url).json(&json!({
+        "event": resolved.event,
+        "session_id": resolved.session_id,
+        "prompt": resolved.prompt,
+        "source": resolved.source,
+    })))
+    .send()
+    .await?;
+    if !response.status().is_success() {
+        return Err(anyhow!("service returned {}", response.status()));
+    }
+    let body: Value = response.json().await?;
+    Ok(body
+        .get("context")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string())
+}
+
 /// Ask the running service for a workspace-scoped memory pack. Notes and facts
 /// are disabled because they are global and must not leak across projects.
 async fn fetch_context(
@@ -154,24 +222,17 @@ async fn fetch_context(
     cwd: Option<&str>,
     timeout_ms: u64,
 ) -> Result<String> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_millis(timeout_ms))
-        .build()?;
-    let mut request = client.post(context_endpoint(base_url)).json(&json!({
-        "query": prompt,
-        "project": project.unwrap_or_default(),
-        "cwd": cwd,
-        "max_notes": 0,
-        "max_facts": 0,
-        "adapter": "memnest-hook",
-    }));
-    if let Ok(token) = std::env::var("MEMNEST_TOKEN")
-        && !token.trim().is_empty()
-    {
-        request = request.bearer_auth(token.trim());
-    }
-
-    let response = request.send().await?;
+    let request = client(timeout_ms)?
+        .post(context_endpoint(base_url))
+        .json(&json!({
+            "query": prompt,
+            "project": project.unwrap_or_default(),
+            "cwd": cwd,
+            "max_notes": 0,
+            "max_facts": 0,
+            "adapter": "memnest-hook",
+        }));
+    let response = authorized(request).send().await?;
     if !response.status().is_success() {
         return Err(anyhow!("service returned {}", response.status()));
     }
@@ -190,31 +251,50 @@ pub async fn respond(
     base_url: &str,
     requested: HookFormat,
     timeout_ms: u64,
+    recall: bool,
 ) -> (String, Option<String>) {
     let resolved = resolve(raw, requested);
-    if !should_search(&resolved.prompt) || (resolved.project.is_none() && resolved.cwd.is_none()) {
-        return (String::new(), None);
+    let mut parts = Vec::new();
+    let mut warning = None;
+    let card_event = matches!(resolved.event.as_str(), "SessionStart" | "UserPromptSubmit");
+    if card_event && resolved.session_id.is_some() {
+        match fetch_cards(base_url, &resolved, timeout_ms).await {
+            Ok(context) => parts.push(context),
+            Err(e) => warning = Some(e.to_string()),
+        }
     }
-    match fetch_context(
-        base_url,
-        &resolved.prompt,
-        resolved.project.as_deref(),
-        resolved.cwd.as_deref(),
-        timeout_ms,
+    let wants_recall = recall
+        && resolved.event != "SessionStart"
+        && should_search(&resolved.prompt)
+        && (resolved.project.is_some() || resolved.cwd.is_some());
+    // A failed card call already shows the service is down; do not wait twice.
+    if wants_recall && warning.is_none() {
+        match fetch_context(
+            base_url,
+            &resolved.prompt,
+            resolved.project.as_deref(),
+            resolved.cwd.as_deref(),
+            timeout_ms,
+        )
+        .await
+        {
+            Ok(context) => parts.push(context),
+            // A missing service is the normal case on a machine where memnest is
+            // not running yet, so it is a note on stderr, never a failed prompt.
+            Err(e) => warning = Some(e.to_string()),
+        }
+    }
+    parts.retain(|part| !part.trim().is_empty());
+    (
+        render(resolved.format, &resolved.event, &parts.join("\n\n")),
+        warning,
     )
-    .await
-    {
-        Ok(context) => (render(resolved.format, &context), None),
-        // A missing service is the normal case on a machine where memnest is
-        // not running yet, so it is a note on stderr, never a failed prompt.
-        Err(e) => (String::new(), Some(e.to_string())),
-    }
 }
 
 /// Entry point for the `hook` subcommand.
-pub async fn run(url: Option<&str>, format: HookFormat, timeout_ms: u64) {
+pub async fn run(url: Option<&str>, format: HookFormat, timeout_ms: u64, recall: bool) {
     let raw = std::io::read_to_string(std::io::stdin()).unwrap_or_default();
-    let (out, warning) = respond(&raw, &resolve_url(url), format, timeout_ms).await;
+    let (out, warning) = respond(&raw, &resolve_url(url), format, timeout_ms, recall).await;
     if let Some(warning) = warning {
         eprintln!("memnest hook: no context injected ({warning})");
     }
@@ -239,7 +319,11 @@ mod tests {
 
     #[test]
     fn claude_code_output_nests_additional_context() {
-        let rendered = render(HookFormat::ClaudeCode, "remembered: port 8320");
+        let rendered = render(
+            HookFormat::ClaudeCode,
+            "UserPromptSubmit",
+            "remembered: port 8320",
+        );
         let parsed: Value = serde_json::from_str(&rendered).unwrap();
         // Claude Code silently drops a top-level additionalContext, so the
         // nesting is the part worth pinning down.
@@ -247,6 +331,26 @@ mod tests {
         let inner = &parsed["hookSpecificOutput"];
         assert_eq!(inner["hookEventName"], "UserPromptSubmit");
         assert_eq!(inner["additionalContext"], "remembered: port 8320");
+    }
+
+    #[test]
+    fn session_start_is_answered_in_its_own_envelope() {
+        // Codex and Claude Code send the same SessionStart shape, without a prompt.
+        let raw = r#"{"session_id":"s1","hook_event_name":"SessionStart","source":"compact","cwd":"/work"}"#;
+        let resolved = resolve(raw, HookFormat::Auto);
+        assert_eq!(resolved.format, HookFormat::ClaudeCode);
+        assert_eq!(resolved.session_id.as_deref(), Some("s1"));
+        assert_eq!(
+            (resolved.event.as_str(), resolved.source.as_str()),
+            ("SessionStart", "compact")
+        );
+        let parsed: Value =
+            serde_json::from_str(&render(resolved.format, &resolved.event, "card")).unwrap();
+        assert_eq!(
+            parsed["hookSpecificOutput"]["hookEventName"],
+            "SessionStart"
+        );
+        assert_eq!(parsed["hookSpecificOutput"]["additionalContext"], "card");
     }
 
     #[test]
@@ -299,8 +403,8 @@ mod tests {
     #[test]
     fn empty_context_renders_nothing() {
         for format in [HookFormat::ClaudeCode, HookFormat::Text, HookFormat::Json] {
-            assert_eq!(render(format, ""), "");
-            assert_eq!(render(format, "   \n "), "");
+            assert_eq!(render(format, "UserPromptSubmit", ""), "");
+            assert_eq!(render(format, "UserPromptSubmit", "   \n "), "");
         }
     }
 
@@ -329,7 +433,7 @@ mod tests {
     #[tokio::test]
     async fn unknown_workspace_injects_nothing() {
         let raw = r#"{"prompt":"what did we decide about the deploy port"}"#;
-        let (out, warning) = respond(raw, "http://127.0.0.1:1", HookFormat::Auto, 100).await;
+        let (out, warning) = respond(raw, "http://127.0.0.1:1", HookFormat::Auto, 100, true).await;
         assert_eq!(out, "");
         assert!(warning.is_none());
     }
@@ -339,7 +443,7 @@ mod tests {
         // Port 1 is never a memnest service, so this exercises the path that
         // must not block a user's prompt.
         let raw = r#"{"session_id":"x","hook_event_name":"UserPromptSubmit","cwd":"/work/deploy","prompt":"what did we decide about the deploy port"}"#;
-        let (out, warning) = respond(raw, "http://127.0.0.1:1", HookFormat::Auto, 500).await;
+        let (out, warning) = respond(raw, "http://127.0.0.1:1", HookFormat::Auto, 500, true).await;
         assert_eq!(out, "");
         assert!(
             warning.is_some(),
@@ -348,10 +452,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn no_recall_skips_the_context_pack() {
+        // Without a session there is no card work either, so nothing is requested.
+        let raw = r#"{"cwd":"/work/deploy","prompt":"what did we decide about the deploy port"}"#;
+        let (out, warning) = respond(raw, "http://127.0.0.1:1", HookFormat::Auto, 500, false).await;
+        assert_eq!(out, "");
+        assert!(warning.is_none());
+    }
+
+    #[tokio::test]
     async fn a_skipped_prompt_never_calls_the_service() {
         // An unreachable URL proves no request was attempted: a call would have
         // produced a warning.
-        let (out, warning) = respond("/status", "http://127.0.0.1:1", HookFormat::Auto, 500).await;
+        let (out, warning) =
+            respond("/status", "http://127.0.0.1:1", HookFormat::Auto, 500, true).await;
         assert_eq!(out, "");
         assert!(warning.is_none());
     }

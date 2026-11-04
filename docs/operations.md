@@ -2,6 +2,8 @@
 
 <!-- markdownlint-disable MD013 -->
 
+[English](operations.md) | [한국어](operations.ko.md)
+
 Running memnest as a real service: requirements, install, retention, recovery, backup, and the checks to run before you change anything.
 
 For what memnest is and how to connect an agent, start at the [README](../README.md).
@@ -39,9 +41,9 @@ scripts/setup.sh --user --bin target/release/memnest
 
 The downloader still recognizes the older v0.2.1 archive layout, but refuses to run that legacy installer over an existing service or with `--autocontext`.
 
-User-mode setup installs and starts the server and conversation watcher; setup detects Claude Code, Codex, Cursor, and pi, and merges the supported MCP entries. Automatic recall is not installed by default: add `--autocontext` to `setup.sh` or `install.sh` to opt in to the Claude Code prompt hook. Existing Memnest client entries are left unchanged. Every changed client file is first copied byte-for-byte to a private timestamped directory. That directory contains the manifest and its own restore script, so uninstalling the service does not remove the rollback tool. A newly created file gets an `ABSENT` marker. Setup finishes by remembering, searching for, and trashing a unique scratch memory. The first round trip can download the embedding model.
+User-mode setup installs and starts the server and conversation watcher; setup detects Claude Code, Codex, Cursor, and pi, and merges the supported MCP entries. Setup also adds the [task card](task-cards.md) hooks: `memnest hook --no-recall` on `SessionStart` and `UserPromptSubmit` in `~/.claude/settings.json` and `~/.codex/hooks.json`, and it lets Codex call `task_card` without an approval prompt. Codex runs a new hook only after you trust it, so open Codex and run `/hooks` once. Automatic recall is not installed by default: add `--autocontext` to `setup.sh` or `install.sh` to opt in. It replaces only Memnest's own `UserPromptSubmit` entry with the recall form. Existing Memnest client entries are left unchanged. Every changed client file is first copied byte-for-byte to a private timestamped directory. That directory contains the manifest and its own restore script, so uninstalling the service does not remove the rollback tool. A newly created file gets an `ABSENT` marker. Setup finishes by remembering, searching for, and trashing a unique scratch memory. The first round trip can download the embedding model.
 
-For an existing installation, `python3 ~/.local/share/memnest/scripts/setup-clients.py --autocontext` opts in without reinstalling the service. Existing prompt hooks are preserved, not silently disabled on upgrade; remove only the Memnest command from the client's `UserPromptSubmit` configuration if you no longer want it. pi's separate default-off policy is controlled by `MEMNEST_AUTOCONTEXT_MODE` and reported by `/memnest`. Explicit tools and `memnest watch` do not depend on either recall hook.
+For an existing installation, `python3 ~/.local/share/memnest/scripts/setup-clients.py` adds the task card hooks, and `--autocontext` also opts in to recall, without reinstalling the service. Existing prompt hooks are preserved, not silently disabled on upgrade; remove only the Memnest command from the client's `UserPromptSubmit` configuration if you no longer want it. pi's separate default-off policy is controlled by `MEMNEST_AUTOCONTEXT_MODE` and reported by `/memnest`. Explicit tools and `memnest watch` do not depend on either recall hook.
 
 Setup prints an exact restore command using the timestamped directory. Restore first checks the post-setup SHA-256 for every client file and refuses to overwrite later user or client changes. Review conflicting files before using `--force-restore`, which intentionally replaces those changes with the pre-setup copies.
 
@@ -94,6 +96,8 @@ Run the PowerShell installer from the repository root and point `RepoPath` at th
 
 The script installs the Linux user service and registers a Windows logon task that starts it.
 
+Inside WSL, `memnest watch` reads transcripts under the WSL home directory. For Claude Code or Codex running on the Windows side, pass the path, for example `memnest watch --path /mnt/c/Users/<you>/.claude/projects`. The watcher polls every five seconds, so `/mnt/c` paths should work, but this has not been tested.
+
 ### Windows service
 
 Build `memnest.exe` from `core`, then run an administrator PowerShell prompt from the repository root:
@@ -106,6 +110,8 @@ Build `memnest.exe` from `core`, then run an administrator PowerShell prompt fro
 The native service stores data in `%ProgramData%\Memnest\data` and binds to localhost.
 
 The service wrapper is WinSW. The installer pins one version and its SHA-256 and verifies the file before installing it, whether the wrapper was downloaded or found next to the script, and it deletes the file and stops on a mismatch. Overriding `-WinSWVersion` therefore requires passing the matching `-WinSWSha256` (or dropping a `WinSW-x64.exe.sha256` beside the wrapper); the install refuses to run elevated against bytes it cannot check.
+
+The Windows installer does not start `memnest watch`. Run it separately if you want conversation capture; native Windows capture has not been tested.
 
 Uninstallers for each layout are in `core/scripts/`.
 
@@ -182,7 +188,8 @@ New vault rows use `$enc2$` ciphertext whose AES-GCM associated data includes th
 memnest status                                   # service state and endpoint URL
 memnest --data-dir ~/.memnest                    # HTTP API and MCP over POST /mcp
 memnest --mcp --data-dir ~/.memnest              # stdio MCP server
-memnest hook                                     # answer a host prompt hook with a context pack
+memnest hook                                     # answer a host prompt hook with task cards and a context pack
+memnest hook --no-recall                         # task cards only
 memnest watch                                    # follow session transcripts and store new turns
 memnest --doctor --data-dir ~/.memnest           # environment and store checks
 memnest --warmup-embedding --data-dir ~/.memnest # download the model ahead of first use
@@ -210,7 +217,7 @@ For previously tracked history, use `memnest watch --path /absolute/original/ses
 | `MEMNEST_EXPOSE_SECRET_TOOLS` | Set to `1` to expose four vault tools to MCP and the pi extension; hidden by default |
 | `MEMNEST_REBUILD_INDEXES` | Set to `1` for a full SQLite-to-Tantivy/HNSW rebuild at startup |
 
-Reaching the HTTP API from something other than a local client takes more than a token. A web client such as ChatGPT or Grok calls the service from its own infrastructure, so the endpoint needs a public URL, and not every client can send a bearer header. See [connecting ChatGPT and Grok](web-connectors.md).
+Reaching the HTTP API from something other than a local client takes more than a token. A cloud assistant such as ChatGPT, a Claude custom connector, or Grok calls the service from its own infrastructure, so the endpoint needs a public URL, and not every client can send a bearer header. See [connecting cloud assistants](web-connectors.md).
 
 ## Development checks
 

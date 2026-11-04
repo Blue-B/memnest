@@ -2,6 +2,8 @@
 
 <!-- markdownlint-disable MD013 -->
 
+[English](design-decisions.md) | [한국어](design-decisions.ko.md)
+
 Why memnest is built the way it is. This document covers the architecture that ships, not experiments that remain outside the request path.
 
 ## Embeddings run locally

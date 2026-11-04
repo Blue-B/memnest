@@ -1,5 +1,7 @@
 # Explicit history import
 
+[English](history-import.md) | [한국어](history-import.ko.md)
+
 ## Problem and implementation plan
 
 The normal watcher follows newly discovered files from their end. A tracked

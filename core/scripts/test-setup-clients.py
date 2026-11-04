@@ -51,20 +51,37 @@ class SetupClientsTest(unittest.TestCase):
             self.assertFalse((home / ".claude" / "settings.json").exists())
             self.assertFalse((home / ".cursor" / "mcp.json").exists())
             self.assertFalse((home / ".codex" / "config.toml").exists())
+            self.assertFalse((home / ".codex" / "hooks.json").exists())
 
-    def test_default_has_tools_without_recall_and_preserves_opted_in_hooks(self):
+    def test_default_installs_card_hooks_and_recall_stays_opt_in(self):
         with tempfile.TemporaryDirectory() as directory:
             home = pathlib.Path(directory)
             binary = pathlib.Path("/opt/memnest")
             url = "http://127.0.0.1:3111"
-            setup_clients.configure(home, binary, url, True)
             settings = home / ".claude" / "settings.json"
-            self.assertFalse(settings.exists(), "default setup must not install a prompt hook")
+            settings.parent.mkdir(parents=True)
+            other = {"type": "command", "command": "other-tool hook"}
+            settings.write_text(json.dumps({"hooks": {"UserPromptSubmit": [{"hooks": [other]}]}}))
+            setup_clients.configure(home, binary, url, True)
+            cards = "/opt/memnest hook --url http://127.0.0.1:3111 --no-recall"
+
+            def commands(path, event):
+                return [h["command"] for g in read_json(path)["hooks"][event] for h in g["hooks"]]
+
+            for path in (settings, home / ".codex" / "hooks.json"):
+                self.assertEqual(commands(path, "SessionStart"), [cards])
+            self.assertEqual(commands(settings, "UserPromptSubmit"), ["other-tool hook", cards])
             self.assertIn("memnest", read_json(home / ".claude.json")["mcpServers"])
-            self.assertTrue((home / ".codex" / "config.toml").exists())
+            config = (home / ".codex" / "config.toml").read_text()
+            self.assertIn('[mcp_servers.memnest.tools.task_card]\napproval_mode = "approve"', config)
+            if setup_clients.tomllib is not None:
+                setup_clients.tomllib.loads(config)
+            # Opting in upgrades only memnest's own entry; other hooks stay.
             setup_clients.configure(home, binary, url, True, autocontext=True)
+            recall = "/opt/memnest hook --url http://127.0.0.1:3111"
+            self.assertEqual(commands(settings, "UserPromptSubmit"), ["other-tool hook", recall])
+            self.assertEqual(commands(settings, "SessionStart"), [cards])
             before = settings.read_bytes()
-            self.assertIn("UserPromptSubmit", read_json(settings)["hooks"])
             self.assertIsNone(setup_clients.configure(home, binary, url, True))
             self.assertEqual(settings.read_bytes(), before, "existing hooks are never removed by default setup")
 

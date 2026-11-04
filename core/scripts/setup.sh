@@ -19,7 +19,8 @@ Usage: scripts/setup.sh [--bin /path/to/memnest] [--user|--system] [--no-clients
 
 Installs and starts Memnest, merges configuration for detected clients, starts
 conversation watch, and verifies a scratch remember/search round trip.
-Automatic recall hooks are opt-in (--autocontext); existing hooks are preserved.
+Task card hooks are installed for Claude Code and Codex; automatic recall is
+opt-in (--autocontext). Other hooks are preserved.
 EOF
 }
 while [ "$#" -gt 0 ]; do

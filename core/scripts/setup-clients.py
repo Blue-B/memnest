@@ -80,6 +80,8 @@ def configure(home, binary, url, force_all, autocontext=False):
         load_json(home / ".claude" / "settings.json")
     if cursor:
         load_json(home / ".cursor" / "mcp.json")
+    if codex:
+        load_json(home / ".codex" / "hooks.json")
     codex_unchecked = False
     if codex and (home / ".codex" / "config.toml").exists():
         path = home / ".codex" / "config.toml"
@@ -124,6 +126,33 @@ def configure(home, binary, url, force_all, autocontext=False):
         entry["post_sha256"] = digest(after)
         persist_manifest()
 
+    # Task cards need SessionStart and UserPromptSubmit hooks, so they are installed
+    # by default in their cards-only form. Automatic recall stays opt-in.
+    cards_command = shlex.join([str(binary), "hook", "--url", url, "--no-recall"])
+    recall_command = shlex.join([str(binary), "hook", "--url", url])
+
+    def ours(handler):
+        try:
+            argv = shlex.split(handler.get("command", ""))
+        except ValueError:
+            return False
+        return len(argv) >= 2 and pathlib.Path(argv[0]).name == "memnest" and argv[1] == "hook"
+
+    def add_hooks(cfg):
+        events = cfg.setdefault("hooks", {})
+        for event in ("SessionStart", "UserPromptSubmit"):
+            groups = events.setdefault(event, [])
+            recall = autocontext and event == "UserPromptSubmit"
+            if recall:
+                # Upgrade only our own cards-only entry; other commands are left alone.
+                for group in groups:
+                    if isinstance(group, dict) and isinstance(group.get("hooks"), list):
+                        group["hooks"] = [h for h in group["hooks"] if not (isinstance(h, dict) and h.get("command") == cards_command)]
+                groups[:] = [g for g in groups if not (isinstance(g, dict) and g.get("hooks") == [])]
+            handlers = [h for g in groups if isinstance(g, dict) for h in g.get("hooks", []) if isinstance(h, dict)]
+            if not any(ours(h) for h in handlers):
+                groups.append({"hooks": [{"type": "command", "command": recall_command if recall else cards_command}]})
+
     detected = []
     if claude:
         detected.append("Claude Code")
@@ -134,15 +163,7 @@ def configure(home, binary, url, force_all, autocontext=False):
             finish,
         )
 
-        def hook(cfg):
-            hooks = cfg.setdefault("hooks", {}).setdefault("UserPromptSubmit", [])
-            command = shlex.join([str(binary), "hook", "--url", url])
-            expected = [{"type": "command", "command": command}]
-            if not any(item.get("hooks") == expected for item in hooks if isinstance(item, dict)):
-                hooks.append({"hooks": expected})
-
-        if autocontext:
-            json_merge(home / ".claude" / "settings.json", hook, save, finish)
+        json_merge(home / ".claude" / "settings.json", add_hooks, save, finish)
 
     if cursor:
         detected.append("Cursor")
@@ -158,12 +179,27 @@ def configure(home, binary, url, force_all, autocontext=False):
         path = home / ".codex" / "config.toml"
         before = path.read_bytes() if path.exists() else None
         text = before.decode() if before is not None else ""
+        add = ""
         if "[mcp_servers.memnest]" not in text:
-            suffix = "" if not text or text.endswith("\n") else "\n"
-            after = (text + suffix + "\n[mcp_servers.memnest]\nurl = \"" + url + "/mcp\"\n").encode()
+            add += "\n[mcp_servers.memnest]\nurl = \"" + url + "/mcp\"\n"
+        # task_card only writes handoff notes; asking before each save would interrupt every task.
+        if "[mcp_servers.memnest.tools.task_card]" not in text:
+            add += '\n[mcp_servers.memnest.tools.task_card]\napproval_mode = "approve"\n'
+        suffix = "" if not text or text.endswith("\n") else "\n"
+        after = (text + suffix + add).encode()
+        valid = True
+        if add and tomllib is not None:
+            try:
+                tomllib.loads(after.decode())
+            except tomllib.TOMLDecodeError:
+                valid = False
+                detected.append("Codex (config.toml not extended: an existing memnest entry has an unexpected shape)")
+        if add and valid:
             entry = save(path, before)
             atomic_write_bytes(path, after)
             finish(entry, after)
+        if json_merge(home / ".codex" / "hooks.json", add_hooks, save, finish):
+            detected.append("Codex hooks added: run /hooks in Codex once to trust them")
 
     if codex_unchecked:
         detected.append(
@@ -198,6 +234,7 @@ def restore(manifest_path, force=False):
         (home / ".claude" / "settings.json").resolve(),
         (home / ".cursor" / "mcp.json").resolve(),
         (home / ".codex" / "config.toml").resolve(),
+        (home / ".codex" / "hooks.json").resolve(),
     }
     manifest_dir = manifest_path.parent.resolve()
     validated = []
@@ -240,7 +277,7 @@ def main():
     parser.add_argument("--bin", type=pathlib.Path, default=pathlib.Path.home() / ".local/bin/memnest")
     parser.add_argument("--url", default="http://127.0.0.1:3111")
     parser.add_argument("--all", action="store_true", help="configure all known JSON/TOML clients (mainly for validation)")
-    parser.add_argument("--autocontext", action="store_true", help="opt in to Claude Code prompt-time memory injection (existing hooks are preserved)")
+    parser.add_argument("--autocontext", action="store_true", help="opt in to Claude Code and Codex prompt-time memory recall (task card hooks are installed either way; other hooks are preserved)")
     parser.add_argument("--restore", type=pathlib.Path)
     parser.add_argument("--force-restore", action="store_true", help="overwrite client changes made after setup")
     args = parser.parse_args()

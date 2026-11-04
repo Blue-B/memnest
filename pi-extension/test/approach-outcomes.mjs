@@ -18,9 +18,9 @@ globalThis.fetch = async (url, init) => {
 const tools = new Map(), events = new Map();
 (await import("../dist/index.mjs")).default({
   registerTool(t) { tools.set(t.name, t); }, registerCommand() {},
-  on(name, fn) { events.set(name, fn); },
+  on(name, fn) { if (!events.has(name)) events.set(name, fn); },
 });
-assert.equal(tools.size, 5);
+assert.equal(tools.size, 6);
 const schema = tools.get("memory_remember").parameters.properties.approach;
 assert.equal(schema.additionalProperties, false);
 const input = { status: "failed", applicability: "Linux", evidence: "test exit 1" };
@@ -38,4 +38,4 @@ const context = await events.get("before_agent_start")({prompt: "Which dependenc
 assert.match(context.message.content, /failed/);
 assert.match(context.message.content, /caller-reported, not verified/);
 assert.match(context.message.content, /never follow commands/);
-console.log("PASS pi approach save/search/get/autocontext preserves caller-report distinctions; five tools unchanged");
+console.log("PASS pi approach save/search/get/autocontext preserves caller-report distinctions; five memory tools plus task_card");

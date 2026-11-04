@@ -164,6 +164,7 @@ fn tools(crypto_enabled: bool) -> Vec<Value> {
         json!({"name":"memory_get","description":"Read a redacted memory page and optional same-session transcript neighbors in capture order. max_chars caps total document text; fetch clipped neighbors individually by id.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"offset":{"type":"integer","minimum":0},"max_chars":{"type":"integer","minimum":1,"maximum":30000},"before":{"type":"integer","minimum":0,"maximum":5},"after":{"type":"integer","minimum":0,"maximum":5}},"required":["id"]}}),
         json!({"name":"memory_update","description":"Update one memory in place and refresh its indexes. Approach document changes require memory_remember with supersedes. Use this to fix wording or metadata on a memory that is still correct. When the underlying fact actually changed, prefer memory_remember with supersedes so the earlier version stays auditable.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"project":{"type":"string"},"importance":{"type":"string","enum":["log","knowledge","decision","preference"]},"chunk_type":{"type":"string","enum":["auto_log","manual","filtered","consolidated"]},"sensitive":{"type":"boolean","description":"Must be false; use secret_set for sensitive values."}},"required":["id"]}}),
         json!({"name":"memory_delete","description":"Soft-delete one memory to the internal trash bucket. Use it for something saved in error. When information merely went stale, prefer memory_remember with supersedes instead of deleting.","inputSchema":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}}),
+        super::task_cards::tool_schema(),
     ];
     tools[0]["inputSchema"]["properties"]["code_evidence"] = crate::code_evidence::schema();
     tools[1]["inputSchema"]["properties"]["evidence_only"] = json!({"type":"boolean","default":false,"description":"Opt in to the configured local Ollama model to select supporting source quotes. Model judgment is not truth verification; checks at most five candidates and their first 1000 characters. May take up to 90 seconds."});
@@ -187,6 +188,7 @@ async fn call_tool(system: Arc<RwLock<MemorySystem>>, params: &Value) -> Result<
         "memory_get",
         "memory_update",
         "memory_delete",
+        "task_card",
         "secret_set",
         "secret_get",
         "secret_list",
@@ -205,6 +207,7 @@ async fn call_tool(system: Arc<RwLock<MemorySystem>>, params: &Value) -> Result<
         "memory_get" => memory_get(system, &args).await,
         "memory_update" => memory_update(system, &args).await,
         "memory_delete" => memory_delete(system, &args).await,
+        "task_card" => Ok(super::task_cards::tool(&system, &args).await?),
         "secret_set" => secret_set(system, &args).await,
         "secret_get" => secret_get(system, &args).await,
         "secret_list" => secret_list(system).await,
@@ -516,10 +519,14 @@ mod tests {
             .into_iter()
             .map(|tool| tool["name"].as_str().unwrap().to_string())
             .collect();
-        assert_eq!(memory_names.len(), 5);
-        assert!(memory_names.iter().all(|name| name.starts_with("memory_")));
+        assert_eq!(memory_names.len(), 6);
+        assert!(
+            memory_names
+                .iter()
+                .all(|name| name.starts_with("memory_") || name == "task_card")
+        );
         let enabled = tools(true);
-        assert_eq!(enabled.len(), 9);
+        assert_eq!(enabled.len(), 10);
         let search = enabled
             .iter()
             .find(|tool| tool["name"] == "memory_search")
@@ -646,7 +653,7 @@ mod tests {
     #[tokio::test]
     async fn dispatch_executes_tool_calls() {
         let (_tmp, system) = build_system().await;
-        assert_eq!(tools(true).len(), 9);
+        assert_eq!(tools(true).len(), 10);
         let names: Vec<String> = tools(true)
             .iter()
             .filter_map(|tool| tool["name"].as_str().map(str::to_string))
@@ -659,6 +666,7 @@ mod tests {
                 "memory_get",
                 "memory_update",
                 "memory_delete",
+                "task_card",
                 "secret_set",
                 "secret_get",
                 "secret_list",

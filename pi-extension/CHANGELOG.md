@@ -1,6 +1,19 @@
 # Changelog
 
+[English](CHANGELOG.md) | [한국어](CHANGELOG.ko.md)
+
 All notable changes to `pi-memnest` are recorded here.
+
+## [Unreleased]
+
+### Added
+
+- Task cards, on by default. They add the `task_card` tool to save, list, open, and finish handoff cards for work that spans sessions. Active cards live in a shared `task-cards` collection and finished ones in `task-cards-done`. Saving the same title supersedes the previous card. The extension appends every user message to the open card verbatim, outside the model's summary. Up to three opened cards are pinned into the system prompt on every run with a fixed user-policy-first line. A new session lists up to 20 active titles ranked by its first request, and the first prompt after a compaction asks the model to save what changed. Measurement and limits are in `docs/task-cards.md`.
+
+### Compatibility and limits
+
+- The default surface grows to the five memory tools plus `task_card`, and one prompt hook. It lists cards on a session's first prompt and pins an opened card. Autocontext stays opt-in.
+- Cards are found through hybrid search on a marker word, at most 50 per query; a topic search reaches cards beyond the newest 50. Session-start cost grows with active cards (about 0.43 s at 1,020 active, 3 ms at 20 active plus 1,000 finished), and lists with 50 or more active cards ask the model to offer cleanup.
 
 ## [0.4.0] - 2026-10-07
 

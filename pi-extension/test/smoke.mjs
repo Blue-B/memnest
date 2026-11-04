@@ -3,7 +3,7 @@
 //
 // Verifies:
 //   1. ESM bundle loads without throwing.
-//   2. register() registers exactly the canonical five memory tools.
+//   2. register() registers the canonical five memory tools plus task_card.
 //   3. Each registered tool has a callable .execute function.
 //   4. No AutoLog capture hooks are installed.
 //   5. memory_search defaults are correct and it fails closed without a cwd.
@@ -61,7 +61,8 @@ assert("ESM bundle loads", typeof mod.default === "function");
 await mod.default(proxy);
 assert("register() called without throwing", true);
 assert("/memnest command registered", commands.has("memnest"));
-assert("Autocontext is off by default", !hooks.includes("before_agent_start"));
+// Task cards always add one prompt hook; autocontext would add a second.
+assert("Autocontext is off by default", hooks.filter((h) => h === "before_agent_start").length === 1);
 const AUTOLOG_HOOKS = [
 	"input",
 	"message_end",
@@ -82,6 +83,7 @@ const EXPECTED = [
 	"memory_get",
 	"memory_update",
 	"memory_delete",
+	"task_card",
 ];
 
 assert(

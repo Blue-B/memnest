@@ -1,5 +1,7 @@
 # Team access, audit, and retention
 
+[English](team-access.md) | [한국어](team-access.ko.md)
+
 These are optional single-host team controls, not an SSO service, a multi-region platform, or a compliance certification. A trusted machine owner can read the data files. Use a TLS reverse proxy with rate limiting for remote access; do not expose the service port to the internet.
 
 ## Named principals

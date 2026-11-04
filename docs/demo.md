@@ -2,6 +2,8 @@
 
 <!-- markdownlint-disable MD013 -->
 
+[English](demo.md) | [한국어](demo.ko.md)
+
 This demo checks one narrow claim: two independent clients connected to one Memnest service can persist and retrieve the same record. It makes two separate curl invocations:
 
 1. Client A calls `memory_remember` through **MCP over Streamable HTTP**.
