@@ -40,7 +40,11 @@ const MESSAGE_MAX = 1000;
 // Measured on a real long session: with this line the model stopped overriding the user's
 // standing instructions with its own analysis far more often (see docs/task-cards.md).
 const RULE =
-	"The user's stated policies and prohibitions for this task take priority over your own analysis and earlier plans. If a proposal would go against one, first quote the user's words it conflicts with and ask before proposing it. The card's next steps are a plan, not approval: before changing, submitting, publishing, or deleting anything the user has not approved in this conversation, say what you will do and ask.";
+	"The user's stated policies and prohibitions for this task take priority over your own analysis and earlier plans. If a proposal would go against one, first quote the user's words it conflicts with and ask before proposing it. The card's next steps are a plan, not approval: before changing, submitting, publishing, or deleting anything the user has not approved in this conversation, say what you will do and ask. When a user message is about other work than this card, call task_card close for it before answering, so that message stays out of the card.";
+// Without this line the model kept using memory_remember for multi-day work and never saved a card (pi session of 2026-11-04).
+// The concrete examples matter: with an abstract wording, English requests that resumed yesterday's work got a card 2 of 6 times.
+const NO_CARDS =
+	"[memnest task cards] No saved task cards were found. Work that spans sessions gets a task card. When the user picks up ongoing work from an earlier day or session (asks for today's next steps, refers to yesterday, or continues a project), or starts work that will go on later, save a card with task_card action=save in this run, as soon as the task is clear; memnest then keeps the user's messages in it verbatim. Single facts still go to memory_remember; the card holds the task's goal, decisions, state, and next steps.";
 const FORMAT =
 	"Sections: Goal; User policies and prohibitions (dated, close to the user's words, note repeats); Decisions and reasons; Done (what, where); Tried and failed (why); Current state (numbers); Next and waiting; Unverified. Keep what is still valid, move finished items to Done, no tool output, no guesses, under about 6000 characters. Do not copy the user's-own-words section; memnest keeps it.";
 
@@ -134,7 +138,8 @@ function stamp(): string {
 	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-type Open = { title: string; id?: string; body?: string; log?: string[] };
+// pinned: the text last put into the system prompt; kept until a compaction so the prompt cache keeps hitting.
+type Open = { title: string; id?: string; body?: string; log?: string[]; pinned?: string };
 
 export function installTaskCards(pi: any, call: Call): void {
 	// Opened cards, oldest first; body and log are fetched lazily after a resume.
@@ -200,6 +205,9 @@ export function installTaskCards(pi: any, call: Call): void {
 
 	pi.on("before_agent_start", async (event: any, ctx: any) => {
 		const prompt = event?.messageType === "custom" || typeof event?.prompt !== "string" ? "" : event.prompt.trim();
+		// Hosts without agent_settled: earlier runs' messages go to the card still open.
+		const previous = open.at(-1);
+		if (previous?.id && memoryReadAllowed(ctx)) void attachPending(previous).catch(() => {});
 		if (prompt && !prompt.startsWith("/")) pending.push(`- ${stamp()} ${prompt.replace(/\s+/g, " ").slice(0, MESSAGE_MAX)}`);
 		if (!memoryReadAllowed(ctx)) return;
 		for (const c of open)
@@ -208,18 +216,18 @@ export function installTaskCards(pi: any, call: Call): void {
 				const text = card ? await within(readCard(call, card.id), null) : null;
 				Object.assign(c, text === null ? { body: "" } : { id: card!.id, ...split(text) });
 			}
-		// The newest open card is the task this message belongs to; write without delaying the prompt.
-		const current = open.at(-1);
-		if (current?.id) void attachPending(current).catch(() => {});
-		const files = event?.systemPromptOptions?.contextFiles;
-		if (Array.isArray(files)) {
-			const kept = files.filter((f: any) => !f?.path?.startsWith(PIN));
-			files.splice(0, files.length, ...kept, ...open.filter((c) => c.body).map((c) => ({ path: `${PIN}${c.title}`, content: `${RULE}\n\n${compose(c.body!, c.log ?? [])}` })));
-		}
-		const notes: string[] = [];
 		const compaction = newestCompaction(ctx);
 		const compacted = compaction !== lastCompaction;
 		lastCompaction = compaction;
+		const files = event?.systemPromptOptions?.contextFiles;
+		if (Array.isArray(files)) {
+			// A changed pin rewrites the whole cached conversation, so re-render only new pins and after a compaction
+			// (which rewrites the cache anyway); until then the conversation itself holds this session's messages.
+			for (const c of open) if (c.body && (c.pinned === undefined || compacted)) c.pinned = `${RULE}\n\n${compose(c.body, c.log ?? [])}`;
+			const kept = files.filter((f: any) => !f?.path?.startsWith(PIN));
+			files.splice(0, files.length, ...kept, ...open.filter((c) => c.pinned).map((c) => ({ path: `${PIN}${c.title}`, content: c.pinned! })));
+		}
+		const notes: string[] = [];
 		if (compacted && open.length) {
 			notes.push(`[memnest task cards] The conversation was just compacted. If decisions or user corrections since the last save of ${open.map((c) => `"${c.title}"`).join(", ")} are missing from the card, save it now.`);
 		}
@@ -233,13 +241,22 @@ export function installTaskCards(pi: any, call: Call): void {
 			const cards = [...matching, ...recent.filter((c) => !matching.some((m) => m.title === c.title))].slice(0, LIST);
 			// A full page means many tasks were never finished; each one adds to this lookup.
 			const crowded = recent.length >= PAGE ? `\n${PAGE} or more active cards. When it fits the conversation, ask the user which finished tasks to mark done.` : "";
-			if (cards.length)
+			if (!cards.length) notes.push(NO_CARDS);
+			else
 				notes.push(
-					`[memnest task cards] Saved handoff cards${matching.length ? ", most relevant to this request first" : ", newest first"}. Open one with task_card action=get when the request is about that task: continuing it or asking about it. A new task that only shares a word or an area with a card is not about it, so answer without opening a card. If the user is continuing something but it is unclear which task, ask.\n${cards.map(line).join("\n")}${recent[0] ? `\nMost recently saved: ${recent[0].title}` : ""}${crowded}`,
+					`[memnest task cards] Saved handoff cards${matching.length ? ", most relevant to this request first" : ", newest first"}. Open one with task_card action=get when the request is about that task: continuing it or asking about it. A new task that only shares a word or an area with a card is not about it, so answer without opening a card. If the user is continuing something but it is unclear which task, ask. If the request picks up earlier work that has no card here, or starts work that will go on later, save a new card for it with task_card action=save.\n${cards.map(line).join("\n")}${recent[0] ? `\nMost recently saved: ${recent[0].title}` : ""}${crowded}`,
 				);
 		}
 		if (!notes.length) return;
 		return { message: { customType: ENTRY, display: false, content: `<system-reminder>\n${notes.join("\n\n")}\n</system-reminder>` } };
+	});
+
+	// The message is written once the run settles, so a card the model opened by mistake or closed
+	// because the user moved on does not keep it; the newest open card is the task it belongs to.
+	pi.on("agent_settled", async (_event: unknown, ctx: any) => {
+		const current = open.at(-1);
+		// Awaited so a one-shot `pi -p` does not exit mid-write, but capped so a stalled core cannot hold pi busy.
+		if (current?.id && memoryReadAllowed(ctx)) await within(attachPending(current).catch(() => {}), undefined);
 	});
 
 	pi.registerTool({
@@ -256,7 +273,8 @@ export function installTaskCards(pi: any, call: Call): void {
 			if (p.action === "close") {
 				if (!open.some((c) => c.title === title)) return result(`task card "${title}" is not open`, true);
 				close(title);
-				pending = [];
+				// Keep the request that led to closing it; it may belong to the card saved next.
+				pending = pending.slice(-1);
 				return result(`closed task card "${title}"; it is no longer pinned or recorded into`);
 			}
 			if (p.action === "save" || p.action === "done") {
@@ -307,14 +325,14 @@ export function installTaskCards(pi: any, call: Call): void {
 						return undefined;
 					}
 				})();
-				setOpen({ title, id, body, log });
+				setOpen({ title, id, body, log, pinned: open.find((c) => c.title === title)?.pinned });
 				return result(`saved task card "${title}"${previous ? ` (replaces ${previous.id})` : ""}; it stays pinned for this session`);
 			}
 			if (!memoryReadAllowed(ctx)) return result(MODEL_POLICY_ERROR, true);
 			if (p.action === "list") {
 				const topic = String(p.text ?? "").trim();
 				const cards = await findCards(call, topic);
-				return result(cards.length ? cards.map(line).join("\n") : "no task cards are saved; treat this as a new task and do not search again");
+				return result(cards.length ? cards.map(line).join("\n") : "no task cards are saved, so do not search again. If this work continues from an earlier session or will go on in a later one, save a card for it now with action=save.");
 			}
 			const active = await byTitle(call, title);
 			const card = active ?? (await byTitle(call, title, DONE_PROJECT));
@@ -326,9 +344,7 @@ export function installTaskCards(pi: any, call: Call): void {
 			if (!text) return result("could not read the task card", true);
 			const opened: Open = { title, id: card.id, ...split(text) };
 			// Only the request that picked the task up is recorded; earlier messages may be other work.
-			const last = pending.slice(-1);
-			pending = [];
-			if (active) await attachPending(opened, last);
+			pending = pending.slice(-1);
 			setOpen(opened);
 			return result(`${active ? "" : "(this task was marked done; save it again to reopen)\n\n"}${RULE}\n\n${compose(opened.body!, opened.log ?? [])}`);
 		},

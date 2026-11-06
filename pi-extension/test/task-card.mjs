@@ -63,11 +63,18 @@ const tool = tools.get("task_card");
 const call = async (args) => (await tool.execute("1", args, null, null, { cwd: "/somewhere" })).content[0].text;
 let branch = [];
 const start = (entries = []) => { branch = entries; hooks.get("session_start")({}, { sessionManager: { getBranch: () => branch } }); };
-const run = (prompt = "hi", options = { contextFiles: [] }) => hooks.get("before_agent_start")({ prompt, systemPromptOptions: options }, { sessionManager: { getBranch: () => branch } });
+// begin/end bracket one run so tool calls can happen in between; run is a run without tool calls.
+const begin = (prompt = "hi", options = { contextFiles: [] }) => hooks.get("before_agent_start")({ prompt, systemPromptOptions: options }, { sessionManager: { getBranch: () => branch } });
+const end = async () => { await hooks.get("agent_settled")({}, {}); await new Promise((r) => setTimeout(r, 0)); };
+const run = async (prompt, options) => { const r = await begin(prompt, options); await end(); return r; };
 const pins = (options) => options.contextFiles.filter((f) => f.path.startsWith("memnest task card: ")).map((f) => f.path.slice(19));
 
 start();
-assert.equal(await run(), undefined, "no cards, nothing injected");
+const none = await run();
+assert.match(none.message.content, /No saved task cards[\s\S]*picks up ongoing work[\s\S]*task_card action=save in this run/, "no cards: one line on when to create one");
+assert.equal(none.message.display, false);
+assert.equal(await run(), undefined, "the line comes once per session");
+assert.match(await call({ action: "list" }), /no task cards are saved[\s\S]*save a card for it now/);
 assert.match(await call({ action: "save", title: "", text: "x" }), /needs a title/);
 assert.match(await call({ action: "save", title: "migration", text: "x".repeat(12001) }), /shorten/);
 
@@ -94,6 +101,7 @@ assert.deepEqual(pins(many), ["blog", "tax", "trip"]);
 start();
 const listed = await run("migration 오늘 진행 확인");
 assert.match(listed.message.content, /most relevant to this request first[^\n]*\n- migration/);
+assert.match(listed.message.content, /earlier work that has no card here[^\n]*save a new card/, "cards listed: still says when to create one");
 assert.match(listed.message.content, /- trip/);
 assert.equal(listed.message.display, false);
 assert.equal(await run(), undefined, "listed only once per session");
@@ -114,12 +122,21 @@ assert.equal(updates.at(-1).project, "task-cards", "reopen moves the finished ca
 assert.equal(docs.filter((d) => d.project === "task-cards" && d.document.includes(" tax\n")).length, 1, "one active tax card");
 assert.match(await call({ action: "list" }), /- tax/);
 
+// A pin stays byte-identical between prompts, so the provider's prompt cache keeps hitting; a compaction refreshes it.
+const firstPrompt = { contextFiles: [] };
+const secondPrompt = { contextFiles: [] };
+await run("첫 메시지", firstPrompt);
+await run("둘째 메시지", secondPrompt);
+assert.deepEqual(secondPrompt.contextFiles, firstPrompt.contextFiles, "pins unchanged between prompts");
+assert.doesNotMatch(secondPrompt.contextFiles.at(-1).content, /둘째 메시지/);
+
 // Compaction leaves the pin in place and asks for a save once.
 branch = [...branch, { type: "compaction", id: "k1" }];
 const afterCompact = { contextFiles: [] };
 const reminder = await run("next", afterCompact);
 assert.match(reminder.message.content, /just compacted[\s\S]*save it now/);
 assert.ok(pins(afterCompact).length > 0);
+assert.match(afterCompact.contextFiles.find((f) => f.path.endsWith("tax")).content, /첫 메시지[\s\S]*둘째 메시지$/, "compaction refreshes the pin with the messages recorded so far (the current one is written when the run ends)");
 assert.equal(await run("next", { contextFiles: [] }), undefined, "reminder only once");
 
 // A resumed session reopens the cards it had open.
@@ -131,10 +148,12 @@ assert.match(resumed.contextFiles.find((f) => f.path.endsWith("migration"))?.con
 
 // User messages are appended verbatim while a card is open, and a save cannot rewrite them.
 start();
-await run("설정 변경은 의논 없이 하지 마");
+await begin("설정 변경은 의논 없이 하지 마");
 await call({ action: "get", title: "migration" });
 const cardDoc = () => docs.find((d) => d.project === "task-cards" && d.document.startsWith("[memnest-task-card] migration\n"));
-assert.match(cardDoc().document, /의논 없이 하지 마$/);
+assert.doesNotMatch(cardDoc().document, /의논 없이 하지 마/, "not written while the model may still close the card");
+await end();
+assert.match(cardDoc().document, /의논 없이 하지 마$/, "written when the run ends with the card open");
 await run("이미지는 다시 올려");
 await new Promise((r) => setTimeout(r, 0));
 assert.match(cardDoc().document, /의논 없이 하지 마\n- \S+ \S+ 이미지는 다시 올려$/, "written without a model call");
@@ -153,6 +172,27 @@ await new Promise((r) => setTimeout(r, 0));
 assert.doesNotMatch(cardDoc().document, /CSV/);
 assert.match(await call({ action: "close", title: "migration" }), /not open/);
 
+// A card opened by mistake keeps nothing; the request goes to the card saved instead.
+start();
+await begin("캐릭터 3D 모델 만들어줘");
+await call({ action: "get", title: "migration" });
+await call({ action: "close", title: "migration" });
+await call({ action: "save", title: "character", text: "character body" });
+await end();
+assert.doesNotMatch(cardDoc().document, /캐릭터 3D/, "wrongly opened card stays clean");
+assert.match(docs.find((d) => d.project === "task-cards" && d.document.startsWith("[memnest-task-card] character\n")).document, /캐릭터 3D 모델 만들어줘$/, "the saved card gets the request");
+
+// Closing when the user moves on keeps that message out of the card.
+start();
+await begin("migration 이어서");
+await call({ action: "get", title: "migration" });
+await end();
+await begin("블로그 글 써줘");
+await call({ action: "close", title: "migration" });
+await end();
+assert.match(cardDoc().document, /migration 이어서$/);
+assert.doesNotMatch(cardDoc().document, /블로그/);
+
 // Two sessions recording into one card keep both messages.
 const second = { tools: new Map(), hooks: new Map() };
 (await import(`${bundle}?second`)).default({
@@ -170,6 +210,7 @@ await run("세션A 첫 말");
 await call({ action: "get", title: "migration" });
 await run("세션A 둘째 말");
 await second.hooks.get("before_agent_start")({ prompt: "세션B 둘째 말", systemPromptOptions: { contextFiles: [] } }, ctx2);
+await second.hooks.get("agent_settled")({}, ctx2);
 await new Promise((r) => setTimeout(r, 10));
 for (const said of ["세션A 첫 말", "세션A 둘째 말", "세션B 첫 말", "세션B 둘째 말"]) assert.match(cardDoc().document, new RegExp(said), `${said} kept`);
 
@@ -179,9 +220,21 @@ globalThis.fetch = () => new Promise(() => {});
 start();
 const started = Date.now();
 const keepAlive = setInterval(() => {}, 1000); // the extension's timer is unref'd
-assert.equal(await run(), undefined);
+assert.match((await run()).message.content, /No saved task cards/);
 clearInterval(keepAlive);
 assert.ok(Date.now() - started < 3000, "listing gives up after its timeout");
+
+// Nor does it hold the end of a run with a card open.
+globalThis.fetch = fetchImpl;
+start();
+await begin("이어서 하자");
+await call({ action: "get", title: "migration" });
+globalThis.fetch = () => new Promise(() => {});
+const ending = Date.now();
+const keepAlive2 = setInterval(() => {}, 1000);
+await end();
+clearInterval(keepAlive2);
+assert.ok(Date.now() - ending < 3000, "the end-of-run write gives up after its timeout");
 
 // A full page of active cards asks the model to offer cleanup.
 for (let i = 0; i < 50; i++) docs.push({ id: `bulk${i}`, project: "task-cards", document: `[memnest-task-card] bulk ${i}\nbody`, timestamp: "2026-10-01T00:00:00Z" });

@@ -12,15 +12,15 @@ A task card is a short handoff note for one piece of work that spans sessions or
 
 The hook and the MCP tool reach the core on separate channels. On the first prompt the hook gives the model its session id, and the model passes it back as `task_card session=...`, which tells the core which card the session has open. Open cards are kept in core memory; after a core restart the next prompt lists cards again.
 
-When there are no cards, the session-start lookup returns nothing in pi. Through the hook it returns one line saying how to create a card. Claude Code does not show MCP tool descriptions up front, so without that line the model never created a card. If the core does not answer, pi skips the lookup after 1.5 seconds and the hook after 2 seconds.
+When there are no cards, pi and the hook both add one line on the first prompt saying when to save a card. Claude Code does not show MCP tool descriptions up front, so without that line the model never created a card. pi had the same gap: in a real two-day pi session the model looked for a card, found none, and saved 16 single facts with `memory_remember` but never a card. If the core does not answer, pi skips the lookup after 1.5 seconds and the hook after 2 seconds.
 
 ## How it works
 
 | Step | What happens |
 | --- | --- |
 | Save | `task_card action=save title="..." text="..."` stores `[memnest-task-card] <title>` plus the body in one shared `task-cards` collection, so a card follows the user to any folder. Saving the same title again supersedes the previous card, so search shows only the newest one while the old version stays auditable. Cards over 12,000 characters are rejected. |
-| New session | On the first prompt, pi searches the cards with that prompt and lists up to 20 active titles in a hidden reminder: the most relevant to the request first, then the most recently saved. Card bodies are not read. Nothing is listed when there are no cards. |
-| Open | `task_card action=get title="..."` returns the card and pins it into the system prompt for the rest of the session. Up to three cards stay pinned; opening a fourth drops the oldest. Compaction summarizes messages, not the system prompt, so a pinned card cannot be summarized away. A wrong title returns the closest titles. |
+| New session | On the first prompt, pi searches the cards with that prompt and lists up to 20 active titles in a hidden reminder: the most relevant to the request first, then the most recently saved. Card bodies are not read. With no cards, it adds one line saying when to save one instead. |
+| Open | `task_card action=get title="..."` returns the card and pins it into the system prompt for the rest of the session. Up to three cards stay pinned; opening a fourth drops the oldest. Compaction summarizes messages, not the system prompt, so a pinned card cannot be summarized away. The pinned text is rendered when the card is first pinned and again only after a compaction, so the system prompt stays identical between prompts and the prompt cache keeps hitting; until then the conversation itself holds the session's messages. A wrong title returns the closest titles. |
 | Finish | `task_card action=done title="..."` moves the card to a separate `task-cards-done` collection, so the session-start search never scans finished work. `get` still opens it, and saving it again moves it back and reopens it. |
 | Search | `task_card action=list text="topic"` ranks cards by topic; without `text` it lists the newest. |
 | After compaction | The next prompt reminds the model to save any decisions or corrections missing from the pinned card. |
@@ -125,7 +125,7 @@ Session-start lookup time, measured in the extension against a warm core: the me
 
 | Cards | Median | Max | Added to the model |
 | --- | --- | --- | --- |
-| 0 | 4 ms | 67 ms | nothing |
+| 0 | 4 ms | 67 ms | one line on when to save a card |
 | 60 active | 15 ms | 17 ms | 20 titles, about 1,000 characters |
 | 300 active | 139 ms | 220 ms | 20 titles, about 1,000 characters |
 | 1,020 active | 434 ms | 500 ms | 20 titles, plus a note to offer cleanup |
@@ -238,10 +238,67 @@ Where a card adds cost without benefit:
 - **A single long session with no new session.** The pinned card adds its size to every request (cached), and the transcript still grows. The benefit there is that user instructions survive compaction, not fewer tokens.
 - **Unrelated short tasks.** The list costs about 700 tokens once per session, and nothing is opened.
 
+## No cards yet, and the prompt cache (pi, 2026-11-05)
+
+Two problems found in real pi use. Measured with `claude-opus-5-5` (high thinking) over the RPC interface against a copy of the real memory store, with the memory tools, `task_card`, read-only file tools, and the user's global `AGENTS.md`.
+
+**No card was ever created.** In a real two-day session the model looked for a card, got "no task cards are saved; treat this as a new task", and kept saving single facts with `memory_remember`. The replay sends that session's first two user messages: today's to-dos a day after yesterday's work, then a complaint that decisions keep being reversed.
+
+| Scenario | No line | First wording | Current wording |
+| --- | --- | --- | --- |
+| Resuming yesterday's work (the real two-day session), Korean | 0/3 saved a card; each called `list`, then used `memory_remember` | 5/5 | 2/2 |
+| The same two messages in English | not run | 2/6 | 4/4 |
+| A new multi-day task stated outright ("this will take days"), Korean | 2/2 | 2/2 | not run |
+| One-off questions (a coding script, a status check, the service port, the cause of an earlier failure): no card is correct | not run | 6/6 correct | 5/5 correct |
+
+The explicit case already worked. The line matters when the length of the work is only implied, which is how the real failure happened. The first wording ("work that continues from an earlier session") worked in Korean but not in English. The current wording names concrete signals (asks for today's next steps, refers to yesterday, continues a project) and asks for the save in the same run; every run that saved did so on the first message, and no one-off question got a card.
+
+**Languages and the rest of the lifecycle** (first wording; day 2 does not depend on the no-card line). Day 1 starts a blog migration with an image rule and stops for the day; day 2 is a fresh session that asks to continue, then says the work is completely finished. "Plain setup" means English with no `AGENTS.md` and no skills.
+
+| Step | Korean | English | English, plain setup | Japanese |
+| --- | --- | --- | --- | --- |
+| Day 1: card saved | 2/2 | 2/2 | 2/2 | 1/1 |
+| Day 2: card opened with `get` | 2/2 | 2/2 | 2/2 | 1/1 |
+| Day 2: `done` after "it is finished" | 2/2 | 2/2 | 2/2 | 1/1 |
+
+In one plain-setup run the model saved after `done`, which reopens a card, and then marked it done again.
+
+**An open card broke the prompt cache on every prompt.** The pinned text included the verbatim user-message log, which grows with each prompt, so the system prompt changed every time and the whole cached conversation was written again. In a five-message session with a card open, the first call of every later prompt read only 4,109 cached tokens and rewrote the rest (16,916 to 25,399 tokens per prompt), whether or not the card had been saved. The pin is now rendered when the card is first pinned and again only after a compaction. In the same session after the change, the first pin rewrote the cache once; every later prompt read 22,789 to 25,261 tokens from the cache and wrote 214 to 1,190.
+
+| Five-message session, card open | Before | After |
+| --- | --- | --- |
+| Cache write tokens | 103,777 | 28,412 (−73%) |
+| Price-weighted total (input 1, cache read 0.1, cache write 1.25, output 5) | 204,211 | 109,909 (−46%) |
+
+The saving grows with the context: before the change, every prompt of a long session rewrote the whole context, up to the 600K compaction threshold.
+
+Limits: one to three runs per condition; shell and file-writing tools were off for safety. Creating a card still costs one cache rewrite when it is first pinned, plus about 1,000 to 2,000 output tokens per save.
+
+## Messages recorded into the wrong card (pi, 2026-11-06)
+
+Three problems found in a week of real pi use, after the changes above.
+
+- **A card opened by mistake kept the request.** A request for a new task opened an unrelated card first; the model closed it and saved a new card. Opening had already written the request into the wrong card, and closing cleared it, so the new card had no user words at all.
+- **Closing came too late.** The user's message was written into the open card when the prompt started, before the model could decide the message was about other work. Across 38 sessions the model closed a card once, and two cards collected messages from later, unrelated tasks.
+- **No new card when other cards existed.** The line on when to create a card was shown only when no cards were saved. With any card in the list, a request that resumed another multi-day task got no card.
+
+Changes: the user's message is written when the run settles (`agent_settled`), into the card still open; opening and closing keep the triggering request for the next save instead of writing or dropping it. The pinned rule line asks the model to close a card before answering a message about other work, and the card list says to save a new card for resumed or multi-day work that has none. Hosts without `agent_settled` write earlier messages at the next prompt. The end-of-run write is awaited so a one-shot `pi -p` keeps it, and capped at 1.5 seconds so a stalled core does not hold pi busy.
+
+Measured with `claude-sonnet-5-5` through `pi -p`, against a fake core seeded with two unrelated cards:
+
+| Scenario | Before | After |
+| --- | --- | --- |
+| Resuming a multi-day task that has no card ("yesterday's work; today X, tomorrow Y") | 0/3 saved a card | 3/3 saved, with the request in its log |
+| A new multi-day task while unrelated cards exist | not run | 1/1 new card holds the request; other cards untouched |
+| Open a card, then "separately, a one-line CSV merge": the second message stays out | unit test: recorded | 4/4 closed; card holds only the first message |
+| One-off questions, one sharing a word with a card: no card | not run | 3/3 no card, no `get` |
+
+Unit tests reproduce the first two problems against the old build (wrong card kept the request, the saved card lacked it, a closed card kept the switching message) and pass on the new one.
+
 ## Remaining limits and how they are handled
 
 | Limit | Handling | Checked |
 | --- | --- | --- |
 | Two sessions record into one card at the same time | Each write re-reads the newest version, merges, and checks after writing; if another session overwrote it, it merges again (up to three tries). Writes within one session run one at a time. | Unit test: two extension instances each add two messages; all four are kept. Twenty rapid messages in one session: all kept, oldest trimmed past 8,000 characters. |
-| The user moves on to other work while a card is open | `task_card action=close` unpins the card and stops recording. Opening an existing card records only the request that picked it up, not the session's earlier messages. | Real RPC session, both `gpt-6.1-terra` and `claude-opus-5-5`: after "that can wait, now something else entirely", each model closed the card. Later messages stayed out; only the switching message was recorded. |
+| The user moves on to other work while a card is open | `task_card action=close` unpins the card and stops recording. A message is written only when the run ends with the card still open, so closing during that run keeps the switching message out too. Opening an existing card records only the request that picked it up, not the session's earlier messages. | Real RPC session, both `gpt-6.1-terra` and `claude-opus-5-5`: after "that can wait, now something else entirely", each model closed the card and later messages stayed out. `claude-sonnet-5-5` through `pi -p`: 4/4 closed, and the switching message stayed out as well. The model still has to close; in real use it rarely did before the rule line asked for it. |
 | Facts the model found itself, such as restrictions from documentation, still depend on the writer | Not removable by design. The full transcripts stay in memnest, so `memory_search` can recover them. | The 11th of 12 key points stayed missing for the weaker writers. |
