@@ -295,6 +295,21 @@ Measured with `claude-sonnet-5-5` through `pi -p`, against a fake core seeded wi
 
 Unit tests reproduce the first two problems against the old build (wrong card kept the request, the saved card lacked it, a closed card kept the switching message) and pass on the new one.
 
+## memory_remember with no card open (pi, 2026-11-07)
+
+The list line above did not settle the third problem. In a later real session (`claude-opus-5-5`, five other cards listed, the line present) the user resumed a multi-day project; the model searched the cards by the project's name, got only other tasks back, saved two facts with `memory_remember`, and never saved a card. Rewording the list line, and adding a line under a topic search's results, changed nothing in replays (0 of 5 runs).
+
+What the failures share is structural: multi-day work went to `memory_remember` while no card was open (16 times in the 2026-11-04 session, twice here). The extension now appends one line to the first successful `memory_remember` result of a session with no card open: if the fact belongs to work that started earlier or will go on later, save a card too; single facts from one-off tasks need none. A session that has opened or saved a card never gets it.
+
+Measured with `claude-opus-5-5` over the RPC interface against a copy of the real memory store, with the real cards and the user's `AGENTS.md`:
+
+| Scenario | Without the note | With the note |
+| --- | --- | --- |
+| The real session's two messages, then the user states a decision and asks to keep it; the model calls `memory_remember` | 0/1 saved a card | 3/3 saved a card right after `memory_remember` |
+| One-off fact to remember (a GitHub ID; a commit-message preference in English): no card is correct | not run | 4/4 no card |
+
+Runs where the model did not call `memory_remember` are left out: the note cannot appear there. Without that call, the replayed session still got no card in any build, so this note is a backstop for that case rather than a fix for the first prompt.
+
 ## Remaining limits and how they are handled
 
 | Limit | Handling | Checked |

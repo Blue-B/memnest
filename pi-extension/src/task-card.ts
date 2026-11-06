@@ -45,6 +45,10 @@ const RULE =
 // The concrete examples matter: with an abstract wording, English requests that resumed yesterday's work got a card 2 of 6 times.
 const NO_CARDS =
 	"[memnest task cards] No saved task cards were found. Work that spans sessions gets a task card. When the user picks up ongoing work from an earlier day or session (asks for today's next steps, refers to yesterday, or continues a project), or starts work that will go on later, save a card with task_card action=save in this run, as soon as the task is clear; memnest then keeps the user's messages in it verbatim. Single facts still go to memory_remember; the card holds the task's goal, decisions, state, and next steps.";
+// In real sessions multi-day work went to memory_remember while no card was open (16 times on 2026-11-04, twice on
+// 2026-11-06 with other cards listed). Measured: with this note 2/2 sessions saved a card after the save, 0/2 without.
+const REMEMBER_NO_CARD =
+	"[memnest task cards] No task card is open in this session. If this fact belongs to ongoing work that started on an earlier day or will go on later, also save a task card for that work with task_card action=save in this run (open the existing card instead if one covers it). Single facts from one-off tasks need no card.";
 // Measured 2026-11-05: one-off sessions that compacted ignored it (0/3 cards), multi-day work kept its card.
 const COMPACTED_NO_CARD =
 	"[memnest task cards] The conversation was just compacted and no task card is open. If this work continues from an earlier session or will go on in a later one, save a task card with task_card action=save in this run, so the goal, decisions, and the user's words survive; if it is a one-off task, ignore this.";
@@ -152,6 +156,8 @@ export function installTaskCards(pi: any, call: Call): void {
 	let listed = false;
 	// A compaction with no card open is a language-neutral sign of long work; remind once per session.
 	let nudgedAfterCompaction = false;
+	// memory_remember with no card open is how multi-day work slipped past cards in real sessions; note it once.
+	let nudgedRemember = false;
 	// Id of the newest compaction entry seen; a new one means the transcript was summarized.
 	let lastCompaction: string | undefined;
 	const newestCompaction = (ctx: any): string | undefined => {
@@ -165,6 +171,7 @@ export function installTaskCards(pi: any, call: Call): void {
 		open = [...open.filter((c) => c.title !== card.title), card].slice(-MAX_OPEN);
 		// A session that has used a card needs no reminder that cards exist.
 		nudgedAfterCompaction = true;
+		nudgedRemember = true;
 		remember();
 	};
 	const close = (title: string) => {
@@ -200,6 +207,7 @@ export function installTaskCards(pi: any, call: Call): void {
 	pi.on("session_start", (_event: unknown, ctx: any) => {
 		listed = false;
 		nudgedAfterCompaction = false;
+		nudgedRemember = false;
 		pending = [];
 		lastCompaction = newestCompaction(ctx);
 		open = [];
@@ -261,6 +269,12 @@ export function installTaskCards(pi: any, call: Call): void {
 		}
 		if (!notes.length) return;
 		return { message: { customType: ENTRY, display: false, content: `<system-reminder>\n${notes.join("\n\n")}\n</system-reminder>` } };
+	});
+
+	pi.on("tool_result", (event: any) => {
+		if (event?.toolName !== "memory_remember" || event?.isError || open.length || nudgedRemember) return;
+		nudgedRemember = true;
+		return { content: [...(Array.isArray(event.content) ? event.content : []), { type: "text", text: REMEMBER_NO_CARD }] };
 	});
 
 	// The message is written once the run settles, so a card the model opened by mistake or closed

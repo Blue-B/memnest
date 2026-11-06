@@ -79,6 +79,14 @@ branch = [...branch, { type: "compaction", id: "k0" }];
 assert.match((await run("next")).message.content, /just compacted and no task card is open[\s\S]*one-off task, ignore this/);
 branch = [...branch, { type: "compaction", id: "k0b" }];
 assert.equal(await run("next"), undefined, "compaction reminder only once per session");
+// memory_remember with no card open gets one note, appended after the tool's own result.
+const remembered = (isError = false) => hooks.get("tool_result")({ toolName: "memory_remember", isError, content: [{ type: "text", text: "saved" }] });
+assert.equal(remembered(true), undefined, "a failed save gets no note");
+const noted = remembered();
+assert.equal(noted.content[0].text, "saved");
+assert.match(noted.content[1].text, /No task card is open[\s\S]*task_card action=save in this run/);
+assert.equal(remembered(), undefined, "memory_remember note only once per session");
+assert.equal(hooks.get("tool_result")({ toolName: "read", content: [] }), undefined);
 start();
 await run();
 assert.match(await call({ action: "list" }), /no task cards are saved[\s\S]*save a card for it now/);
@@ -115,6 +123,7 @@ assert.equal(await run(), undefined, "listed only once per session");
 assert.match(await call({ action: "list", text: "tax" }), /^- tax/);
 assert.match(await call({ action: "get", title: "nope" }), /no task card titled "nope"/);
 const opened = await call({ action: "get", title: "migration" });
+assert.equal(hooks.get("tool_result")({ toolName: "memory_remember", content: [] }), undefined, "no note while a card is open");
 assert.match(opened, /v2 body[\s\S]*\d\d:\d\d hi$/, "opening records the request that picked the task up");
 assert.doesNotMatch(opened, /migration 오늘 진행 확인/, "earlier messages of the session may be other work and are not recorded");
 
