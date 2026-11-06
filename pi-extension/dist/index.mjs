@@ -4427,6 +4427,7 @@ var LOG_MAX = 8e3;
 var MESSAGE_MAX = 1e3;
 var RULE = "The user's stated policies and prohibitions for this task take priority over your own analysis and earlier plans. If a proposal would go against one, first quote the user's words it conflicts with and ask before proposing it. The card's next steps are a plan, not approval: before changing, submitting, publishing, or deleting anything the user has not approved in this conversation, say what you will do and ask. When a user message is about other work than this card, call task_card close for it before answering, so that message stays out of the card.";
 var NO_CARDS = "[memnest task cards] No saved task cards were found. Work that spans sessions gets a task card. When the user picks up ongoing work from an earlier day or session (asks for today's next steps, refers to yesterday, or continues a project), or starts work that will go on later, save a card with task_card action=save in this run, as soon as the task is clear; memnest then keeps the user's messages in it verbatim. Single facts still go to memory_remember; the card holds the task's goal, decisions, state, and next steps.";
+var COMPACTED_NO_CARD = "[memnest task cards] The conversation was just compacted and no task card is open. If this work continues from an earlier session or will go on in a later one, save a task card with task_card action=save in this run, so the goal, decisions, and the user's words survive; if it is a one-off task, ignore this.";
 var FORMAT = "Sections: Goal; User policies and prohibitions (dated, close to the user's words, note repeats); Decisions and reasons; Done (what, where); Tried and failed (why); Current state (numbers); Next and waiting; Unverified. Keep what is still valid, move finished items to Done, no tool output, no guesses, under about 6000 characters. Do not copy the user's-own-words section; memnest keeps it.";
 function within(promise, fallback) {
   return Promise.race([
@@ -4511,6 +4512,7 @@ function installTaskCards(pi, call2) {
   let open = [];
   let pending = [];
   let listed = false;
+  let nudgedAfterCompaction = false;
   let lastCompaction;
   const newestCompaction = (ctx) => {
     const branch = ctx?.sessionManager?.getBranch?.() ?? [];
@@ -4520,6 +4522,7 @@ function installTaskCards(pi, call2) {
   const remember = () => pi.appendEntry?.(ENTRY, { titles: open.map((c) => c.title) });
   const setOpen = (card) => {
     open = [...open.filter((c) => c.title !== card.title), card].slice(-MAX_OPEN);
+    nudgedAfterCompaction = true;
     remember();
   };
   const close = (title) => {
@@ -4549,6 +4552,7 @@ ${compose(fresh.body, card.log)}` });
   };
   pi.on("session_start", (_event, ctx) => {
     listed = false;
+    nudgedAfterCompaction = false;
     pending = [];
     lastCompaction = newestCompaction(ctx);
     open = [];
@@ -4583,6 +4587,10 @@ ${compose(c.body, c.log ?? [])}`;
       files.splice(0, files.length, ...kept, ...open.filter((c) => c.pinned).map((c) => ({ path: `${PIN}${c.title}`, content: c.pinned })));
     }
     const notes = [];
+    if (compacted && !open.length && !nudgedAfterCompaction) {
+      nudgedAfterCompaction = true;
+      notes.push(COMPACTED_NO_CARD);
+    }
     if (compacted && open.length) {
       notes.push(`[memnest task cards] The conversation was just compacted. If decisions or user corrections since the last save of ${open.map((c) => `"${c.title}"`).join(", ")} are missing from the card, save it now.`);
     }

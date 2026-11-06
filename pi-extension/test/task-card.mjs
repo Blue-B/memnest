@@ -74,6 +74,13 @@ const none = await run();
 assert.match(none.message.content, /No saved task cards[\s\S]*picks up ongoing work[\s\S]*task_card action=save in this run/, "no cards: one line on when to create one");
 assert.equal(none.message.display, false);
 assert.equal(await run(), undefined, "the line comes once per session");
+// A compaction with no card open reminds once; a second compaction stays quiet.
+branch = [...branch, { type: "compaction", id: "k0" }];
+assert.match((await run("next")).message.content, /just compacted and no task card is open[\s\S]*one-off task, ignore this/);
+branch = [...branch, { type: "compaction", id: "k0b" }];
+assert.equal(await run("next"), undefined, "compaction reminder only once per session");
+start();
+await run();
 assert.match(await call({ action: "list" }), /no task cards are saved[\s\S]*save a card for it now/);
 assert.match(await call({ action: "save", title: "", text: "x" }), /needs a title/);
 assert.match(await call({ action: "save", title: "migration", text: "x".repeat(12001) }), /shorten/);
@@ -171,6 +178,9 @@ await run("파이썬 CSV 스크립트 짜줘");
 await new Promise((r) => setTimeout(r, 0));
 assert.doesNotMatch(cardDoc().document, /CSV/);
 assert.match(await call({ action: "close", title: "migration" }), /not open/);
+// A session that already used a card gets no "no card is open" reminder after a compaction.
+branch = [...branch, { type: "compaction", id: "k-closed" }];
+assert.doesNotMatch((await run("after compaction"))?.message?.content ?? "", /no task card is open/);
 
 // A card opened by mistake keeps nothing; the request goes to the card saved instead.
 start();

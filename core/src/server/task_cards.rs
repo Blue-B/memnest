@@ -335,6 +335,8 @@ struct Session {
     open: Vec<String>,
     pending: Vec<String>,
     listed: bool,
+    // A compaction with no card open is a language-neutral sign of long work; remind once.
+    nudged: bool,
     seen: Option<Instant>,
 }
 
@@ -366,6 +368,8 @@ fn open_in(session: &mut Session, title: &str) {
         session.open.remove(0);
     }
     session.listed = true;
+    // A session that has used a card needs no reminder that cards exist.
+    session.nudged = true;
 }
 
 fn arg(args: &Value, key: &str) -> String {
@@ -389,7 +393,7 @@ pub async fn tool(system: &System, args: &Value) -> Result<String> {
         "list" => {
             let cards = find(system, &arg(args, "text"), PROJECT).await;
             Ok(if cards.is_empty() {
-                "no task cards are saved; treat this as a new task and do not search again".into()
+                "no task cards are saved, so do not search again. If this work continues from an earlier session or will go on in a later one, save a card for it now with action=save.".into()
             } else {
                 cards.iter().map(line).collect::<Vec<_>>().join("\n")
             })
@@ -556,7 +560,7 @@ async fn on_prompt(system: &System, session: &str, prompt: &str) -> String {
         // Hosts like Claude Code defer MCP tool descriptions, so without this line the
         // model never learns that cards exist or which session id to pass.
         return format!(
-            "[memnest task cards] No saved task cards. If this request starts work that will continue in a later session, create one with the task_card tool (action=save, session=\"{session}\"); memnest then keeps the user's messages in it verbatim."
+            "[memnest task cards] No saved task cards were found. Work that spans sessions gets a task card. When the user picks up ongoing work from an earlier day or session (asks for today's next steps, refers to yesterday, or continues a project), or starts work that will go on later, save a card with the task_card tool (action=save, session=\"{session}\") in this run, as soon as the task is clear; memnest then keeps the user's messages in it verbatim. Single facts still go to memory_remember; the card holds the task's goal, decisions, state, and next steps."
         );
     }
     let order = if matching.is_empty() {
@@ -576,7 +580,7 @@ async fn on_prompt(system: &System, session: &str, prompt: &str) -> String {
         String::new()
     };
     format!(
-        "[memnest task cards] Saved handoff cards, {order}. Open one with the task_card tool (action=get, session=\"{session}\") when the request is about that task: continuing it or asking about it. A new task that only shares a word or an area with a card is not about it, so answer without opening a card. If the user is continuing something but it is unclear which task, ask.\n{}{latest}{crowded}",
+        "[memnest task cards] Saved handoff cards, {order}. Open one with the task_card tool (action=get, session=\"{session}\") when the request is about that task: continuing it or asking about it. A new task that only shares a word or an area with a card is not about it, so answer without opening a card. If the user is continuing something but it is unclear which task, ask. If the request picks up earlier work that has no card here, or starts work that will go on later, save a new card for it with the task_card tool (action=save, session=\"{session}\").\n{}{latest}{crowded}",
         cards.iter().map(line).collect::<Vec<_>>().join("\n")
     )
 }
@@ -584,7 +588,16 @@ async fn on_prompt(system: &System, session: &str, prompt: &str) -> String {
 /// Compaction summarizes the transcript, card included. Bring back the rule, the
 /// user's latest words, and the start of the body, and ask for a full reload.
 async fn reload_after_compaction(system: &System, session: &str) -> String {
-    let open = with_session(session, |s| s.open.clone());
+    let (open, nudge) = with_session(session, |s| {
+        let nudge = s.open.is_empty() && !s.nudged;
+        s.nudged |= nudge;
+        (s.open.clone(), nudge)
+    });
+    if nudge {
+        return format!(
+            "[memnest task cards] The conversation was just compacted and no task card is open. If this work continues from an earlier session or will go on in a later one, save a task card with the task_card tool (action=save, session=\"{session}\") in this run, so the goal, decisions, and the user's words survive; if it is a one-off task, ignore this."
+        );
+    }
     if open.is_empty() {
         return String::new();
     }
@@ -687,6 +700,27 @@ mod tests {
         )
         .await;
         assert!(hint.contains("No saved task cards") && hint.contains("session=\"session-one\""));
+        assert!(
+            hint.contains("picks up ongoing work"),
+            "covers resuming earlier work"
+        );
+        assert!(
+            call(&system, json!({"action": "list"}))
+                .await
+                .contains("save a card for it now"),
+            "an empty list asks for a card instead of 'treat this as a new task'"
+        );
+        // A compaction with no card open reminds once.
+        let nudge = hook(&system, "SessionStart", s1, "", "compact").await;
+        assert!(
+            nudge.contains("no task card is open") && nudge.contains("session=\"session-one\"")
+        );
+        assert!(
+            hook(&system, "SessionStart", s1, "", "compact")
+                .await
+                .is_empty(),
+            "compaction reminder only once per session"
+        );
         assert!(
             call(
                 &system,

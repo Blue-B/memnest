@@ -11,6 +11,7 @@
 - 모든 클라이언트용 작업 카드. 카드는 며칠 걸리는 작업의 인계 문서입니다. [작업 카드](../docs/task-cards.ko.md)를 보세요.
   - MCP `task_card` 도구와 `POST /task-card`로 카드를 저장, 목록, 열기, 끝내기, 닫기 합니다.
   - `memnest hook`이 `POST /task-card/hook`을 통해 Claude Code와 Codex의 `SessionStart`와 `UserPromptSubmit`을 처리합니다. 세션 첫 프롬프트에 카드 목록을 보여 주고, 사용자 메시지를 열린 카드에 원문 그대로 기록합니다. 압축 뒤에는 규칙과 사용자 최근 말을 다시 넣습니다.
+  - 카드가 없으면 첫 프롬프트에 언제 카드를 저장할지 알려 주며, 사용자가 이전 작업을 이어 갈 때도 포함합니다. 빈 `list` 응답은 "새 작업으로 취급하라" 대신 카드를 저장하라고 합니다. 열린 카드 없이 압축되면 세션당 한 번 알려 줍니다.
   - `memnest hook --no-recall`은 자동 회상 없이 작업 카드만 처리합니다.
   - 설치 스크립트가 기본으로 Claude Code(`~/.claude/settings.json`)와 Codex(`~/.codex/hooks.json`)에 이 훅을 넣고, Codex가 `task_card`를 승인 질문 없이 부를 수 있게 합니다. 회상은 여전히 `--autocontext`로 직접 켭니다.
 

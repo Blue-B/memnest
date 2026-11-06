@@ -45,6 +45,9 @@ const RULE =
 // The concrete examples matter: with an abstract wording, English requests that resumed yesterday's work got a card 2 of 6 times.
 const NO_CARDS =
 	"[memnest task cards] No saved task cards were found. Work that spans sessions gets a task card. When the user picks up ongoing work from an earlier day or session (asks for today's next steps, refers to yesterday, or continues a project), or starts work that will go on later, save a card with task_card action=save in this run, as soon as the task is clear; memnest then keeps the user's messages in it verbatim. Single facts still go to memory_remember; the card holds the task's goal, decisions, state, and next steps.";
+// Measured 2026-11-05: one-off sessions that compacted ignored it (0/3 cards), multi-day work kept its card.
+const COMPACTED_NO_CARD =
+	"[memnest task cards] The conversation was just compacted and no task card is open. If this work continues from an earlier session or will go on in a later one, save a task card with task_card action=save in this run, so the goal, decisions, and the user's words survive; if it is a one-off task, ignore this.";
 const FORMAT =
 	"Sections: Goal; User policies and prohibitions (dated, close to the user's words, note repeats); Decisions and reasons; Done (what, where); Tried and failed (why); Current state (numbers); Next and waiting; Unverified. Keep what is still valid, move finished items to Done, no tool output, no guesses, under about 6000 characters. Do not copy the user's-own-words section; memnest keeps it.";
 
@@ -147,6 +150,8 @@ export function installTaskCards(pi: any, call: Call): void {
 	// User messages of this session not yet attached to a card.
 	let pending: string[] = [];
 	let listed = false;
+	// A compaction with no card open is a language-neutral sign of long work; remind once per session.
+	let nudgedAfterCompaction = false;
 	// Id of the newest compaction entry seen; a new one means the transcript was summarized.
 	let lastCompaction: string | undefined;
 	const newestCompaction = (ctx: any): string | undefined => {
@@ -158,6 +163,8 @@ export function installTaskCards(pi: any, call: Call): void {
 	const remember = () => pi.appendEntry?.(ENTRY, { titles: open.map((c) => c.title) });
 	const setOpen = (card: Open) => {
 		open = [...open.filter((c) => c.title !== card.title), card].slice(-MAX_OPEN);
+		// A session that has used a card needs no reminder that cards exist.
+		nudgedAfterCompaction = true;
 		remember();
 	};
 	const close = (title: string) => {
@@ -192,6 +199,7 @@ export function installTaskCards(pi: any, call: Call): void {
 
 	pi.on("session_start", (_event: unknown, ctx: any) => {
 		listed = false;
+		nudgedAfterCompaction = false;
 		pending = [];
 		lastCompaction = newestCompaction(ctx);
 		open = [];
@@ -228,6 +236,10 @@ export function installTaskCards(pi: any, call: Call): void {
 			files.splice(0, files.length, ...kept, ...open.filter((c) => c.pinned).map((c) => ({ path: `${PIN}${c.title}`, content: c.pinned! })));
 		}
 		const notes: string[] = [];
+		if (compacted && !open.length && !nudgedAfterCompaction) {
+			nudgedAfterCompaction = true;
+			notes.push(COMPACTED_NO_CARD);
+		}
 		if (compacted && open.length) {
 			notes.push(`[memnest task cards] The conversation was just compacted. If decisions or user corrections since the last save of ${open.map((c) => `"${c.title}"`).join(", ")} are missing from the card, save it now.`);
 		}

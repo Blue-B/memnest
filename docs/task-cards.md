@@ -23,7 +23,7 @@ When there are no cards, pi and the hook both add one line on the first prompt s
 | Open | `task_card action=get title="..."` returns the card and pins it into the system prompt for the rest of the session. Up to three cards stay pinned; opening a fourth drops the oldest. Compaction summarizes messages, not the system prompt, so a pinned card cannot be summarized away. The pinned text is rendered when the card is first pinned and again only after a compaction, so the system prompt stays identical between prompts and the prompt cache keeps hitting; until then the conversation itself holds the session's messages. A wrong title returns the closest titles. |
 | Finish | `task_card action=done title="..."` moves the card to a separate `task-cards-done` collection, so the session-start search never scans finished work. `get` still opens it, and saving it again moves it back and reopens it. |
 | Search | `task_card action=list text="topic"` ranks cards by topic; without `text` it lists the newest. |
-| After compaction | The next prompt reminds the model to save any decisions or corrections missing from the pinned card. |
+| After compaction | The next prompt reminds the model to save any decisions or corrections missing from the pinned card. With no card open, it reminds once per session to save a card if the work continues later; a compaction is a sign of long work that does not depend on the user's language. |
 | Resume | A resumed pi session reopens the cards it had open. |
 
 The pinned card starts with one fixed line: the user's stated policies and prohibitions take priority over the model's own analysis and earlier plans, and a conflicting proposal must quote the user's words and ask first. The measurement below is the reason for that line.
