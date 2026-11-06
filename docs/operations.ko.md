@@ -28,9 +28,10 @@ cargo build --release
 v0.3.0 Linux 릴리스라면, 실행하기 전에 설치 스크립트를 내려받아 검토하세요.
 
 ```bash
+installer="$(mktemp)"
 curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.3.0/core/scripts/install.sh \
-  -o /tmp/memnest-install.sh
-VERSION=v0.3.0 bash /tmp/memnest-install.sh --user
+  -o "$installer"
+VERSION=v0.3.0 bash "$installer" --user
 ```
 
 소스 체크아웃에서는 빌드한 뒤 `core/`에서 실행합니다.

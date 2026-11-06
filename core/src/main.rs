@@ -487,8 +487,19 @@ fn acquire_legacy_writer_lock(target: &Path) -> anyhow::Result<Option<std::fs::F
     Ok(Some(lock))
 }
 
+/// Backups hold the plaintext store, so they stay owner-only like the data dir.
+fn create_private_dir(path: &Path) -> anyhow::Result<()> {
+    std::fs::create_dir_all(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
+}
+
 fn create_consistent_snapshot(source: &Path, target: &Path) -> anyhow::Result<()> {
-    std::fs::create_dir_all(target)?;
+    create_private_dir(target)?;
     for entry in
         std::fs::read_dir(source).with_context(|| format!("failed to read {}", source.display()))?
     {
@@ -517,6 +528,12 @@ fn create_consistent_snapshot(source: &Path, target: &Path) -> anyhow::Result<()
         bail!("backup source has no memory.db: {}", source.display());
     }
     let destination = target.join("memory.db");
+    // VACUUM INTO accepts an existing empty file, which keeps it 0600 instead of 0644.
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(&destination)?;
     let connection = rusqlite::Connection::open(&database)?;
     connection.execute(
         "VACUUM INTO ?1",
@@ -534,7 +551,7 @@ fn copy_entry(source: &Path, target: &Path) -> anyhow::Result<()> {
         );
     }
     if metadata.is_dir() {
-        std::fs::create_dir_all(target)?;
+        create_private_dir(target)?;
         for entry in std::fs::read_dir(source)? {
             let entry = entry?;
             copy_entry(&entry.path(), &target.join(entry.file_name()))?;
@@ -647,7 +664,8 @@ async fn import_jsonl(
             continue;
         }
         let rec: ImportRecord = serde_json::from_str(&line)?;
-        let document = rec.document.or(rec.text).unwrap_or_default();
+        let document =
+            memnest::redaction::redact_text(&rec.document.or(rec.text).unwrap_or_default());
         if document.trim().is_empty() {
             continue;
         }
@@ -659,8 +677,9 @@ async fn import_jsonl(
             )
         });
         let created_at = parse_import_timestamp(rec.created_at.as_deref());
+        // A vector of another dimension would leave the index unable to rebuild.
         let embedding = match rec.embedding {
-            Some(v) if !v.is_empty() => Some(v),
+            Some(v) if v.len() == sys.embedder.dim() => Some(v),
             _ => Some(sys.embedder.encode_document(&document)?),
         };
         let mut metadata = rec.metadata.unwrap_or(Metadata {
@@ -743,6 +762,13 @@ mod tests {
         backup_data_dir(&source, &backup).unwrap();
         assert_eq!(read_test_marker(&backup), "source");
         assert!(!backup.join("vectors").exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode(&backup), 0o700);
+            assert_eq!(mode(&backup.join("memory.db")), 0o600);
+        }
     }
 
     #[test]

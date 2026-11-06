@@ -28,9 +28,10 @@ cargo build --release
 For the v0.3.0 Linux release, download and review the installer before running it:
 
 ```bash
+installer="$(mktemp)"
 curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.3.0/core/scripts/install.sh \
-  -o /tmp/memnest-install.sh
-VERSION=v0.3.0 bash /tmp/memnest-install.sh --user
+  -o "$installer"
+VERSION=v0.3.0 bash "$installer" --user
 ```
 
 From a source checkout, run this from `core/` after building:

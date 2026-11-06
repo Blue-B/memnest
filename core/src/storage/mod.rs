@@ -65,6 +65,9 @@ fn is_transcript_id(id: &str) -> bool {
         .is_some_and(|digest| digest.len() == 32 && digest.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
+pub const UNAUTHENTICATED_ACTOR: &str = "unauthenticated";
+const MAX_UNAUTHENTICATED_EVENTS: i64 = 1000;
+
 pub struct Database {
     pool: Pool<SqliteConnectionManager>,
 }
@@ -291,17 +294,34 @@ impl Database {
                     .collect()
             })
             .collect();
-        self.pool.get()?.execute(
+        let conn = self.pool.get()?;
+        conn.execute(
             "INSERT INTO access_events(created_at,actor,action,outcome,target_ids) VALUES (?1,?2,?3,?4,?5)",
             params![Utc::now().to_rfc3339(), actor, action, outcome, serde_json::to_string(&ids)?],
         )?;
+        if actor == UNAUTHENTICATED_ACTOR {
+            // Anyone who can reach the port writes these rows, so keep only the newest.
+            conn.execute(
+                "DELETE FROM access_events WHERE actor = ?1 AND id <= \
+                 (SELECT id FROM access_events WHERE actor = ?1 ORDER BY id DESC LIMIT 1 OFFSET ?2)",
+                params![UNAUTHENTICATED_ACTOR, MAX_UNAUTHENTICATED_EVENTS],
+            )?;
+        }
         Ok(())
+    }
+
+    pub fn unauthenticated_event_count(&self) -> Result<i64> {
+        Ok(self.pool.get()?.query_row(
+            "SELECT COUNT(*) FROM access_events WHERE actor = ?1",
+            params![UNAUTHENTICATED_ACTOR],
+            |row| row.get(0),
+        )?)
     }
 
     pub fn access_events(&self, limit: usize) -> Result<Vec<serde_json::Value>> {
         let conn = self.pool.get()?;
-        let mut stmt = conn.prepare("SELECT id,created_at,actor,action,outcome,target_ids FROM access_events ORDER BY id DESC LIMIT ?1")?;
-        let rows = stmt.query_map(params![limit.min(200) as i64], |row| {
+        let mut stmt = conn.prepare("SELECT id,created_at,actor,action,outcome,target_ids FROM access_events WHERE actor != ?2 ORDER BY id DESC LIMIT ?1")?;
+        let rows = stmt.query_map(params![limit.min(200) as i64, UNAUTHENTICATED_ACTOR], |row| {
             let targets: String = row.get(5)?;
             Ok(serde_json::json!({"id":row.get::<_,i64>(0)?,"created_at":row.get::<_,String>(1)?,
                 "actor":row.get::<_,String>(2)?,"action":row.get::<_,String>(3)?,"outcome":row.get::<_,String>(4)?,
@@ -327,15 +347,22 @@ impl Database {
                 now
             ],
         )?;
+        drop(conn);
+        self.workspace_scope(workspace)
+    }
 
+    /// Read-only scope for a workspace: searches must not register rows, or any
+    /// reader could make a real workspace's legacy alias ambiguous.
+    pub fn workspace_scope(&self, workspace: &WorkspaceIdentity) -> Result<Vec<String>> {
+        let conn = self.pool.get()?;
         let mut projects = vec![workspace.id.clone()];
         if let Some(legacy) = &workspace.legacy_project {
-            let owners: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM workspaces WHERE legacy_project = ?1",
-                params![legacy],
+            let other_owners: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM workspaces WHERE legacy_project = ?1 AND id != ?2",
+                params![legacy, workspace.id],
                 |row| row.get(0),
             )?;
-            if owners == 1 {
+            if other_owners == 0 {
                 projects.push(legacy.clone());
             }
         }
@@ -1366,7 +1393,20 @@ mod tests {
         );
         assert_eq!(
             db.register_workspace_scope(&first).unwrap(),
-            vec![first.id, "playbook".to_string()]
+            vec![first.id.clone(), "playbook".to_string()]
+        );
+
+        // Read-only lookups never change ownership.
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        db.register_workspace_scope(&first).unwrap();
+        assert_eq!(
+            db.workspace_scope(&second).unwrap(),
+            vec![second.id.clone(), "playbook".to_string()]
+        );
+        assert_eq!(
+            db.workspace_scope(&first).unwrap(),
+            vec![first.id, "api".to_string(), "playbook".to_string()]
         );
     }
 

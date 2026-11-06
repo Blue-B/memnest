@@ -48,6 +48,9 @@ impl SearchScope {
 }
 
 pub fn identity(cwd: &str) -> Result<WorkspaceIdentity> {
+    if cwd.len() > 4096 {
+        bail!("cwd is too long");
+    }
     let normalized = normalize_absolute(cwd)?;
     let display_name = normalized
         .trim_end_matches('/')

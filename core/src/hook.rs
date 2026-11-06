@@ -179,7 +179,10 @@ pub fn resolve_url(flag: Option<&str>) -> String {
 }
 
 fn client(timeout_ms: u64) -> Result<reqwest::Client> {
+    // Never route the token or prompt through an ambient proxy or a redirect.
     Ok(reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_millis(timeout_ms))
         .build()?)
 }
