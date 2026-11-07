@@ -53,7 +53,10 @@ mod tests {
         unsafe {
             assert_eq!(__isoc23_strtol(c"-42x".as_ptr(), &mut end, 10), -42);
             assert_eq!(*end as u8, b'x');
-            assert_eq!(__isoc23_strtoll(c"0x10".as_ptr(), std::ptr::null_mut(), 0), 16);
+            assert_eq!(
+                __isoc23_strtoll(c"0x10".as_ptr(), std::ptr::null_mut(), 0),
+                16
+            );
             assert_eq!(
                 __isoc23_strtoull(c"18446744073709551615".as_ptr(), std::ptr::null_mut(), 10),
                 u64::MAX
