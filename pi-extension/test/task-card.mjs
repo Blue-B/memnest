@@ -47,18 +47,22 @@ globalThis.fetch = async (url, init) => {
 		const d = docs.find((x) => x.id === decodeURIComponent(path.slice(7)));
 		return json({ id: d.id, document: d.document });
 	}
+	if (path === "/health") return json({ status: "ok", data_dir: "/tmp/memnest" });
+	if (path === "/stats") return json({ total_chunks: docs.length });
 	throw new Error(`unexpected ${path}`);
 };
 
 const tools = new Map();
 const hooks = new Map();
+const commands = new Map();
 const entries = [];
 (await import(bundle)).default({
 	registerTool: (t) => tools.set(t.name, t),
-	registerCommand() {},
+	registerCommand: (name, c) => commands.set(name, c),
 	on: (name, fn) => { if (!hooks.has(name)) hooks.set(name, fn); },
 	appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }),
 });
+const status = async () => { let shown = ""; await commands.get("memnest").handler("", { ui: { setStatus() {}, notify: (m) => { shown = m; } } }); return shown; };
 const tool = tools.get("task_card");
 const call = async (args) => (await tool.execute("1", args, null, null, { cwd: "/somewhere" })).content[0].text;
 let branch = [];
@@ -127,6 +131,21 @@ assert.equal(hooks.get("tool_result")({ toolName: "memory_remember", content: []
 assert.match(opened, /v2 body[\s\S]*\d\d:\d\d hi$/, "opening records the request that picked the task up");
 assert.doesNotMatch(opened, /migration 오늘 진행 확인/, "earlier messages of the session may be other work and are not recorded");
 
+// /memnest lists the active cards and the one this session records into.
+const shown = await status();
+assert.match(shown, /Task cards: \d+ active, newest first\n  [^\n]+\(saved 2026-11-\d\d \d\d:00\)/);
+assert.match(shown, /Open in this session \(your messages are recorded here\): migration\n/);
+assert.match(shown, /To change: ask the assistant/);
+
+// A card open but unsaved for STALE_AFTER (8) user messages gets one reminder to close or save it.
+for (let i = 1; i <= 7; i++) assert.equal(await run(`다른 일 ${i}`), undefined, `no reminder after ${i} messages`);
+const stale = await run("다른 일 8");
+assert.match(stale.message.content, /"migration" is open but not saved in the last 8 user messages[\s\S]*action=close[\s\S]*save it with the current state/);
+assert.equal(await run("다른 일 9"), undefined, "stale reminder once until the card is saved again");
+await call({ action: "save", title: "migration", text: "v2 body" });
+for (let i = 1; i <= 7; i++) assert.equal(await run(`다시 ${i}`), undefined, "a save restarts the count");
+assert.match((await run("다시 8")).message.content, /"migration" is open but not saved/);
+
 // done moves a card out of the active collection; get still opens it; save reopens it.
 assert.match(await call({ action: "done", title: "tax" }), /marked task card "tax" done/);
 assert.deepEqual(updates.at(-1), { id: docs.find((d) => d.document.startsWith("[memnest-task-card] tax")).id, project: "task-cards-done" });
@@ -161,6 +180,15 @@ const resumed = { contextFiles: [] };
 assert.equal(await run("hi", resumed), undefined);
 assert.deepEqual(pins(resumed), entries.at(-1).data.titles);
 assert.match(resumed.contextFiles.find((f) => f.path.endsWith("migration"))?.content ?? "", /v2 body/);
+// The stale count survives a resume: 8 user messages after the last save of an open card remind at once.
+const said = (text) => ({ type: "message", message: { role: "user", content: text } });
+const saved = (title) => ({ type: "message", message: { role: "assistant", content: [{ type: "toolCall", name: "task_card", arguments: { action: "save", title } }] } });
+const openTitles = entries.at(-1);
+start([said("a"), saved("tax"), ...Array.from({ length: 7 }, (_, i) => said(`other ${i}`)), openTitles]);
+const resumedStale = await run("other 8", { contextFiles: [] });
+assert.match(resumedStale.message.content, /"tax" are open but not saved in the last 8 user messages, and each message is still being recorded into them/);
+start([said("a"), ...Array.from({ length: 6 }, (_, i) => said(`other ${i}`)), saved("tax"), said("b"), openTitles]);
+assert.doesNotMatch((await run("c", { contextFiles: [] }))?.message?.content ?? "", /"tax" is open but not saved/, "a recent save in the transcript keeps the count low");
 
 // User messages are appended verbatim while a card is open, and a save cannot rewrite them.
 start();

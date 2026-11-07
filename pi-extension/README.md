@@ -42,7 +42,7 @@ Check the connection from pi:
 /memnest
 ```
 
-The command reports service health, memory count, the active data directory, and whether pi Autocontext is enabled.
+The command reports service health, memory count, the active data directory, whether pi Autocontext is enabled, the active task cards with their last save, and which cards this session records your messages into.
 
 ## Tools
 

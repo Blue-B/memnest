@@ -337,8 +337,15 @@ struct Session {
     listed: bool,
     // A compaction with no card open is a language-neutral sign of long work; remind once.
     nudged: bool,
+    // Prompts recorded into the newest open card since this session last opened or saved a card.
+    quiet: usize,
+    stale_noted: bool,
     seen: Option<Instant>,
 }
+
+/// A card open but unsaved this long gets one reminder to close it or save it. A resumed pi session kept
+/// recording 30+ messages of other work into a card from its first topic (2026-11-07).
+const STALE_AFTER: usize = 8;
 
 /// shortcut: open cards live in process memory; a core restart forgets them and the next prompt lists cards again.
 fn with_session<T>(id: &str, f: impl FnOnce(&mut Session) -> T) -> T {
@@ -370,6 +377,8 @@ fn open_in(session: &mut Session, title: &str) {
     session.listed = true;
     // A session that has used a card needs no reminder that cards exist.
     session.nudged = true;
+    session.quiet = 0;
+    session.stale_noted = false;
 }
 
 fn arg(args: &Value, key: &str) -> String {
@@ -528,7 +537,7 @@ async fn on_prompt(system: &System, session: &str, prompt: &str) -> String {
         return String::new();
     }
     let said = entry(prompt);
-    let (current, list) = with_session(session, |s| {
+    let (current, list, stale) = with_session(session, |s| {
         let current = s.open.last().cloned();
         if current.is_none() {
             s.pending.push(said.clone());
@@ -538,10 +547,21 @@ async fn on_prompt(system: &System, session: &str, prompt: &str) -> String {
         }
         let list = current.is_none() && !s.listed;
         s.listed = true;
-        (current, list)
+        let mut stale = false;
+        if current.is_some() {
+            s.quiet += 1;
+            stale = s.quiet >= STALE_AFTER && !s.stale_noted;
+            s.stale_noted |= stale;
+        }
+        (current, list, stale)
     });
     if let Some(title) = current {
         let _ = append(system, &title, &[said]).await;
+        if stale {
+            return format!(
+                "[memnest task cards] \"{title}\" is open but not saved in the last {STALE_AFTER} user messages, and each message is still being recorded into it. If the conversation has moved to other work, close it now with the task_card tool (action=close, title=\"{title}\", session=\"{session}\"), then open or save the card for the current work if it spans sessions. If it is still this task, save it with the current state."
+            );
+        }
         return String::new();
     }
     if !list {
@@ -853,5 +873,50 @@ mod tests {
                 .await
                 .contains("needs the session id")
         );
+    }
+
+    #[tokio::test]
+    async fn an_open_card_unsaved_for_eight_prompts_gets_one_reminder() {
+        let (_tmp, system) = build_system().await;
+        let s = "session-stale";
+        call(
+            &system,
+            json!({"action": "save", "title": "블로그 이전", "text": "body", "session": s}),
+        )
+        .await;
+        async fn prompt(system: &System, i: usize) -> String {
+            let text = format!("other work {i}");
+            hook(system, "UserPromptSubmit", "session-stale", &text, "").await
+        }
+        for i in 1..STALE_AFTER {
+            assert_eq!(
+                prompt(&system, i).await,
+                "",
+                "no reminder after {i} prompts"
+            );
+        }
+        let note = prompt(&system, STALE_AFTER).await;
+        assert!(
+            note.contains("\"블로그 이전\" is open but not saved in the last 8 user messages")
+                && note.contains("action=close, title=\"블로그 이전\", session=\"session-stale\"")
+        );
+        assert_eq!(
+            prompt(&system, 99).await,
+            "",
+            "once until the card is saved again"
+        );
+        call(
+            &system,
+            json!({"action": "save", "title": "블로그 이전", "text": "body 2", "session": s}),
+        )
+        .await;
+        for i in 1..STALE_AFTER {
+            assert_eq!(
+                prompt(&system, 100 + i).await,
+                "",
+                "a save restarts the count"
+            );
+        }
+        assert!(prompt(&system, 200).await.contains("is open but not saved"));
     }
 }

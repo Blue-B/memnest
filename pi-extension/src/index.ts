@@ -76,9 +76,9 @@ function registerTool(
 
 export default function register(pi: ExtensionAPI): void {
 	const autocontextEnabled = installAutocontext(pi);
-	installTaskCards(pi, call);
+	const taskCardStatus = installTaskCards(pi, call);
 	pi.registerCommand?.("memnest", {
-		description: "Show Memnest status, stored memory count, and search latency",
+		description: "Show Memnest status, stored memory count, task cards, and search latency",
 		handler: async (_args: string, ctx: any) => {
 			const [health, stats] = await Promise.all([
 				call("/health", undefined, "GET"),
@@ -134,6 +134,7 @@ export default function register(pi: ExtensionAPI): void {
 			if (ops?.failed_jobs > 0) {
 				lines.push(`Failed jobs: ${ops.failed_jobs}`);
 			}
+			lines.push(...(await taskCardStatus()));
 			const message = lines.join("\n");
 			ctx.ui.setStatus("memnest", `Memnest: ok, ${count} memories`);
 			ctx.ui.notify(message, "info");

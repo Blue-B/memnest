@@ -310,6 +310,32 @@ Measured with `claude-opus-5-5` over the RPC interface against a copy of the rea
 
 Runs where the model did not call `memory_remember` are left out: the note cannot appear there. Without that call, the replayed session still got no card in any build, so this note is a backstop for that case rather than a fix for the first prompt.
 
+## An open card that is no longer the work (pi and hook, 2026-11-08)
+
+A pi session opened a card for its first topic, moved on to other work, and was resumed after a reboot. The extension reopened the card, and for more than 30 user messages the model neither closed nor saved it, so every message of the other work was recorded into it and its body went stale. The pinned rule already says to close a card before answering about other work.
+
+Now, when an open card has gone 8 user messages without being opened or saved, the next prompt gets one reminder: close it if the conversation moved on, or save it with the current state if it is still the task. It fires once per card until the card is saved again. In pi the count is rebuilt from the transcript on resume, so a resumed session that left a card unsaved for 8 or more messages is reminded on its first prompt. The hook counts per session in core memory, from when the session opened or saved the card.
+
+Measured with `claude-opus-5-5` over RPC against a copy of the real memory store:
+
+| Scenario | Without the reminder | With the reminder |
+| --- | --- | --- |
+| The real session, cut just before a message that was recorded into the wrong card, resumed with that message | 0/2 closed the card | 2/2 closed it |
+| A fresh session opens a card, then drifts to other work (two scenarios) | 3/3 closed it by the third message | 2/2 closed it by the third message; the reminder never fired |
+| 11 messages on the same task as the open card | 1/1 saved once | 1/1 saved twice; the reminder led to one extra save |
+
+Cost: the reminder itself is about 100 tokens, once per stale card. In the replays the weighted token use was the same with and without it (436K vs 441K, 112K vs 116K). Where the card was still the task, the extra save cost about 11K weighted tokens (1.5K output tokens) in an 11-message session; that save is the one that keeps the card's body current.
+
+`/memnest` now also lists the active cards with their last save in local time, and which cards this session records into:
+
+```text
+Task cards: 6 active, newest first
+  Windows bluescreen (AdGuard WFP driver) (saved 2026-11-08 01:14)
+  ...
+Open in this session: none
+To change: ask the assistant, e.g. "close the task card" or "mark the task card done".
+```
+
 ## Remaining limits and how they are handled
 
 | Limit | Handling | Checked |

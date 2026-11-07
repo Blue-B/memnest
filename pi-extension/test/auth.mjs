@@ -71,6 +71,7 @@ assert.match(notices[0], /Memories: 7/);
 assert.match(notices[0], /Data: \/tmp\/memnest/);
 assert.match(notices[0], /Autocontext: off/);
 assert.match(notices[0], /Vault tools: hidden/);
+assert.match(notices[0], /Task cards: 0 active\nOpen in this session: none\n/, "status shows task cards in plain words");
 assert.match(notices[0], /MEMNEST_EXPOSE_SECRET_TOOLS=1/);
 assert.match(notices[0], /restart pi/);
 // The HTML dashboard is gone, so status must never advertise that dead link.

@@ -139,16 +139,25 @@ function compose(body: string, log: string[]): string {
 	return `${body}\n\n${LOG}\n${dropped ? `${TRIMMED}\n` : ""}${kept.join("\n")}`;
 }
 
-function stamp(): string {
-	const d = new Date();
+function stamp(d = new Date()): string {
 	const p = (n: number) => String(n).padStart(2, "0");
 	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 // pinned: the text last put into the system prompt; kept until a compaction so the prompt cache keeps hitting.
-type Open = { title: string; id?: string; body?: string; log?: string[]; pinned?: string };
+// since: user messages since this session last opened or saved the card; staleNoted: the reminder below went out.
+type Open = { title: string; id?: string; body?: string; log?: string[]; pinned?: string; since?: number; staleNoted?: boolean };
 
-export function installTaskCards(pi: any, call: Call): void {
+// A resumed session reopened a card from its first topic and kept recording later, unrelated work into it for
+// 30+ messages (2026-11-07). A count of unsaved messages is a language-neutral sign that the card went stale.
+const STALE_AFTER = 8;
+const staleNote = (titles: string[]) => {
+	const many = titles.length > 1;
+	return `[memnest task cards] ${titles.map((t) => `"${t}"`).join(", ")} ${many ? "are" : "is"} open but not saved in the last ${STALE_AFTER} user messages, and each message is still being recorded into ${many ? "them" : "it"}. If the conversation has moved to other work, close ${many ? "each card it left" : "it"} now with task_card action=close, then open or save the card for the current work if it spans sessions. If it is still this task, save it with the current state.`;
+};
+
+/** Installs task cards; returns a status reader for the /memnest command. */
+export function installTaskCards(pi: any, call: Call): () => Promise<string[]> {
 	// Opened cards, oldest first; body and log are fetched lazily after a resume.
 	let open: Open[] = [];
 	// User messages of this session not yet attached to a card.
@@ -212,11 +221,24 @@ export function installTaskCards(pi: any, call: Call): void {
 		lastCompaction = newestCompaction(ctx);
 		open = [];
 		// A resumed session reopens the cards it had open.
-		for (const entry of ctx?.sessionManager?.getBranch?.() ?? [])
+		const branch = ctx?.sessionManager?.getBranch?.() ?? [];
+		for (const entry of branch)
 			if (entry?.type === "custom" && entry.customType === ENTRY) {
 				const titles = entry.data?.titles ?? (entry.data?.title ? [entry.data.title] : []);
 				if (Array.isArray(titles)) open = titles.filter((t: unknown) => typeof t === "string").map((title: string) => ({ title }));
 			}
+		// The stale count carries over a resume: user messages since the card was last opened or saved in this transcript.
+		for (const c of open) {
+			let since = 0;
+			for (const entry of branch) {
+				const m = entry?.type === "message" ? entry.message : undefined;
+				if (m?.role === "user") since++;
+				if (m?.role === "assistant" && Array.isArray(m.content))
+					for (const part of m.content)
+						if (part?.type === "toolCall" && part.name === "task_card" && ["get", "save"].includes(part.arguments?.action) && titleOf(part.arguments?.title) === c.title) since = 0;
+			}
+			c.since = since;
+		}
 	});
 
 	pi.on("before_agent_start", async (event: any, ctx: any) => {
@@ -247,6 +269,12 @@ export function installTaskCards(pi: any, call: Call): void {
 		if (compacted && !open.length && !nudgedAfterCompaction) {
 			nudgedAfterCompaction = true;
 			notes.push(COMPACTED_NO_CARD);
+		}
+		if (prompt && !prompt.startsWith("/")) for (const c of open) c.since = (c.since ?? 0) + 1;
+		const stale = open.filter((c) => (c.since ?? 0) >= STALE_AFTER && !c.staleNoted);
+		if (stale.length) {
+			for (const c of stale) c.staleNoted = true;
+			notes.push(staleNote(stale.map((c) => c.title)));
 		}
 		if (compacted && open.length) {
 			notes.push(`[memnest task cards] The conversation was just compacted. If decisions or user corrections since the last save of ${open.map((c) => `"${c.title}"`).join(", ")} are missing from the card, save it now.`);
@@ -375,4 +403,21 @@ export function installTaskCards(pi: any, call: Call): void {
 			return result(`${active ? "" : "(this task was marked done; save it again to reopen)\n\n"}${RULE}\n\n${compose(opened.body!, opened.log ?? [])}`);
 		},
 	});
+
+	// What /memnest shows: the active cards and which ones this session records into.
+	return async () => {
+		const cards = await within<Card[] | null>(findCards(call), null);
+		if (cards === null) return ["Task cards: unavailable"];
+		const lines = [`Task cards: ${cards.length >= PAGE ? `${PAGE}+` : cards.length} active${cards.length ? ", newest first" : ""}`];
+		// Stored times are UTC; the user reads local time, as in the card's own log.
+		const local = (utc: string) => {
+			const d = new Date(`${utc}:00Z`);
+			return Number.isNaN(d.getTime()) ? "unknown" : stamp(d);
+		};
+		for (const c of cards.slice(0, 10)) lines.push(`  ${c.title} (saved ${local(c.updated)})`);
+		if (cards.length > 10) lines.push(`  ... and ${cards.length - 10} more`);
+		lines.push(open.length ? `Open in this session (your messages are recorded here): ${open.map((c) => c.title).join(", ")}` : "Open in this session: none");
+		lines.push('To change: ask the assistant, e.g. "close the task card" or "mark the task card done".');
+		return lines;
+	};
 }
