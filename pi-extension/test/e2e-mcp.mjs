@@ -88,6 +88,7 @@ const expected = [
 	"memory_get",
 	"memory_update",
 	"memory_delete",
+	"task_card",
 	"secret_set",
 	"secret_get",
 	"secret_list",
