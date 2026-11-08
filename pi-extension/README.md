@@ -24,6 +24,8 @@ Start the [memnest core service](https://github.com/Blue-B/memnest#install), the
 pi install npm:pi-memnest@0.4.0
 ```
 
+Version 0.5.0, which adds task cards, is not on npm yet. Until it is, install it from a source checkout as shown below.
+
 If Memnest is already registered from a local path or another pinned version, remove that package declaration first to avoid duplicate tools. A pinned package is not changed by `pi update --extensions`. Keep the core and extension versions aligned.
 
 To develop from a source checkout instead:

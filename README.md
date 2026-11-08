@@ -43,7 +43,7 @@ This starts the server and conversation watcher, and adds Memnest to the Claude 
 
 Requirements: macOS on Apple Silicon, or Linux with systemd (x86_64 with glibc 2.35+, Arm64 with glibc 2.39+), and Python 3. The first write or search downloads an embedding model of about 1.1 GB.
 
-- **pi:** `pi install npm:pi-memnest@0.4.0`, then check the connection with `/memnest`. See [extension settings](pi-extension/README.md).
+- **pi:** `pi install npm:pi-memnest@0.4.0`, then check the connection with `/memnest`. Task cards in pi need extension 0.5.0, which is not on npm yet; install it from a checkout with `pi install ./pi-extension`. See [extension settings](pi-extension/README.md).
 - **Other MCP clients:** connect to `http://127.0.0.1:3111/mcp`. See [connection examples](adapters/README.md).
 - **Pinned versions, upgrades, source builds:** see [operations](docs/operations.md).
 

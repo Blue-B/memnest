@@ -43,7 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/in
 
 필요 환경: Apple Silicon macOS, 또는 systemd가 있는 Linux(x86_64는 glibc 2.35 이상, Arm64는 glibc 2.39 이상)와 Python 3. 처음 저장하거나 검색할 때 약 1.1GB 임베딩 모델을 내려받습니다.
 
-- **pi:** `pi install npm:pi-memnest@0.4.0`을 실행하고 `/memnest`로 연결을 확인합니다. [확장 설정](pi-extension/README.ko.md)
+- **pi:** `pi install npm:pi-memnest@0.4.0`을 실행하고 `/memnest`로 연결을 확인합니다. pi의 작업 카드는 확장 0.5.0이 필요한데 아직 npm에 없으므로, 저장소를 받은 뒤 `pi install ./pi-extension`으로 설치합니다. [확장 설정](pi-extension/README.ko.md)
 - **그 밖의 MCP 도구:** `http://127.0.0.1:3111/mcp`에 연결합니다. [연결 예시](adapters/README.ko.md)
 - **버전 고정, 업그레이드, 소스 빌드:** [운영 문서](docs/operations.ko.md)
 

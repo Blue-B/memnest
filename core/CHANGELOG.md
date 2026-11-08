@@ -6,6 +6,19 @@ All notable changes to the `memnest` Rust engine are recorded here.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-08
+
+### Security
+
+- Without a token, refuse browser cross-site and DNS-rebinding requests: the `Host` and `Origin` must be an IP address, `localhost`, or a name listed in `MEMNEST_ALLOWED_HOSTS` (comma-separated).
+- cwd-scoped search is read-only, so a reader cannot drop a workspace's legacy recall. cwd length, search query length, and MCP batch size are capped.
+- `memnest hook` and `memnest watch` never send traffic through an ambient proxy or follow a redirect.
+- Backups and restores are owner-only (0700 directory, 0600 `memory.db`).
+- Only the newest 1,000 unauthenticated audit rows are kept, and they stay out of `/audit`.
+- Imported vectors of the wrong dimension are re-embedded, and imported text is redacted.
+- Redaction also covers prefixed environment names, JSON-quoted keys, Bearer tokens, URL passwords, and `github_pat_` tokens.
+- The read-only MCP gateway has an error boundary, a 1 MiB body cap, rejects non-object bodies, and times out upstream calls.
+
 ### Added
 
 - Task cards for every client. A card is a handoff note for multi-day work; see `docs/task-cards.md`.
