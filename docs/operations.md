@@ -53,7 +53,7 @@ python3 ~/.memnest/setup-backups/<timestamp>/setup-clients.py \
   --restore ~/.memnest/setup-backups/<timestamp>/manifest.json
 ```
 
-On Linux this uses systemd and stores user data in `~/.memnest`. Use `--system` for `/var/lib/memnest`; system mode intentionally does not run a root transcript watcher, so capture must be run by the desktop user. The macOS implementation targets `io.memnest.service` and `io.memnest.watch` in `~/Library/LaunchAgents`, with logs in `~/Library/Logs/Memnest`. CI installs, reinstalls, restarts and removes it on a GitHub-hosted macOS 14 runner; it has not been checked on a personal Mac.
+On Linux this uses systemd and stores user data in `~/.memnest`. Use `--system` for `/var/lib/memnest`; system mode intentionally does not run a root transcript watcher, so capture must be run by the desktop user. The macOS implementation targets `io.memnest.service` and `io.memnest.watch` in `~/Library/LaunchAgents`, with logs in `~/Library/Logs/Memnest`. CI installs, reinstalls, restarts and removes it on a GitHub-hosted macOS 15 runner; it has not been checked on a personal Mac.
 
 The lower-level Linux installer remains available:
 
@@ -85,7 +85,7 @@ Restore client configuration before using `--remove-data`, because setup manifes
 
 Pass `--remove-data` only when the retained store and setup backups should be permanently deleted. Uninstall does not guess which shared client entries the user still wants; use the exact manifest restore command first to roll those back.
 
-Validate an installed macOS service with `scripts/validate-installed-macos.sh`. Core CI runs install, reinstall, validation with restart, and `--remove-data` removal on a GitHub-hosted macOS 14 runner. Login persistence across a reboot is not tested. The archive is not signed or notarized: `curl` downloads are not quarantined, but an archive downloaded through a browser may need Gatekeeper approval.
+Validate an installed macOS service with `scripts/validate-installed-macos.sh`. Core CI runs install, reinstall, validation with restart, and `--remove-data` removal on a GitHub-hosted macOS 15 runner. Login persistence across a reboot is not tested. The archive is not signed or notarized: `curl` downloads are not quarantined, but an archive downloaded through a browser may need Gatekeeper approval.
 
 ### WSL
 

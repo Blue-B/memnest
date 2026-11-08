@@ -11,7 +11,7 @@ permissions:
 jobs:
   build:
     # Linux and Apple Silicon macOS archives are published. core-ci.yml runs the
-    # macOS install, restart and removal lifecycle on macos-14; Intel Macs have
+    # macOS install, restart and removal lifecycle on macos-15; Intel Macs have
     # no prebuilt onnxruntime. Nothing downloads a published Windows archive:
     # install-windows.ps1 takes a -BinPath that defaults to a locally built
     # target\release\memnest.exe, which is the path the operations guide
@@ -30,7 +30,7 @@ jobs:
             os: ubuntu-24.04
             glibc_floor: GLIBC_2.39
           - target: aarch64-apple-darwin
-            os: macos-14
+            os: macos-15
 
     runs-on: ${{ matrix.os }}
     env:

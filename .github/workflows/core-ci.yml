@@ -70,7 +70,7 @@ jobs:
   # Apple Silicon is the only macOS target ort ships prebuilt binaries for.
   # The lifecycle steps gate the published aarch64-apple-darwin archive.
   macos-source-check:
-    runs-on: macos-14
+    runs-on: macos-15
     defaults:
       run:
         working-directory: core

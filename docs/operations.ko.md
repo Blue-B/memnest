@@ -53,7 +53,7 @@ python3 ~/.memnest/setup-backups/<timestamp>/setup-clients.py \
   --restore ~/.memnest/setup-backups/<timestamp>/manifest.json
 ```
 
-Linux에서는 systemd를 쓰고 사용자 데이터를 `~/.memnest`에 둡니다. `/var/lib/memnest`를 쓰려면 `--system`을 쓰세요. 시스템 모드는 root로 대화 수집기를 돌리지 않으므로, 수집은 데스크톱 사용자가 실행해야 합니다. macOS는 `~/Library/LaunchAgents`의 `io.memnest.service`와 `io.memnest.watch`를 쓰고, 로그는 `~/Library/Logs/Memnest`에 남습니다. CI는 GitHub의 macOS 14 러너에서 설치, 재설치, 재시작, 제거를 확인하며, 개인 Mac에서는 확인하지 않았습니다.
+Linux에서는 systemd를 쓰고 사용자 데이터를 `~/.memnest`에 둡니다. `/var/lib/memnest`를 쓰려면 `--system`을 쓰세요. 시스템 모드는 root로 대화 수집기를 돌리지 않으므로, 수집은 데스크톱 사용자가 실행해야 합니다. macOS는 `~/Library/LaunchAgents`의 `io.memnest.service`와 `io.memnest.watch`를 쓰고, 로그는 `~/Library/Logs/Memnest`에 남습니다. CI는 GitHub의 macOS 15 러너에서 설치, 재설치, 재시작, 제거를 확인하며, 개인 Mac에서는 확인하지 않았습니다.
 
 더 낮은 수준의 Linux 설치기도 그대로 쓸 수 있습니다.
 
@@ -85,7 +85,7 @@ scripts/install-linux.sh --user --bin target/release/memnest
 
 남긴 저장소와 설치 백업을 영구히 지우려 할 때만 `--remove-data`를 넘기세요. 제거는 사용자가 어떤 공유 클라이언트 항목을 계속 원하는지 추측하지 않으니, 먼저 정확한 목록 복원 명령으로 되돌리세요.
 
-설치된 macOS 서비스는 `scripts/validate-installed-macos.sh`로 확인합니다. 코어 CI는 GitHub의 macOS 14 러너에서 설치, 재설치, 재시작 포함 확인, `--remove-data` 제거를 실행합니다. 재부팅 후 로그인 시 자동 시작은 시험하지 않았습니다. 압축 파일은 서명이나 공증이 되어 있지 않습니다. `curl`로 받으면 격리되지 않지만, 브라우저로 받은 파일은 Gatekeeper 승인이 필요할 수 있습니다.
+설치된 macOS 서비스는 `scripts/validate-installed-macos.sh`로 확인합니다. 코어 CI는 GitHub의 macOS 15 러너에서 설치, 재설치, 재시작 포함 확인, `--remove-data` 제거를 실행합니다. 재부팅 후 로그인 시 자동 시작은 시험하지 않았습니다. 압축 파일은 서명이나 공증이 되어 있지 않습니다. `curl`로 받으면 격리되지 않지만, 브라우저로 받은 파일은 Gatekeeper 승인이 필요할 수 있습니다.
 
 ### WSL
 
