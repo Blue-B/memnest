@@ -26,7 +26,14 @@ PY
   esac
 fi
 uid="$(id -u)"
-for label in io.memnest.watch io.memnest.service; do launchctl bootout "gui/$uid/$label" 2>/dev/null || true; done
+for label in io.memnest.watch io.memnest.service; do
+  launchctl bootout "gui/$uid/$label" 2>/dev/null || true
+  # bootout returns before launchd removes the job; wait so the files go only after it stops.
+  for _ in $(seq 1 50); do
+    launchctl print "gui/$uid/$label" >/dev/null 2>&1 || break
+    sleep 0.2
+  done
+done
 rm -f "$HOME/Library/LaunchAgents/io.memnest.service.plist" "$HOME/Library/LaunchAgents/io.memnest.watch.plist"
 rm -f "${MEMNEST_BIN_DIR:-$HOME/.local/bin}/memnest"
 rm -rf -- "$HOME/.local/share/memnest"

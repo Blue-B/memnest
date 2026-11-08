@@ -29,6 +29,10 @@ All notable changes to the `memnest` Rust engine are recorded here.
   - `memnest hook --no-recall` runs task cards without automatic recall.
   - Setup installs that hook for Claude Code (`~/.claude/settings.json`) and Codex (`~/.codex/hooks.json`) by default, and lets Codex call `task_card` without an approval prompt. `--autocontext` still opts in to recall.
 
+### Fixed
+
+- On macOS 15, reinstalling or upgrading failed with "Bootstrap failed: 5: Input/output error" because `launchctl bootout` returns before the job is removed. The installer and uninstaller now wait for the job to go, and the installer retries `bootstrap`.
+
 ### Compatibility and limits
 
 - MCP lists six tools by default, with `task_card` after the five memory tools.

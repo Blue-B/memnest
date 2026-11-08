@@ -68,11 +68,24 @@ PY
 uid="$(id -u)"
 for label in io.memnest.watch io.memnest.service; do
   launchctl bootout "gui/$uid/$label" 2>/dev/null || true
+  # bootout returns before launchd removes the job; bootstrapping it again too early
+  # fails with "Bootstrap failed: 5: Input/output error" on macOS 15, so a reinstall waits.
+  for _ in $(seq 1 50); do
+    launchctl print "gui/$uid/$label" >/dev/null 2>&1 || break
+    sleep 0.2
+  done
 done
 render_plist "$ROOT/packaging/launchd/io.memnest.service.plist" "$AGENTS/io.memnest.service.plist"
 render_plist "$ROOT/packaging/launchd/io.memnest.watch.plist" "$AGENTS/io.memnest.watch.plist"
-launchctl bootstrap "gui/$uid" "$AGENTS/io.memnest.service.plist"
-launchctl bootstrap "gui/$uid" "$AGENTS/io.memnest.watch.plist"
+bootstrap() {
+  for _ in 1 2 3 4 5; do
+    launchctl bootstrap "gui/$uid" "$1" && return 0
+    sleep 1
+  done
+  launchctl bootstrap "gui/$uid" "$1"
+}
+bootstrap "$AGENTS/io.memnest.service.plist"
+bootstrap "$AGENTS/io.memnest.watch.plist"
 launchctl enable "gui/$uid/io.memnest.service"
 launchctl enable "gui/$uid/io.memnest.watch"
 launchctl kickstart -k "gui/$uid/io.memnest.service"

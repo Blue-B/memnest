@@ -29,6 +29,10 @@
   - `memnest hook --no-recall`은 자동 회상 없이 작업 카드만 처리합니다.
   - 설치 스크립트가 기본으로 Claude Code(`~/.claude/settings.json`)와 Codex(`~/.codex/hooks.json`)에 이 훅을 넣고, Codex가 `task_card`를 승인 질문 없이 부를 수 있게 합니다. 회상은 여전히 `--autocontext`로 직접 켭니다.
 
+### 수정
+
+- macOS 15에서 다시 설치하거나 업그레이드하면 "Bootstrap failed: 5: Input/output error"로 실패했습니다. `launchctl bootout`이 작업을 지우기 전에 돌아오기 때문입니다. 이제 설치와 제거 스크립트가 작업이 사라질 때까지 기다리고, 설치는 `bootstrap`을 다시 시도합니다.
+
 ### 호환성과 한계
 
 - MCP는 기본으로 도구 6개를 알리며, `task_card`는 기억 도구 5개 다음에 옵니다.
