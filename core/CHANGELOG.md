@@ -6,6 +6,12 @@ All notable changes to the `memnest` Rust engine are recorded here.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-09
+
+### Security
+
+- Update rustls to 0.23.46 (and rustls-webpki to 0.103.16) for four rustls advisories: TLS 1.3 handshake messages accepted across encryption changes, session `Debug` output exposing secrets, an unbounded allocation in Brotli certificate decompression, and a ServerHello that could poison the key-exchange cache. memnest uses rustls for its HTTPS connections, such as downloading the embedding model.
+
 ## [0.5.0] - 2026-11-08
 
 ### Security

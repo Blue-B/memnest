@@ -10,7 +10,7 @@ memnest가 무엇이고 에이전트를 어떻게 연결하는지는 [README](..
 
 ## 필요 환경
 
-코어 v0.5.0은 Linux x86_64와 Arm64, Apple Silicon macOS용 실행 파일을 제공하며 Git과 Rust가 필요 없습니다. 통합 설치에는 Python 3이 필요합니다. Python 3.10에서는 기존 Codex `config.toml`을 바꾸지 않는데, 그 파일을 검사하려면 Python 3.11이 필요하기 때문입니다. 소스로 빌드하려면 Git과 Rust 2024 edition을 지원하는 Rust 도구가 더 필요합니다. 첫 임베딩 작업 때 설정한 모델을 내려받으려면 인터넷이 필요합니다. Intel Mac은 미리 빌드된 onnxruntime이 없어서 소스로 빌드해야 합니다.
+코어 v0.5.1은 Linux x86_64와 Arm64, Apple Silicon macOS용 실행 파일을 제공하며 Git과 Rust가 필요 없습니다. 통합 설치에는 Python 3이 필요합니다. Python 3.10에서는 기존 Codex `config.toml`을 바꾸지 않는데, 그 파일을 검사하려면 Python 3.11이 필요하기 때문입니다. 소스로 빌드하려면 Git과 Rust 2024 edition을 지원하는 Rust 도구가 더 필요합니다. 첫 임베딩 작업 때 설정한 모델을 내려받으려면 인터넷이 필요합니다. Intel Mac은 미리 빌드된 onnxruntime이 없어서 소스로 빌드해야 합니다.
 
 Linux 설치에는 systemd의 `systemctl`과 `systemd-analyze`가 필요합니다. `systemd-analyze`는 업그레이드 전에 사용자 또는 시스템 유닛 검색 경로를 읽기 전용으로 확인하는 데 씁니다. 선택 패키지인 `pi-extension/`의 실행 요구 사항은 그 패키지 README에 있습니다.
 

@@ -306,9 +306,9 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [rust-stemmers](https://github.com/CurrySoftware/rust-stemmers) | 1.2.0 | MIT/BSD-3-Clause | Copyright (c) 2017 Jakob Demler |
 | [rustc-hash](https://github.com/rust-lang/rustc-hash) | 2.1.2 | Apache-2.0 OR MIT |  |
 | [rustix](https://github.com/bytecodealliance/rustix) | 1.1.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |  |
-| [rustls](https://github.com/rustls/rustls) | 0.23.40 | Apache-2.0 OR ISC OR MIT | Copyright (c) 2016, Joseph Birr-Pixton <jpixton@gmail.com> |
+| [rustls](https://github.com/rustls/rustls) | 0.23.46 | Apache-2.0 OR ISC OR MIT | Copyright (c) 2016, Joseph Birr-Pixton <jpixton@gmail.com> |
 | [rustls-pki-types](https://github.com/rustls/pki-types) | 1.14.1 | MIT OR Apache-2.0 | Copyright 2023 Dirkjan Ochtman |
-| [rustls-webpki](https://github.com/rustls/webpki) | 0.103.13 | ISC | Copyright 2015 Brian Smith. |
+| [rustls-webpki](https://github.com/rustls/webpki) | 0.103.16 | ISC | Copyright 2015 Brian Smith. |
 | [rustversion](https://github.com/dtolnay/rustversion) | 1.0.22 | MIT OR Apache-2.0 |  |
 | [ryu](https://github.com/dtolnay/ryu) | 1.0.23 | Apache-2.0 OR BSL-1.0 |  |
 | [safetensors](https://github.com/huggingface/safetensors) | 0.7.0 | Apache-2.0 |  |
@@ -1138,7 +1138,7 @@ DEALINGS IN THE SOFTWARE.
 - regex-automata 0.4.14
 - regex-syntax 0.8.10
 - rustix 1.1.4
-- rustls 0.23.40
+- rustls 0.23.46
 - scopeguard 1.2.0
 - signal-hook-registry 1.4.8
 - smallvec 1.15.1
@@ -7166,7 +7166,7 @@ THE SOFTWARE.
 <details><summary>Used by</summary>
 
 - hyper-rustls 0.27.9
-- rustls 0.23.40
+- rustls 0.23.46
 
 </details>
 
@@ -7193,7 +7193,7 @@ THIS SOFTWARE.
 <details><summary>Used by</summary>
 
 - hyper-rustls 0.27.9
-- rustls 0.23.40
+- rustls 0.23.46
 
 </details>
 
@@ -12102,11 +12102,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 163. rustls-webpki 0.103.13
+### 163. rustls-webpki 0.103.16
 
 <details><summary>Used by</summary>
 
-- rustls-webpki 0.103.13
+- rustls-webpki 0.103.16
 
 </details>
 
