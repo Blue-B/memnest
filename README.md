@@ -8,30 +8,13 @@
 
 Your coding AI forgets everything when the session ends. Memnest lets it look up what you decided before, and why, from the original conversation instead of an AI-written summary.
 
-- **Original text, not summaries.** Nothing rewrites your history. Saving and searching call no model API, so there is no API key and no extra token bill. Every result carries a source ID you can open.
-- **One memory for every coding AI.** Claude Code, Codex, Cursor, and pi connect to the same local service. Decide something in Claude Code, look it up from Codex.
+- **Original text, not summaries.** Saving and searching call no model API, so there is no API key and no extra token bill. Every result has a source ID you can open.
+- **One memory for every coding AI.** Claude Code, Codex, Cursor, and pi share one local service. Decide something in Claude Code, find it from Codex.
 - **Stays on your machine.** One Rust binary with SQLite and a local multilingual embedding model.
 
 [![Latest release](https://img.shields.io/github/v/release/Blue-B/memnest?label=release)](https://github.com/Blue-B/memnest/releases/latest)
 [![npm: pi-memnest](https://img.shields.io/npm/v/pi-memnest?label=npm%20pi-memnest&color=cb3837)](https://www.npmjs.com/package/pi-memnest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-
-## Features
-
-| Feature | What it does | Works with |
-|---|---|---|
-| Search | Finds past decisions in the original conversation, with a source ID to open | All clients |
-| Save and correct | Saves a decision when asked; a changed fact replaces the old one and keeps the link | All clients |
-| Conversation capture | `memnest watch` stores visible conversation text from local transcripts | Claude Code, Codex, pi |
-| [Task cards](docs/task-cards.md) | A handoff note that carries multi-day work into a new session, with your own words kept verbatim | pi, Claude Code, Codex (other MCP clients: save and open only) |
-| Automatic recall (opt-in) | Adds related memories to each prompt | pi, Claude Code, Codex |
-| [Code evidence](docs/code-evidence.md) | Attaches file fingerprints to a record and compares them later | All clients |
-| [History import](docs/history-import.md) | Adds conversations from before installation | CLI |
-| Vault (opt-in) | Stores credentials encrypted, apart from regular memories | All clients |
-| [Team access](docs/team-access.md) (optional) | Project grants, audit, retention | Server |
-| [Web connectors](docs/web-connectors.md) | Lets cloud assistants that call from their own servers reach Memnest through a public URL | ChatGPT, Claude connectors, Grok |
-
-Local apps such as Claude Code, Codex, Cursor, and pi connect to `127.0.0.1` directly and need no web connector. `memnest watch` reads transcripts under the home directory of the system it runs on: macOS, Linux, or WSL. Inside WSL, apps that run on the Windows side need `memnest watch --path /mnt/c/Users/<you>/.claude/projects`.
 
 ## Install
 
@@ -39,56 +22,43 @@ Local apps such as Claude Code, Codex, Cursor, and pi connect to `127.0.0.1` dir
 curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh | bash
 ```
 
-This starts the server and conversation watcher, and adds Memnest to the Claude Code, Codex, and Cursor configurations it finds, including the task card hooks. Existing configuration is backed up first, and the restore command is printed. Codex runs new hooks only after you trust them once with `/hooks`.
+This starts the server and the conversation watcher, and connects the Claude Code, Codex, and Cursor setups it finds. Existing configuration is backed up first, and the restore command is printed. Codex runs the new hooks after you trust them once with `/hooks`.
 
-Requirements: macOS on Apple Silicon, or Linux with systemd (x86_64 with glibc 2.35+, Arm64 with glibc 2.39+), and Python 3. The first write or search downloads an embedding model of about 1.1 GB.
+Needs macOS on Apple Silicon or Linux with systemd (x86_64 with glibc 2.35+, Arm64 with glibc 2.39+), and Python 3. The first write or search downloads an embedding model of about 1.1 GB.
 
-- **pi:** `pi install npm:pi-memnest@0.4.0`, then check the connection with `/memnest`. Task cards in pi need extension 0.5.0, which is not on npm yet; install it from a checkout with `pi install ./pi-extension`. See [extension settings](pi-extension/README.md).
-- **Other MCP clients:** connect to `http://127.0.0.1:3111/mcp`. See [connection examples](adapters/README.md).
-- **Pinned versions, upgrades, source builds:** see [operations](docs/operations.md).
+- pi: `pi install npm:pi-memnest@0.5.0`, then check with `/memnest`.
+- Other MCP clients: connect to `http://127.0.0.1:3111/mcp` ([examples](adapters/README.md)).
 
 ## Use it
 
-Ask your AI in plain words:
+Ask in plain words:
 
 > Why did we switch task managers? Find the discussion behind that decision.
->
-> What did we try the last time this error happened?
 
-It searches, reads the source record, and answers with source IDs you can check. Searches cover the current workspace plus the shared `playbook`; ask for `project=all` to search everything. For a few rules that should apply every time, `AGENTS.md` or `CLAUDE.md` is simpler.
+Your AI searches, reads the source record, and answers with source IDs you can check. Search covers the current workspace and the shared `playbook`; ask for `project=all` to search everything.
 
-Tools: `memory_search`, `memory_get`, `memory_remember`, `memory_update`, `memory_delete`, and `task_card`.
+Tools: `memory_search`, `memory_get`, `memory_remember`, `memory_update`, `memory_delete`, `task_card`.
 
 [![One client saves a decision, a separate client retrieves the same record](docs/demo-result.png)](docs/demo.md)
 
 ## Task cards
 
-When one task runs for days in a single session, compaction drops your corrections from the summary. A task card is that task's handoff note. Your AI writes the card, Memnest appends your own messages verbatim, and a fresh session the next day opens the card and continues. Cards ship in the next release.
+For work that runs over several days. Your AI writes the card, Memnest adds your own messages to it word for word, and the next session opens the card and continues. In a replay of a real five-day pi session, the reply read 174K context tokens instead of 321K, and stopped proposing things against your stated policy (3 of 3 blind-graded runs, against 0 of 3). [How it works and limits](docs/task-cards.md)
 
-Measured by replaying a real complaint from a five-day pi session:
+## Also included
 
-| Measure | Without a card | With a card |
-|---|---|---|
-| Context tokens for that reply | 321,213 | 174,118 |
-| Avoids a proposal against your stated policy (blind graded, 3 runs) | 0/3 | 3/3 |
-| New session, five questions about the task: score, tokens per answer | 19/20, 73,002 | 22/22, 19,632 |
-
-[How it works, client differences, and limits](docs/task-cards.md)
+Conversation capture (`memnest watch`), [history import](docs/history-import.md), [code evidence](docs/code-evidence.md), an encrypted vault for credentials, [team access](docs/team-access.md), and [web connectors](docs/web-connectors.md) for ChatGPT, Claude, and Grok. Automatic recall is off unless you turn it on.
 
 ## Limits
 
 - Search can miss a record, and it cannot tell whether an old decision still holds.
-- Capture stores visible conversation text, not reasoning, tool output, images, or built-in ChatGPT and Claude memory.
-- Your connected AI writes the answers. A cloud provider receives the memories it is sent.
-- Regular memories are not encrypted. Do not expose port 3111 to the internet.
-- A web connector URL works like a password into your memories.
-- Deleted records stay in trash for 30 days; backups and old transcripts may keep copies. See [security](SECURITY.md).
+- Capture keeps visible conversation text only: no reasoning, tool output, or images.
+- Memories your AI reads are sent to its provider. Regular memories are not encrypted, so do not expose port 3111 to the internet; a web connector URL works like a password.
+- Deleted records stay in trash for 30 days, and backups may keep copies. See [security](SECURITY.md).
 
-## Documentation
+## More
 
-- [Operations and backups](docs/operations.md), [design decisions](docs/design-decisions.md), [contributing](CONTRIBUTING.md)
-- [Real-client validation](docs/client-validation.md), [reproducible demo](docs/demo.md), [retrieval evaluation](benchmarks/memorybench/README.md), [local comparison](docs/local-provider-comparison.md)
-- [Latest release](https://github.com/Blue-B/memnest/releases/latest), [changelog](core/CHANGELOG.md)
+[Operations, upgrades, and backups](docs/operations.md), [changelog](core/CHANGELOG.md), [contributing](CONTRIBUTING.md)
 
 ## License
 

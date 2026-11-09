@@ -35,7 +35,7 @@
 
 1. **MCP 도구가 6개가 됩니다.** 기억 도구 5개 다음에 `task_card`가 붙습니다. 도구 목록을 고정해 검사하던 프로그램은 고쳐야 합니다.
 2. **Claude Code와 Codex는 훅이 필요합니다.** 새 설치는 `SessionStart`와 `UserPromptSubmit`에 `memnest hook --no-recall`을 넣습니다. 이미 설치했다면 `python3 ~/.local/share/memnest/scripts/setup-clients.py`로 추가합니다. Codex는 `/hooks`에서 한 번 신뢰해야 실행합니다.
-3. **pi 확장 0.5.0은 아직 npm에 없습니다.** pi에서 작업 카드를 쓰려면 저장소를 받은 뒤 `pi install ./pi-extension`으로 설치합니다. npm의 0.4.0도 새 코어와 함께 동작하지만 작업 카드는 없습니다.
+3. **pi 확장은 `pi install npm:pi-memnest@0.5.0`으로 올립니다.** 고정한 패키지는 `pi update --extensions`로 바뀌지 않으므로 버전을 바꿔 다시 설치합니다. npm의 0.4.0도 새 코어와 함께 동작하지만 작업 카드는 없습니다.
 4. **열린 카드는 코어 메모리에만 있습니다.** 코어를 재시작하면 세션별로 열린 카드를 잊고, 다음 요청에서 목록을 다시 보여 줍니다. pi는 세션 기록에서 다시 엽니다.
 
 ## 검증 범위
