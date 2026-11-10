@@ -4721,7 +4721,7 @@ ${notes.join("\n\n")}
           close(title);
           return result(`marked task card "${title}" done; it no longer appears in the list`);
         }
-        const body = split(String(p.text ?? "")).body;
+        const body = split(String(p.text ?? "")).body.split(/^[ \t]*#{0,6}[ \t]*user.{0,3}s[ \t]+own[ \t]+words/im)[0].trim();
         if (!body) return result("save needs title and text", true);
         if (body.length > MAX_CHARS)
           return result(`card is ${body.length} characters; shorten it below ${MAX_CHARS} and save again`, true);
@@ -4732,7 +4732,13 @@ ${notes.join("\n\n")}
           pending = [];
           const now = await storedCard(title);
           setOpen({ title, id: now?.id, body, log: now?.log ?? said, pinned: open.find((c) => c.title === title)?.pinned });
-          return result(`saved task card "${title}"${previous ? ` (replaces ${previous.id})` : ""}; it stays pinned for this session`);
+          let rules = "";
+          try {
+            const text2 = String(JSON.parse(r2.text).text ?? "");
+            if (text2.includes("\n\n")) rules = text2.slice(text2.indexOf("\n\n"));
+          } catch {
+          }
+          return result(`saved task card "${title}"${previous ? ` (replaces ${previous.id})` : ""}; it stays pinned for this session${rules}`);
         }
         if (!previous) {
           const finished = await byTitle(call2, title, DONE_PROJECT);
@@ -4755,7 +4761,8 @@ ${compose(body, log)}`,
             adapter: "pi"
           }
         });
-        if (r.error) return result(r.text, true);
+        if (r.error && r.text.includes("reserved")) door = void 0;
+        if (r.error) return result(door === void 0 ? `${r.text}; save again` : r.text, true);
         pending = [];
         const id = (() => {
           try {
@@ -4810,6 +4817,7 @@ ${defuse(compose(opened.body, opened.log ?? []))}`);
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { homedir } from "node:os";
 var env2 = globalThis.process?.env ?? {};
 var URL2 = (env2.MEMNEST_URL ?? "http://127.0.0.1:3111").replace(/\/$/, "");
 var TOKEN = env2.MEMNEST_TOKEN?.trim() || void 0;
@@ -4838,24 +4846,27 @@ async function call(path, body, method = "POST", bearer = TOKEN) {
     };
   }
 }
-var VAULT_TOKEN_ERROR = "The vault needs the core's API token. pi reads it from <data_dir>/api-token and sends it only to a loopback MEMNEST_URL, and it could not be read here. Run pi as the user that runs the core on this machine, or set MEMNEST_TOKEN for a core that uses one.";
+var VAULT_TOKEN_ERROR = "The vault needs the core's API token. pi reads it from ~/.memnest/api-token (or MEMNEST_DATA_DIR/api-token) and sends it only to a loopback MEMNEST_URL, and it could not be read here. Run pi as the user that runs the core on this machine, set MEMNEST_DATA_DIR if the core uses another data directory, or set MEMNEST_TOKEN for a core that uses one.";
 var vaultToken;
 async function readVaultToken() {
-  if (TOKEN || !isLoopback(URL2)) return void 0;
+  if (!isLoopback(URL2)) return void 0;
   if (vaultToken) return vaultToken;
   try {
-    const dataDir = JSON.parse((await call("/health", void 0, "GET")).text).data_dir;
+    const dataDir = process.env.MEMNEST_DATA_DIR || join(homedir(), ".memnest");
     vaultToken = (await readFile(join(dataDir, "api-token"), "utf8")).trim() || void 0;
   } catch {
   }
   return vaultToken;
 }
 async function vaultCall(path, body, method = "POST") {
+  const denied = (r2) => r2.text.startsWith("memnest error 401");
+  const first = TOKEN ? await call(path, body, method) : void 0;
+  if (first && !denied(first)) return first;
   const token = await readVaultToken();
-  const r = await call(path, body, method, token ?? TOKEN);
-  if (!r.error || TOKEN || !r.text.startsWith("memnest error 401")) return r;
+  const r = token ? await call(path, body, method, token) : first ?? await call(path, body, method);
+  if (!denied(r)) return r;
   vaultToken = void 0;
-  return token ? r : { text: VAULT_TOKEN_ERROR, error: true };
+  return token || TOKEN ? r : { text: VAULT_TOKEN_ERROR, error: true };
 }
 async function codeEvidence(args, cwd, baseline) {
   return new Promise((resolve, reject) => {

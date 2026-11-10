@@ -82,7 +82,7 @@ Denied markers for automatic release checks:
 
 Any new dependency outside the allowed list must be reviewed before release.
 
-## Rust dependencies (324 crates)
+## Rust dependencies (325 crates)
 
 | Crate | Version | License | Copyright |
 | --- | --- | --- | --- |
@@ -97,7 +97,7 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [anstyle](https://github.com/rust-cli/anstyle.git) | 1.0.14 | MIT OR Apache-2.0 | Copyright (c) Individual contributors |
 | [anstyle-parse](https://github.com/rust-cli/anstyle.git) | 1.0.0 | MIT OR Apache-2.0 | Copyright (c) Individual contributors |
 | [anstyle-query](https://github.com/rust-cli/anstyle.git) | 1.1.5 | MIT OR Apache-2.0 | Copyright (c) Individual contributors |
-| [anyhow](https://github.com/dtolnay/anyhow) | 1.0.102 | MIT OR Apache-2.0 |  |
+| [anyhow](https://github.com/dtolnay/anyhow) | 1.0.104 | MIT OR Apache-2.0 |  |
 | [arc-swap](https://github.com/vorner/arc-swap) | 1.9.1 | MIT OR Apache-2.0 | Copyright (c) 2017 arc-swap developers |
 | [argon2](https://github.com/RustCrypto/password-hashes/tree/master/argon2) | 0.5.3 | MIT OR Apache-2.0 | Copyright (c) 2021-2024 The RustCrypto Project Developers |
 | [async-trait](https://github.com/dtolnay/async-trait) | 0.1.89 | MIT OR Apache-2.0 |  |
@@ -119,7 +119,7 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [castaway](https://github.com/sagebind/castaway) | 0.2.4 | MIT | Copyright (c) 2021 Stephen M. Coakley |
 | [census](https://github.com/quickwit-inc/census) | 0.4.2 | MIT | Copyright (c) 2018 by Quickwit, Inc. |
 | [cfg-if](https://github.com/rust-lang/cfg-if) | 1.0.4 | MIT OR Apache-2.0 | Copyright (c) 2014 Alex Crichton |
-| [chacha20](https://github.com/RustCrypto/stream-ciphers) | 0.10.0 | MIT OR Apache-2.0 | Copyright (c) 2019-2026 The RustCrypto Project Developers |
+| [chacha20](https://github.com/RustCrypto/stream-ciphers) | 0.10.2 | MIT OR Apache-2.0 | Copyright (c) 2019-2026 The RustCrypto Project Developers |
 | [chrono](https://github.com/chronotope/chrono) | 0.4.44 | MIT OR Apache-2.0 | Copyright (c) 2014, Kang Seonghoon. |
 | [cipher](https://github.com/RustCrypto/traits) | 0.4.4 | MIT OR Apache-2.0 | Copyright (c) 2016-2020 RustCrypto Developers |
 | [clap](https://github.com/clap-rs/clap) | 4.6.1 | MIT OR Apache-2.0 | Copyright (c) Individual contributors |
@@ -136,7 +136,7 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [crc32fast](https://github.com/srijs/rust-crc32fast) | 1.5.0 | MIT OR Apache-2.0 | Copyright (c) 2018 Sam Rijs, Alex Crichton and contributors |
 | [crossbeam-channel](https://github.com/crossbeam-rs/crossbeam) | 0.5.15 | MIT OR Apache-2.0 | Copyright (c) 2019 The Crossbeam Project Developers |
 | [crossbeam-deque](https://github.com/crossbeam-rs/crossbeam) | 0.8.6 | MIT OR Apache-2.0 | Copyright (c) 2019 The Crossbeam Project Developers |
-| [crossbeam-epoch](https://github.com/crossbeam-rs/crossbeam) | 0.9.18 | MIT OR Apache-2.0 | Copyright (c) 2019 The Crossbeam Project Developers |
+| [crossbeam-epoch](https://github.com/crossbeam-rs/crossbeam) | 0.9.21 | MIT OR Apache-2.0 | Copyright (c) 2019 The Crossbeam Project Developers |
 | [crossbeam-utils](https://github.com/crossbeam-rs/crossbeam) | 0.8.21 | MIT OR Apache-2.0 | Copyright (c) 2019 The Crossbeam Project Developers |
 | [crunchy](https://github.com/eira-fransham/crunchy) | 0.2.4 | MIT | Copyright 2017-2023 Eira Fransham. |
 | [crypto-common](https://github.com/RustCrypto/traits) | 0.1.7 | MIT OR Apache-2.0 | Copyright (c) 2021 RustCrypto Developers |
@@ -191,7 +191,7 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [half](https://github.com/VoidStarKat/half-rs) | 2.7.1 | MIT OR Apache-2.0 |  |
 | [hashbrown](https://github.com/rust-lang/hashbrown) | 0.16.1 | MIT OR Apache-2.0 | Copyright (c) 2016 Amanieu d'Antras |
 | [hashbrown](https://github.com/rust-lang/hashbrown) | 0.17.1 | MIT OR Apache-2.0 | Copyright (c) 2016 Amanieu d'Antras |
-| [hashlink](https://github.com/kyren/hashlink) | 0.11.0 | MIT OR Apache-2.0 |  |
+| [hashlink](https://github.com/djc/hashlink) | 0.12.2 | MIT OR Apache-2.0 |  |
 | [heck](https://github.com/withoutboats/heck) | 0.5.0 | MIT OR Apache-2.0 | Copyright (c) 2015 The Rust Project Developers |
 | [hf-hub](https://github.com/huggingface/hf-hub) | 0.5.0 | Apache-2.0 |  |
 | [htmlescape](https://github.com/veddan/rust-htmlescape) | 0.3.1 | Apache-2.0 / MIT / MPL-2.0 |  |
@@ -225,7 +225,7 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [lazy_static](https://github.com/rust-lang-nursery/lazy-static.rs) | 1.5.0 | MIT OR Apache-2.0 | Copyright (c) 2010 The Rust Project Developers |
 | [levenshtein_automata](https://github.com/tantivy-search/levenshtein-automata) | 0.2.1 | MIT | Copyright (c) 2018 Paul Masurel |
 | [libc](https://github.com/rust-lang/libc) | 0.2.186 | MIT OR Apache-2.0 | Copyright (c) The Rust Project Developers |
-| [libsqlite3-sys](https://github.com/rusqlite/rusqlite) | 0.37.0 | MIT | Copyright (c) 2014 The rusqlite developers |
+| [libsqlite3-sys](https://github.com/rusqlite/rusqlite) | 0.39.1 | MIT | Copyright (c) 2014 The rusqlite developers |
 | [linux-raw-sys](https://github.com/sunfishcode/linux-raw-sys) | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |  |
 | [litemap](https://github.com/unicode-org/icu4x) | 0.8.2 | Unicode-3.0 | Copyright © 2020-2024 Unicode, Inc. |
 | [litrs](https://github.com/LukasKalbertodt/litrs) | 1.0.0 | MIT OR Apache-2.0 | Copyright (c) 2020 Project Developers |
@@ -241,7 +241,7 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [matrixmultiply](https://github.com/bluss/matrixmultiply/) | 0.3.10 | MIT/Apache-2.0 | Copyright (c) 2016 - 2023 Ulrik Sverdrup "bluss" |
 | [measure_time](https://github.com/PSeitz/rust_measure_time) | 0.9.0 | MIT | Copyright (c) 2016 The humantime Developers |
 | [memchr](https://github.com/BurntSushi/memchr) | 2.8.0 | Unlicense OR MIT | Copyright (c) 2015 Andrew Gallant |
-| [memmap2](https://github.com/RazrFalcon/memmap2-rs) | 0.9.10 | MIT OR Apache-2.0 | Copyright (c) 2020 Yevhenii Reizner |
+| [memmap2](https://github.com/RazrFalcon/memmap2-rs) | 0.9.12 | MIT OR Apache-2.0 | Copyright (c) 2020 Yevhenii Reizner |
 | [mime](https://github.com/hyperium/mime) | 0.3.17 | MIT OR Apache-2.0 | Copyright (c) 2014 Sean McArthur |
 | [minimal-lexical](https://github.com/Alexhuszagh/minimal-lexical) | 0.2.1 | MIT/Apache-2.0 | Copyright (c) 2009 The Go Authors. All rights reserved. |
 | [miniz_oxide](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide) | 0.8.9 | MIT OR Zlib OR Apache-2.0 | Copyright 2013-2014 RAD Game Tools and Valve Software |
@@ -280,11 +280,11 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [prettyplease](https://github.com/dtolnay/prettyplease) | 0.2.37 | MIT OR Apache-2.0 |  |
 | [proc-macro2](https://github.com/dtolnay/proc-macro2) | 1.0.106 | MIT OR Apache-2.0 |  |
 | [quinn](https://github.com/quinn-rs/quinn) | 0.11.9 | MIT OR Apache-2.0 | Copyright (c) 2018 The quinn Developers |
-| [quinn-proto](https://github.com/quinn-rs/quinn) | 0.11.15 | MIT OR Apache-2.0 | Copyright (c) 2018 The quinn Developers |
+| [quinn-proto](https://github.com/quinn-rs/quinn) | 0.11.19 | MIT OR Apache-2.0 | Copyright (c) 2018 The quinn Developers |
 | [quinn-udp](https://github.com/quinn-rs/quinn) | 0.5.14 | MIT OR Apache-2.0 | Copyright (c) 2018 The quinn Developers |
 | [quote](https://github.com/dtolnay/quote) | 1.0.45 | MIT OR Apache-2.0 |  |
 | [r2d2](https://github.com/sfackler/r2d2) | 0.8.10 | MIT/Apache-2.0 | Copyright (c) 2014-2016 Steven Fackler |
-| [r2d2_sqlite](https://github.com/ivanceras/r2d2-sqlite) | 0.34.0 | MIT | Copyright (c) 2015 Jovansonlee Cesar |
+| [r2d2_sqlite](https://github.com/ivanceras/r2d2-sqlite) | 0.36.0 | MIT | Copyright (c) 2015 Jovansonlee Cesar |
 | [rand](https://github.com/rust-random/rand) | 0.10.1 | MIT OR Apache-2.0 | Copyright 2018 Developers of the Rand project |
 | [rand](https://github.com/rust-random/rand) | 0.8.6 | MIT OR Apache-2.0 | Copyright 2018 Developers of the Rand project |
 | [rand](https://github.com/rust-random/rand) | 0.9.4 | MIT OR Apache-2.0 | Copyright 2018 Developers of the Rand project |
@@ -293,6 +293,7 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [rand_core](https://github.com/rust-random/rand_core) | 0.10.1 | MIT OR Apache-2.0 | Copyright (c) 2018-2026 The Rand Project Developers |
 | [rand_core](https://github.com/rust-random/rand) | 0.6.4 | MIT OR Apache-2.0 | Copyright 2018 Developers of the Rand project |
 | [rand_core](https://github.com/rust-random/rand) | 0.9.5 | MIT OR Apache-2.0 | Copyright 2018 Developers of the Rand project |
+| [rand_pcg](https://github.com/rust-random/rngs) | 0.10.2 | MIT OR Apache-2.0 | Copyright (c) 2014-2017 Melissa O'Neill and PCG Project contributors |
 | [rawpointer](https://github.com/bluss/rawpointer/) | 0.2.1 | MIT/Apache-2.0 | Copyright (c) 2015 |
 | [rayon](https://github.com/rayon-rs/rayon) | 1.12.0 | MIT OR Apache-2.0 | Copyright (c) 2010 The Rust Project Developers |
 | [rayon-cond](https://github.com/cuviper/rayon-cond) | 0.4.0 | Apache-2.0/MIT | Copyright (c) 2018 Josh Stone |
@@ -302,7 +303,7 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [regex-syntax](https://github.com/rust-lang/regex) | 0.8.10 | MIT OR Apache-2.0 | Copyright (c) 2014 The Rust Project Developers |
 | [reqwest](https://github.com/seanmonstar/reqwest) | 0.12.28 | MIT OR Apache-2.0 | Copyright 2016 Sean McArthur |
 | [ring](https://github.com/briansmith/ring) | 0.17.14 | Apache-2.0 AND ISC | Copyright (c) 2009 The Go Authors. All rights reserved. |
-| [rusqlite](https://github.com/rusqlite/rusqlite) | 0.39.0 | MIT | Copyright (c) 2014 The rusqlite developers |
+| [rusqlite](https://github.com/rusqlite/rusqlite) | 0.41.1 | MIT | Copyright (c) 2014 The rusqlite developers |
 | [rust-stemmers](https://github.com/CurrySoftware/rust-stemmers) | 1.2.0 | MIT/BSD-3-Clause | Copyright (c) 2017 Jakob Demler |
 | [rustc-hash](https://github.com/rust-lang/rustc-hash) | 2.1.2 | Apache-2.0 OR MIT |  |
 | [rustix](https://github.com/bytecodealliance/rustix) | 1.1.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |  |
@@ -358,7 +359,7 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [tinyvec](https://github.com/Lokathor/tinyvec) | 1.11.0 | Zlib OR Apache-2.0 OR MIT | Copyright (c) 2019 Daniel "Lokathor" Gee. |
 | [tinyvec_macros](https://github.com/Soveu/tinyvec_macros) | 0.1.1 | MIT OR Apache-2.0 OR Zlib | Copyright 2020 Tomasz "Soveu" Marx |
 | [tokenizers](https://github.com/huggingface/tokenizers) | 0.22.2 | Apache-2.0 |  |
-| [tokio](https://github.com/tokio-rs/tokio) | 1.52.3 | MIT | Copyright (c) Tokio Contributors |
+| [tokio](https://github.com/tokio-rs/tokio) | 1.54.1 | MIT | Copyright (c) Tokio Contributors |
 | [tokio-macros](https://github.com/tokio-rs/tokio) | 2.7.0 | MIT | Copyright (c) 2019 Yoshua Wuyts |
 | [tokio-rustls](https://github.com/rustls/tokio-rustls) | 0.26.4 | MIT OR Apache-2.0 | Copyright 2017 quininer kel |
 | [tokio-util](https://github.com/tokio-rs/tokio) | 0.7.18 | MIT | Copyright (c) Tokio Contributors |
@@ -391,10 +392,10 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [utf8-zero](https://github.com/algesten/utf8-zero) | 0.8.1 | MIT OR Apache-2.0 |  |
 | [utf8_iter](https://github.com/hsivonen/utf8_iter) | 1.0.4 | Apache-2.0 OR MIT |  |
 | [utf8parse](https://github.com/alacritty/vte) | 0.2.2 | Apache-2.0 OR MIT | Copyright (c) 2016 Joe Wilm |
-| [uuid](https://github.com/uuid-rs/uuid) | 1.23.1 | Apache-2.0 OR MIT | Copyright (c) 2014 The Rust Project Developers |
+| [uuid](https://github.com/uuid-rs/uuid) | 1.29.2 | Apache-2.0 OR MIT | Copyright (c) 2014 The Rust Project Developers |
 | [walkdir](https://github.com/BurntSushi/walkdir) | 2.5.0 | Unlicense/MIT | Copyright (c) 2015 Andrew Gallant |
 | [want](https://github.com/seanmonstar/want) | 0.3.1 | MIT | Copyright (c) 2018-2019 Sean McArthur |
-| [webpki-roots](https://github.com/rustls/webpki-roots) | 1.0.7 | CDLA-Permissive-2.0 |  |
+| [webpki-roots](https://github.com/rustls/webpki-roots) | 1.0.11 | CDLA-Permissive-2.0 |  |
 | [writeable](https://github.com/unicode-org/icu4x) | 0.6.3 | Unicode-3.0 | Copyright © 2020-2024 Unicode, Inc. |
 | [yoke](https://github.com/unicode-org/icu4x) | 0.8.2 | Unicode-3.0 | Copyright © 2020-2024 Unicode, Inc. |
 | [yoke-derive](https://github.com/unicode-org/icu4x) | 0.8.2 | Unicode-3.0 | Copyright © 2020-2024 Unicode, Inc. |
@@ -407,9 +408,9 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [zerovec](https://github.com/unicode-org/icu4x) | 0.11.6 | Unicode-3.0 | Copyright © 2020-2024 Unicode, Inc. |
 | [zerovec-derive](https://github.com/unicode-org/icu4x) | 0.11.3 | Unicode-3.0 | Copyright © 2020-2024 Unicode, Inc. |
 | [zmij](https://github.com/dtolnay/zmij) | 1.0.21 | MIT |  |
-| [zstd](https://github.com/gyscos/zstd-rs) | 0.13.3 | MIT | Copyright (c) 2016 Alexandre Bury |
-| [zstd-safe](https://github.com/gyscos/zstd-rs) | 7.2.4 | MIT OR Apache-2.0 | Copyright (c) 2016 Alexandre Bury |
-| [zstd-sys](https://github.com/gyscos/zstd-rs) | 2.0.16+zstd.1.5.7 | MIT/Apache-2.0 | Copyright (c) 2016-present, Facebook, Inc. All rights reserved. |
+| [zstd](https://github.com/gyscos/zstd-rs) | 0.13.4 | BSD-3-Clause | Copyright (c) 2026, Alexandre Bury |
+| [zstd-safe](https://github.com/gyscos/zstd-rs) | 7.4.0 | BSD-3-Clause | Copyright (c) 2026, Alexandre Bury |
+| [zstd-sys](https://github.com/gyscos/zstd-rs) | 2.1.2+zstd.1.5.7 | BSD-3-Clause | Copyright (c) 2026, Alexandre Bury |
 
 ### Crates without a license file in their published package
 
@@ -674,7 +675,7 @@ limitations under the License.
 
 - adler2 2.0.1
 - allocator-api2 0.2.21
-- anyhow 1.0.102
+- anyhow 1.0.104
 - async-trait 0.1.89
 - atomic-waker 1.1.2
 - dary_heap 0.3.9
@@ -752,7 +753,7 @@ DEALINGS IN THE SOFTWARE.
 - base64ct 1.8.3
 - blake2 0.10.6
 - block-buffer 0.10.4
-- chacha20 0.10.0
+- chacha20 0.10.2
 - cipher 0.4.4
 - cpufeatures 0.2.17
 - cpufeatures 0.3.0
@@ -1095,7 +1096,7 @@ DEALINGS IN THE SOFTWARE.
 - cfg-if 1.0.4
 - crossbeam-channel 0.5.15
 - crossbeam-deque 0.8.6
-- crossbeam-epoch 0.9.18
+- crossbeam-epoch 0.9.21
 - crossbeam-utils 0.8.21
 - displaydoc 0.2.5
 - either 1.15.0
@@ -1150,7 +1151,7 @@ DEALINGS IN THE SOFTWARE.
 - unicode-segmentation 1.13.2
 - unicode-width 0.2.2
 - url 2.5.8
-- uuid 1.23.1
+- uuid 1.29.2
 
 </details>
 
@@ -1496,7 +1497,7 @@ For more information, please refer to <http://unlicense.org/>
 <details><summary>Used by</summary>
 
 - allocator-api2 0.2.21
-- anyhow 1.0.102
+- anyhow 1.0.104
 - async-trait 0.1.89
 - bon 3.9.1
 - bon-macros 3.9.1
@@ -2570,11 +2571,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 33. chacha20 0.10.0
+### 33. chacha20 0.10.2
 
 <details><summary>Used by</summary>
 
-- chacha20 0.10.0
+- chacha20 0.10.2
 
 </details>
 
@@ -3314,7 +3315,7 @@ SOFTWARE.
 
 - crossbeam-channel 0.5.15
 - crossbeam-deque 0.8.6
-- crossbeam-epoch 0.9.18
+- crossbeam-epoch 0.9.21
 - crossbeam-utils 0.8.21
 
 </details>
@@ -4743,7 +4744,7 @@ SOFTWARE.
 <details><summary>Used by</summary>
 
 - downcast-rs 2.0.2
-- hashlink 0.11.0
+- hashlink 0.12.2
 - minimal-lexical 0.2.1
 
 </details>
@@ -5109,7 +5110,7 @@ DEALINGS IN THE SOFTWARE.
 - ort 2.0.0-rc.12
 - ort-sys 2.0.0-rc.12
 - quinn 0.11.9
-- quinn-proto 0.11.15
+- quinn-proto 0.11.19
 - quinn-udp 0.5.14
 - safetensors 0.7.0
 - spm_precompiled 0.1.4
@@ -6237,7 +6238,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 79. half 2.7.1 and 10 other crates
+### 79. half 2.7.1 and 8 other crates
 
 <details><summary>Used by</summary>
 
@@ -6250,8 +6251,6 @@ DEALINGS IN THE SOFTWARE.
 - time 0.3.47
 - time-core 0.1.8
 - time-macros 0.2.27
-- zstd-safe 7.2.4
-- zstd-sys 2.0.16+zstd.1.5.7
 
 </details>
 
@@ -6502,11 +6501,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 82. hashlink 0.11.0
+### 82. hashlink 0.12.2
 
 <details><summary>Used by</summary>
 
-- hashlink 0.11.0
+- hashlink 0.12.2
 
 </details>
 
@@ -8046,12 +8045,12 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 106. libsqlite3-sys 0.37.0 and 1 other crates
+### 106. libsqlite3-sys 0.39.1 and 1 other crates
 
 <details><summary>Used by</summary>
 
-- libsqlite3-sys 0.37.0
-- rusqlite 0.39.0
+- libsqlite3-sys 0.39.1
+- rusqlite 0.41.1
 
 </details>
 
@@ -8929,11 +8928,11 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### 122. memmap2 0.9.10
+### 122. memmap2 0.9.12
 
 <details><summary>Used by</summary>
 
-- memmap2 0.9.10
+- memmap2 0.9.12
 
 </details>
 
@@ -9141,11 +9140,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### 123. memmap2 0.9.10
+### 123. memmap2 0.9.12
 
 <details><summary>Used by</summary>
 
-- memmap2 0.9.10
+- memmap2 0.9.12
 
 </details>
 
@@ -10670,7 +10669,7 @@ DEALINGS IN THE SOFTWARE.
 <details><summary>Used by</summary>
 
 - quinn 0.11.9
-- quinn-proto 0.11.15
+- quinn-proto 0.11.19
 - quinn-udp 0.5.14
 
 </details>
@@ -10717,11 +10716,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 149. r2d2_sqlite 0.34.0
+### 149. r2d2_sqlite 0.36.0
 
 <details><summary>Used by</summary>
 
-- r2d2_sqlite 0.34.0
+- r2d2_sqlite 0.36.0
 
 </details>
 
@@ -10982,13 +10981,14 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 152. rand_core 0.10.1 and 2 other crates
+### 152. rand_core 0.10.1 and 3 other crates
 
 <details><summary>Used by</summary>
 
 - rand_core 0.10.1
 - rand_core 0.6.4
 - rand_core 0.9.5
+- rand_pcg 0.10.2
 
 </details>
 
@@ -11218,7 +11218,44 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 154. rayon-cond 0.4.0
+### 154. rand_pcg 0.10.2
+
+<details><summary>Used by</summary>
+
+- rand_pcg 0.10.2
+
+</details>
+
+```text
+Copyright (c) 2014-2017 Melissa O'Neill and PCG Project contributors
+Copyright 2018 Developers of the Rand project
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+```
+
+### 155. rayon-cond 0.4.0
 
 <details><summary>Used by</summary>
 
@@ -11254,7 +11291,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 155. reqwest 0.12.28
+### 156. reqwest 0.12.28
 
 <details><summary>Used by</summary>
 
@@ -11466,7 +11503,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### 156. reqwest 0.12.28
+### 157. reqwest 0.12.28
 
 <details><summary>Used by</summary>
 
@@ -11496,7 +11533,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### 157. ring 0.17.14
+### 158. ring 0.17.14
 
 <details><summary>Used by</summary>
 
@@ -11516,7 +11553,7 @@ See src/polyfill/once_cell/LICENSE-APACHE and src/polyfill/once_cell/LICENSE-MIT
 for the license to code that was sourced from the once_cell project.
 ```
 
-### 158. ring 0.17.14
+### 159. ring 0.17.14
 
 <details><summary>Used by</summary>
 
@@ -11798,7 +11835,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### 159. ring 0.17.14
+### 160. ring 0.17.14
 
 <details><summary>Used by</summary>
 
@@ -11822,7 +11859,7 @@ OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### 160. rust-stemmers 1.2.0
+### 161. rust-stemmers 1.2.0
 
 <details><summary>Used by</summary>
 
@@ -11854,7 +11891,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 161. rustls-pki-types 1.14.1
+### 162. rustls-pki-types 1.14.1
 
 <details><summary>Used by</summary>
 
@@ -12066,7 +12103,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### 162. rustls-pki-types 1.14.1
+### 163. rustls-pki-types 1.14.1
 
 <details><summary>Used by</summary>
 
@@ -12102,7 +12139,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 163. rustls-webpki 0.103.16
+### 164. rustls-webpki 0.103.16
 
 <details><summary>Used by</summary>
 
@@ -12132,7 +12169,7 @@ The files under third-party/chromium are licensed as described in
 third-party/chromium/LICENSE.
 ```
 
-### 164. ryu 1.0.23
+### 165. ryu 1.0.23
 
 <details><summary>Used by</summary>
 
@@ -12166,7 +12203,7 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 165. same-file 1.0.6
+### 166. same-file 1.0.6
 
 <details><summary>Used by</summary>
 
@@ -12198,7 +12235,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### 166. scheduled-thread-pool 0.2.7
+### 167. scheduled-thread-pool 0.2.7
 
 <details><summary>Used by</summary>
 
@@ -12230,7 +12267,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 167. scopeguard 1.2.0
+### 168. scopeguard 1.2.0
 
 <details><summary>Used by</summary>
 
@@ -12266,7 +12303,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 168. serde_urlencoded 0.7.1
+### 169. serde_urlencoded 0.7.1
 
 <details><summary>Used by</summary>
 
@@ -12302,7 +12339,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 169. sha2 0.10.9
+### 170. sha2 0.10.9
 
 <details><summary>Used by</summary>
 
@@ -12340,7 +12377,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 170. sharded-slab 0.1.7
+### 171. sharded-slab 0.1.7
 
 <details><summary>Used by</summary>
 
@@ -12370,7 +12407,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### 171. signal-hook-registry 1.4.8
+### 172. signal-hook-registry 1.4.8
 
 <details><summary>Used by</summary>
 
@@ -12406,7 +12443,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 172. simd-adler32 0.3.9
+### 173. simd-adler32 0.3.9
 
 <details><summary>Used by</summary>
 
@@ -12438,7 +12475,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 173. sketches-ddsketch 0.4.0
+### 174. sketches-ddsketch 0.4.0
 
 <details><summary>Used by</summary>
 
@@ -12650,7 +12687,7 @@ Apache License
    limitations under the License.
 ```
 
-### 174. slab 0.4.12
+### 175. slab 0.4.12
 
 <details><summary>Used by</summary>
 
@@ -12686,7 +12723,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 175. smallvec 1.15.1
+### 176. smallvec 1.15.1
 
 <details><summary>Used by</summary>
 
@@ -12722,7 +12759,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 176. socks 0.3.4
+### 177. socks 0.3.4
 
 <details><summary>Used by</summary>
 
@@ -12752,7 +12789,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 177. stable_deref_trait 1.2.1
+### 178. stable_deref_trait 1.2.1
 
 <details><summary>Used by</summary>
 
@@ -12788,7 +12825,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 178. static_assertions 1.1.0
+### 179. static_assertions 1.1.0
 
 <details><summary>Used by</summary>
 
@@ -12820,7 +12857,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 179. strsim 0.11.1
+### 180. strsim 0.11.1
 
 <details><summary>Used by</summary>
 
@@ -12854,7 +12891,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 180. subtle 2.6.1
+### 181. subtle 2.6.1
 
 <details><summary>Used by</summary>
 
@@ -12894,7 +12931,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### 181. synstructure 0.13.2
+### 182. synstructure 0.13.2
 
 <details><summary>Used by</summary>
 
@@ -12912,7 +12949,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### 182. tantivy 0.26.1
+### 183. tantivy 0.26.1
 
 <details><summary>Used by</summary>
 
@@ -12930,7 +12967,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### 183. tantivy-fst 0.5.0
+### 184. tantivy-fst 0.5.0
 
 <details><summary>Used by</summary>
 
@@ -12963,7 +13000,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### 184. tempfile 3.27.0
+### 185. tempfile 3.27.0
 
 <details><summary>Used by</summary>
 
@@ -12999,7 +13036,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 185. time 0.3.47 and 2 other crates
+### 186. time 0.3.47 and 2 other crates
 
 <details><summary>Used by</summary>
 
@@ -13031,7 +13068,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 186. tinyvec 1.11.0
+### 187. tinyvec 1.11.0
 
 <details><summary>Used by</summary>
 
@@ -13047,7 +13084,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### 187. tinyvec 1.11.0
+### 188. tinyvec 1.11.0
 
 <details><summary>Used by</summary>
 
@@ -13069,7 +13106,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 3. This notice may not be removed or altered from any source distribution.
 ```
 
-### 188. tinyvec_macros 0.1.1
+### 189. tinyvec_macros 0.1.1
 
 <details><summary>Used by</summary>
 
@@ -13281,7 +13318,7 @@ Apache License
    limitations under the License.
 ```
 
-### 189. tinyvec_macros 0.1.1
+### 190. tinyvec_macros 0.1.1
 
 <details><summary>Used by</summary>
 
@@ -13313,7 +13350,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 190. tinyvec_macros 0.1.1
+### 191. tinyvec_macros 0.1.1
 
 <details><summary>Used by</summary>
 
@@ -13343,11 +13380,11 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 ```
 
-### 191. tokio 1.52.3 and 1 other crates
+### 192. tokio 1.54.1 and 1 other crates
 
 <details><summary>Used by</summary>
 
-- tokio 1.52.3
+- tokio 1.54.1
 - tokio-util 0.7.18
 
 </details>
@@ -13376,7 +13413,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 192. tokio-macros 2.7.0
+### 193. tokio-macros 2.7.0
 
 <details><summary>Used by</summary>
 
@@ -13409,7 +13446,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 193. tokio-rustls 0.26.4
+### 194. tokio-rustls 0.26.4
 
 <details><summary>Used by</summary>
 
@@ -13621,7 +13658,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### 194. tokio-rustls 0.26.4
+### 195. tokio-rustls 0.26.4
 
 <details><summary>Used by</summary>
 
@@ -13657,7 +13694,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 195. tower 0.5.3 and 2 other crates
+### 196. tower 0.5.3 and 2 other crates
 
 <details><summary>Used by</summary>
 
@@ -13695,7 +13732,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 196. tower-http 0.6.10
+### 197. tower-http 0.6.10
 
 <details><summary>Used by</summary>
 
@@ -13731,7 +13768,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 197. tracing 0.1.44 and 4 other crates
+### 198. tracing 0.1.44 and 4 other crates
 
 <details><summary>Used by</summary>
 
@@ -13771,7 +13808,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 198. try-lock 0.2.5
+### 199. try-lock 0.2.5
 
 <details><summary>Used by</summary>
 
@@ -13802,7 +13839,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### 199. typenum 1.20.0
+### 200. typenum 1.20.0
 
 <details><summary>Used by</summary>
 
@@ -13814,7 +13851,7 @@ THE SOFTWARE.
 MIT OR Apache-2.0
 ```
 
-### 200. typenum 1.20.0
+### 201. typenum 1.20.0
 
 <details><summary>Used by</summary>
 
@@ -14026,7 +14063,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### 201. typenum 1.20.0
+### 202. typenum 1.20.0
 
 <details><summary>Used by</summary>
 
@@ -14058,7 +14095,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 202. unicode-ident 1.0.24
+### 203. unicode-ident 1.0.24
 
 <details><summary>Used by</summary>
 
@@ -14108,7 +14145,7 @@ dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 ```
 
-### 203. unicode_categories 0.1.1
+### 204. unicode_categories 0.1.1
 
 <details><summary>Used by</summary>
 
@@ -14138,7 +14175,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 204. unit-prefix 0.5.2
+### 205. unit-prefix 0.5.2
 
 <details><summary>Used by</summary>
 
@@ -14170,7 +14207,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 205. universal-hash 0.5.1
+### 206. universal-hash 0.5.1
 
 <details><summary>Used by</summary>
 
@@ -14206,7 +14243,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 206. untrusted 0.9.0
+### 207. untrusted 0.9.0
 
 <details><summary>Used by</summary>
 
@@ -14230,7 +14267,7 @@ DEALINGS IN THE SOFTWARE.
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### 207. ureq 3.3.0
+### 208. ureq 3.3.0
 
 <details><summary>Used by</summary>
 
@@ -14262,7 +14299,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 208. ureq-proto 0.6.0
+### 209. ureq-proto 0.6.0
 
 <details><summary>Used by</summary>
 
@@ -14280,7 +14317,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### 209. utf8_iter 1.0.4
+### 210. utf8_iter 1.0.4
 
 <details><summary>Used by</summary>
 
@@ -14316,7 +14353,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 210. utf8parse 0.2.2
+### 211. utf8parse 0.2.2
 
 <details><summary>Used by</summary>
 
@@ -14352,11 +14389,11 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 211. uuid 1.23.1
+### 212. uuid 1.29.2
 
 <details><summary>Used by</summary>
 
-- uuid 1.23.1
+- uuid 1.29.2
 
 </details>
 
@@ -14389,7 +14426,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 212. want 0.3.1
+### 213. want 0.3.1
 
 <details><summary>Used by</summary>
 
@@ -14419,11 +14456,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### 213. webpki-roots 1.0.7
+### 214. webpki-roots 1.0.11
 
 <details><summary>Used by</summary>
 
-- webpki-roots 1.0.7
+- webpki-roots 1.0.11
 
 </details>
 
@@ -14491,7 +14528,7 @@ of Data, including for example machine learning models and models'
 insights.
 ```
 
-### 214. zerocopy 0.8.48 and 1 other crates
+### 215. zerocopy 0.8.48 and 1 other crates
 
 <details><summary>Used by</summary>
 
@@ -14704,7 +14741,7 @@ Apache License
    limitations under the License.
 ```
 
-### 215. zerocopy 0.8.48 and 1 other crates
+### 216. zerocopy 0.8.48 and 1 other crates
 
 <details><summary>Used by</summary>
 
@@ -14740,7 +14777,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### 216. zerocopy 0.8.48 and 1 other crates
+### 217. zerocopy 0.8.48 and 1 other crates
 
 <details><summary>Used by</summary>
 
@@ -14777,7 +14814,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 217. zeroize 1.8.2
+### 218. zeroize 1.8.2
 
 <details><summary>Used by</summary>
 
@@ -14809,45 +14846,52 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### 218. zstd 0.13.3 and 2 other crates
+### 219. zstd 0.13.4 and 2 other crates
 
 <details><summary>Used by</summary>
 
-- zstd 0.13.3
-- zstd-safe 7.2.4
-- zstd-sys 2.0.16+zstd.1.5.7
+- zstd 0.13.4
+- zstd-safe 7.4.0
+- zstd-sys 2.1.2+zstd.1.5.7
 
 </details>
 
 ```text
-The MIT License (MIT)
-Copyright (c) 2016 Alexandre Bury
+BSD 3-Clause License
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+Copyright (c) 2026, Alexandre Bury
 
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### 219. zstd-safe 7.2.4 and 1 other crates
+### 220. zstd-sys 2.1.2+zstd.1.5.7
 
 <details><summary>Used by</summary>
 
-- zstd-safe 7.2.4
-- zstd-sys 2.0.16+zstd.1.5.7
-
-</details>
-
-```text
-MIT or Apache-2.0
-```
-
-### 220. zstd-sys 2.0.16+zstd.1.5.7
-
-<details><summary>Used by</summary>
-
-- zstd-sys 2.0.16+zstd.1.5.7
+- zstd-sys 2.1.2+zstd.1.5.7
 
 </details>
 
@@ -14858,7 +14902,7 @@ BSD License
 
 For Zstandard software
 
-Copyright (c) 2016-present, Facebook, Inc. All rights reserved.
+Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
 are permitted provided that the following conditions are met:
@@ -14870,9 +14914,9 @@ are permitted provided that the following conditions are met:
    this list of conditions and the following disclaimer in the documentation
    and/or other materials provided with the distribution.
 
- * Neither the name Facebook nor the names of its contributors may be used to
-   endorse or promote products derived from this software without specific
-   prior written permission.
+ * Neither the name Facebook, nor Meta, nor the names of its contributors may
+   be used to endorse or promote products derived from this software without
+   specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED

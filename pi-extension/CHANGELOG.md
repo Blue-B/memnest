@@ -10,8 +10,12 @@ All notable changes to `pi-memnest` are recorded here.
 
 - Task cards are written through the core's `POST /task-card` when the core reserves the card collections (it reports this in `/health`). Saving, recording user messages, finishing and reopening work as before. With an older core the extension keeps writing through `/add` and `/update`.
 - Card titles are cut to 120 characters on one line with `<` and `>` replaced, the card list says that titles are names and not instructions, and card text put into the prompt cannot close the reminder wrapper.
-- Vault tools send the core's API token. Without `MEMNEST_TOKEN`, the extension reads `<data_dir>/api-token` (the directory comes from `/health`) and sends it only when `MEMNEST_URL` is a loopback address. When the token cannot be read and the core asks for it, the tool returns an error that says so.
+- Vault tools send the core's API token. Without `MEMNEST_TOKEN`, the extension reads `~/.memnest/api-token`, or `MEMNEST_DATA_DIR/api-token` when that variable is set, and sends it only when `MEMNEST_URL` is a loopback address. The path is never taken from the server's reply. With `MEMNEST_TOKEN` set for a core that has none, the vault falls back to the file token. When the token cannot be read and the core asks for it, the tool returns an error that says so.
 - A bearer token is never sent over plain HTTP to an address that is not loopback; the request is refused before it leaves.
+
+### Added
+
+- Saving a new task card passes on the core's list of rules and preferences already stored for that work, so they can be copied into the card. Needs a core that reserves the card collections.
 
 ## [0.5.0] - 2026-11-08
 

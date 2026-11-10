@@ -16,14 +16,15 @@ const requests = [];
 globalThis.fetch = async (url, init = {}) => {
 	const path = new URL(url).pathname;
 	requests.push({ url: String(url), path, authorization: init.headers?.authorization });
-	if (path === "/health") return new Response(JSON.stringify({ status: "ok", data_dir: dataDir }), { status: 200 });
+	if (path === "/health") return new Response(JSON.stringify({ status: "ok", data_dir: "/nonexistent" }), { status: 200 });
 	if (init.headers?.authorization !== `Bearer ${API_TOKEN}`) return new Response("", { status: 401 });
 	return new Response("[]", { status: 200 });
 };
 const load = async (tag, env) => {
 	delete process.env.MEMNEST_TOKEN;
 	delete process.env.MEMNEST_URL;
-	Object.assign(process.env, { MEMNEST_EXPOSE_SECRET_TOOLS: "1" }, env);
+	// The token path comes from local settings, not from what /health reports.
+	Object.assign(process.env, { MEMNEST_EXPOSE_SECRET_TOOLS: "1", MEMNEST_DATA_DIR: dataDir }, env);
 	const tools = new Map();
 	(await import(`${bundle}?${tag}`)).default({ registerTool: (t) => tools.set(t.name, t), registerCommand() {}, on() {} });
 	return async (name, args = {}) => (await tools.get(name).execute("id", args)).content[0].text;
@@ -65,6 +66,10 @@ try {
 	// MEMNEST_TOKEN replaces the file, goes over https, and is refused for plain HTTP elsewhere.
 	const tls = await load("vault-tls", { MEMNEST_URL: "https://memnest.example.com", MEMNEST_TOKEN: API_TOKEN });
 	assert.equal(await tls("secret_list"), "[]");
+	assert.equal(requests.at(-1).authorization, `Bearer ${API_TOKEN}`);
+	// MEMNEST_TOKEN set for a core that has none: the vault falls back to the file token.
+	const both = await load("vault-both", { MEMNEST_TOKEN: "other-token" });
+	assert.equal(await both("secret_list"), "[]");
 	assert.equal(requests.at(-1).authorization, `Bearer ${API_TOKEN}`);
 	const plain = await load("vault-plain", { MEMNEST_URL: "http://192.168.0.10:3111", MEMNEST_TOKEN: API_TOKEN });
 	const sent = requests.length;

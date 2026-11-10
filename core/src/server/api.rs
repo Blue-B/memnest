@@ -1751,6 +1751,9 @@ pub async fn set_secret(
     if let Err(error) = crate::access::require_admin() {
         return operation_error_response(error);
     }
+    if !crate::access::vault_token_ok() {
+        return axum::http::StatusCode::UNAUTHORIZED.into_response();
+    }
     if req.key.trim().is_empty() || req.value.is_empty() {
         return (
             axum::http::StatusCode::BAD_REQUEST,
@@ -1791,6 +1794,9 @@ pub async fn get_secret(
     if let Err(error) = crate::access::require_admin() {
         return operation_error_response(error);
     }
+    if !crate::access::vault_token_ok() {
+        return axum::http::StatusCode::UNAUTHORIZED.into_response();
+    }
     if !system.read().await.vault_enabled || !crate::crypto::is_enabled() {
         return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"status":"error","message":"secret vault crypto is unavailable"}))).into_response();
     }
@@ -1810,6 +1816,9 @@ pub async fn get_secret(
 pub async fn list_secrets(State(system): State<Arc<RwLock<MemorySystem>>>) -> Response {
     if let Err(error) = crate::access::require_admin() {
         return operation_error_response(error);
+    }
+    if !crate::access::vault_token_ok() {
+        return axum::http::StatusCode::UNAUTHORIZED.into_response();
     }
     if !system.read().await.vault_enabled || !crate::crypto::is_enabled() {
         return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"status":"error","message":"secret vault crypto is unavailable"}))).into_response();
@@ -1846,6 +1855,9 @@ pub async fn delete_secret(
 ) -> Response {
     if let Err(error) = crate::access::require_admin() {
         return operation_error_response(error);
+    }
+    if !crate::access::vault_token_ok() {
+        return axum::http::StatusCode::UNAUTHORIZED.into_response();
     }
     if !system.read().await.vault_enabled || !crate::crypto::is_enabled() {
         return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({"status":"error","message":"secret vault crypto is unavailable"}))).into_response();

@@ -375,7 +375,8 @@ export function installTaskCards(pi: any, call: Call): () => Promise<string[]> {
 					return result(`marked task card "${title}" done; it no longer appears in the list`);
 				}
 				// The model may echo the pinned card; the log section is never taken from it.
-				const body = split(String(p.text ?? "")).body;
+				// Only memnest writes the user's words: cut a heading that imitates that section.
+				const body = split(String(p.text ?? "")).body.split(/^[ \t]*#{0,6}[ \t]*user.{0,3}s[ \t]+own[ \t]+words/im)[0].trim();
 				if (!body) return result("save needs title and text", true);
 				if (body.length > MAX_CHARS)
 					return result(`card is ${body.length} characters; shorten it below ${MAX_CHARS} and save again`, true);
@@ -387,7 +388,13 @@ export function installTaskCards(pi: any, call: Call): () => Promise<string[]> {
 					pending = [];
 					const now = await storedCard(title);
 					setOpen({ title, id: now?.id, body, log: now?.log ?? said, pinned: open.find((c) => c.title === title)?.pinned });
-					return result(`saved task card "${title}"${previous ? ` (replaces ${previous.id})` : ""}; it stays pinned for this session`);
+					// For a new card the core lists the rules already stored for this work; pass that on.
+					let rules = "";
+					try {
+						const text = String(JSON.parse(r.text).text ?? "");
+						if (text.includes("\n\n")) rules = text.slice(text.indexOf("\n\n"));
+					} catch {}
+					return result(`saved task card "${title}"${previous ? ` (replaces ${previous.id})` : ""}; it stays pinned for this session${rules}`);
 				}
 				if (!previous) {
 					// Saving a finished task reopens it: move it back so the new version can supersede it.
@@ -411,7 +418,9 @@ export function installTaskCards(pi: any, call: Call): () => Promise<string[]> {
 						adapter: "pi",
 					},
 				});
-				if (r.error) return result(r.text, true);
+				// The core was upgraded under this session: ask /health again on the next write.
+				if (r.error && r.text.includes("reserved")) door = undefined;
+				if (r.error) return result(door === undefined ? `${r.text}; save again` : r.text, true);
 				pending = [];
 				// Without an id the card stays pinned, but new messages wait for the next save.
 				const id = (() => {

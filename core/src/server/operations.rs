@@ -553,8 +553,12 @@ pub async fn update(
             .ok_or_else(|| OperationError::not_found("memory not found"))?;
         crate::access::require_write_chunk(&current)?;
         // An existing card is as protected as a new one, whatever the target project.
-        if is_task_card_project(&current.project) {
-            validate_write_project(&current.project)?;
+        // A card in the trash still is one: it returns to its collection on restore.
+        let home = current.metadata.original_project.as_deref();
+        for project in [Some(current.project.as_str()), home].into_iter().flatten() {
+            if is_task_card_project(project) {
+                validate_write_project(project)?;
+            }
         }
     }
     if let Some(project) = req.project.as_deref() {

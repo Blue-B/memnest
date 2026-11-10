@@ -14,10 +14,17 @@
 - 프로세스가 시작할 때마다 umask를 077로 두고 데이터 폴더 권한을 0700으로 맞춥니다. 배포용 systemd 유닛에 `UMask=0077`을 넣었고, 설치 스크립트는 폴더를 0700으로 만듭니다.
 - 시스템 모드 systemd 유닛에 `StateDirectoryMode=0700`과 `ProtectSystem=strict`를 넣었습니다. 쓰기 잠금 파일이 `/var/lib/.memnest.writer.lock`이라서 `/var/lib`은 쓸 수 있게 둡니다. 이미 설치된 유닛 파일은 업그레이드 때 다시 쓰지 않습니다.
 - 가리기 대상에 JWT, Stripe `sk_live_`/`sk_test_`/`rk_live_`/`rk_test_` 키, GitLab `glpat-`, `npm_`, Hugging Face `hf_`, Slack `xapp-`와 `xoxe-`, AWS `ASIA` 임시 키를 더했습니다.
+- 휴지통에 있는 카드를 `memory_update`나 `/update`로 고친 뒤 복원하는 길을 막았습니다. 저장하는 카드 본문에 "User's own words" 구역을 흉내 낸 제목이 있으면 그 줄부터 아래를 잘라 냅니다.
+- 토큰 패턴이 ASCII 단어 경계를 써서, 토큰 바로 뒤에 한글이 붙어도(`hf_...입니다`) 가립니다. Slack 앱 토큰은 `xapp-<숫자>-` 모양일 때만 가려서 `xapp-sn-watcher` 같은 패키지 이름은 그대로 둡니다.
+- RustSec 권고에 따른 의존성 갱신: `rusqlite` 0.41과 `libsqlite3-sys` 0.39(내장 SQLite CVE), `zstd` 0.13.4와 `zstd-safe` 7.4, `quinn-proto` 0.11.19, `webpki-roots` 1.0.11, `crossbeam-epoch` 0.9.21, `tokio` 1.54, `anyhow` 1.0.104, `memmap2` 0.9.12. `cargo audit` 취약점은 0건입니다. `lru`(unsound)와 `paste`(유지보수 중단)는 간접 의존성 경고로 남아 있고, 의존성 트리에 고친 버전이 없습니다.
 - `MEMNEST_TOKEN`을 일정 시간 비교로 확인합니다.
 - 읽기 전용 MCP 게이트웨이는 주소의 비밀 값을 일정 시간 비교로 확인합니다. `MEMNEST_GATEWAY_TOOLS`에 넣더라도 `memory_remember`, `memory_update`, `memory_delete`, `task_card`와 모든 `secret_*` 도구를 거절하고, 호출을 넘기기 전에 `evidence_only`를 지웁니다.
 - `--backup-dir`은 백업에 금고 키가 들어 있다는 경고를 출력합니다. 복원이 계속 되도록 키는 그대로 복사합니다.
 - `memnest hook`과 `memnest watch`는 루프백이 아닌 주소에 일반 HTTP로 `MEMNEST_TOKEN`을 보내지 않습니다.
+
+### 추가
+
+- 새 작업 카드를 저장하면, 그 작업에 대해 이미 저장돼 있던 규칙과 선호 기억을 id와 함께 답에 붙입니다. 모델이 아직 유효한 것을 카드에 옮겨 적을 수 있습니다. 전에는 카드가 만들어진 뒤에 한 말만 카드에 들어가서, 실제 사용에서 카드보다 5일 먼저 저장된 규칙이 사용자가 다시 말할 때까지 빠져 있었습니다. 관련 기억이 가장 많은 프로젝트에서 최신순으로 먼저 고르고, 그다음 검색 결과에서 골라 최대 10줄을 보여 줍니다.
 
 ### 제거
 

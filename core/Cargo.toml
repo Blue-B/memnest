@@ -31,9 +31,9 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # Database
-rusqlite = { version = "0.39", features = ["bundled", "chrono", "serde_json", "uuid"] }
+rusqlite = { version = "0.41", features = ["bundled", "chrono", "serde_json", "uuid"] }
 r2d2 = "0.8"
-r2d2_sqlite = "0.34"
+r2d2_sqlite = "0.36"
 
 # Vector search (HNSW) — pure Rust. The package exposes the crate as `hnsw`.
 hnsw = { package = "fast-hnsw", version = "1.0" }

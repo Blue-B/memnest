@@ -5,6 +5,7 @@ import { BEARER_REFUSED, bearerAllowed, isLoopback } from "./auth.js";
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { homedir } from "node:os";
 
 import { Type } from "typebox";
 
@@ -55,13 +56,15 @@ async function call(
 // in <data_dir>/api-token and readable only by the user who runs the core. It is
 // read from the directory /health reports and sent to a loopback core only.
 const VAULT_TOKEN_ERROR =
-	"The vault needs the core's API token. pi reads it from <data_dir>/api-token and sends it only to a loopback MEMNEST_URL, and it could not be read here. Run pi as the user that runs the core on this machine, or set MEMNEST_TOKEN for a core that uses one.";
+	"The vault needs the core's API token. pi reads it from ~/.memnest/api-token (or MEMNEST_DATA_DIR/api-token) and sends it only to a loopback MEMNEST_URL, and it could not be read here. Run pi as the user that runs the core on this machine, set MEMNEST_DATA_DIR if the core uses another data directory, or set MEMNEST_TOKEN for a core that uses one.";
 let vaultToken: string | undefined;
 async function readVaultToken(): Promise<string | undefined> {
-	if (TOKEN || !isLoopback(URL)) return undefined;
+	if (!isLoopback(URL)) return undefined;
 	if (vaultToken) return vaultToken;
 	try {
-		const dataDir = JSON.parse((await call("/health", undefined, "GET")).text).data_dir;
+		// The path comes from this machine's settings, never from the server's reply:
+		// whatever answers on the port must not choose which file is read and sent to it.
+		const dataDir = process.env.MEMNEST_DATA_DIR || join(homedir(), ".memnest");
 		vaultToken = (await readFile(join(dataDir, "api-token"), "utf8")).trim() || undefined;
 	} catch {
 		// An older core has no token file and asks for none; a newer one answers 401 below.
@@ -69,12 +72,18 @@ async function readVaultToken(): Promise<string | undefined> {
 	return vaultToken;
 }
 async function vaultCall(path: string, body?: unknown, method: "GET" | "POST" | "DELETE" = "POST") {
+	// MEMNEST_TOKEN first: a core that uses one accepts nothing else. A core without
+	// one ignores it for memory but asks the vault for its own token, so try that next.
+	const denied = (r: { text: string }) => r.text.startsWith("memnest error 401");
+	const first = TOKEN ? await call(path, body, method) : undefined;
+	if (first && !denied(first)) return first;
 	const token = await readVaultToken();
-	const r = await call(path, body, method, token ?? TOKEN);
-	if (!r.error || TOKEN || !r.text.startsWith("memnest error 401")) return r;
+	// With no token at all the call still goes out: an older core asks for none.
+	const r = token ? await call(path, body, method, token) : (first ?? (await call(path, body, method)));
+	if (!denied(r)) return r;
 	// A stale token (the core moved to another data directory) is read again next time.
 	vaultToken = undefined;
-	return token ? r : { text: VAULT_TOKEN_ERROR, error: true };
+	return token || TOKEN ? r : { text: VAULT_TOKEN_ERROR, error: true };
 }
 async function codeEvidence(args: string[], cwd: string, baseline?: unknown): Promise<any> {
 	return new Promise((resolve, reject) => {

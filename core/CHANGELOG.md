@@ -15,9 +15,16 @@ All notable changes to the `memnest` Rust engine are recorded here.
 - The system-mode systemd unit adds `StateDirectoryMode=0700` and `ProtectSystem=strict`. `/var/lib` stays writable because the writer lock is `/var/lib/.memnest.writer.lock`. Existing unit files are not rewritten on upgrade.
 - Redaction also covers JWTs, Stripe `sk_live_`/`sk_test_`/`rk_live_`/`rk_test_` keys, GitLab `glpat-`, `npm_`, Hugging Face `hf_`, Slack `xapp-` and `xoxe-`, and AWS `ASIA` temporary keys.
 - `MEMNEST_TOKEN` is compared in constant time.
+- A card in the trash cannot be rewritten with `memory_update` or `/update` and then restored, and a heading in a saved card body that imitates the "User's own words" section is cut off with everything below it.
+- Token patterns use ASCII word boundaries, so a token followed directly by Hangul (`hf_...입니다`) is redacted. The Slack app-token pattern needs the `xapp-<digit>-` shape, so package names such as `xapp-sn-watcher` are left alone.
+- Dependency updates for RustSec advisories: `rusqlite` 0.41 with `libsqlite3-sys` 0.39 (bundled SQLite CVE), `zstd` 0.13.4 with `zstd-safe` 7.4, `quinn-proto` 0.11.19, `webpki-roots` 1.0.11, `crossbeam-epoch` 0.9.21, `tokio` 1.54, `anyhow` 1.0.104, `memmap2` 0.9.12. `cargo audit` reports no vulnerabilities; `lru` (unsound) and `paste` (unmaintained) remain as transitive warnings with no fixed release in the dependency tree.
 - The read-only MCP gateway compares its URL secret in constant time, refuses `memory_remember`, `memory_update`, `memory_delete`, `task_card` and every `secret_*` tool even when `MEMNEST_GATEWAY_TOOLS` lists them, and removes `evidence_only` before forwarding a call.
 - `--backup-dir` prints a warning that the backup contains the vault key. The key is still copied, so a restore keeps working.
 - `memnest hook` and `memnest watch` refuse to send `MEMNEST_TOKEN` over plain HTTP to an address that is not loopback.
+
+### Added
+
+- Saving a new task card answers with the rules and preferences already stored for that work, with their ids, so the model can copy the ones that still apply into the card. A card used to hold only what was said after it was created; in real use a rule stored five days before the card was missed until the user repeated it. The list comes from the project most of the related memories live in, newest first, then from the search results, at most 10 lines.
 
 ### Removed
 

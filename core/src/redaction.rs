@@ -6,29 +6,29 @@ use regex::Regex;
 static HIGH_CONFIDENCE_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
         // OpenAI / Anthropic style API keys
-        Regex::new(r#"\b(sk-[A-Za-z0-9][A-Za-z0-9_-]{16,})\b"#).unwrap(),
+        Regex::new(r#"(?-u:\b)(sk-[A-Za-z0-9][A-Za-z0-9_-]{16,})(?-u:\b)"#).unwrap(),
         // Slack bot, user, app-level and refresh tokens
-        Regex::new(r#"\b((?:xox[abeprs]|xapp)-[A-Za-z0-9-]{10,})\b"#).unwrap(),
+        Regex::new(r#"(?-u:\b)(xox[abeprs]-[A-Za-z0-9-]{10,}|xapp-\d-[A-Za-z0-9-]{10,})(?-u:\b)"#).unwrap(),
         // GitHub PATs / OAuth / App tokens, including fine-grained PATs
-        Regex::new(r#"\b(gh[pousr]_[A-Za-z0-9_]{20,})\b"#).unwrap(),
-        Regex::new(r#"\b(github_pat_[A-Za-z0-9_]{20,})\b"#).unwrap(),
+        Regex::new(r#"(?-u:\b)(gh[pousr]_[A-Za-z0-9_]{20,})(?-u:\b)"#).unwrap(),
+        Regex::new(r#"(?-u:\b)(github_pat_[A-Za-z0-9_]{20,})(?-u:\b)"#).unwrap(),
         // AWS access keys, long-lived (AKIA) and temporary (ASIA)
-        Regex::new(r#"\b((?:AKIA|ASIA)[0-9A-Z]{16})\b"#).unwrap(),
+        Regex::new(r#"(?-u:\b)((?:AKIA|ASIA)[0-9A-Z]{16})(?-u:\b)"#).unwrap(),
         // JSON Web Tokens: three base64url parts, header and payload are JSON objects
-        Regex::new(r#"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"#)
+        Regex::new(r#"(?-u:\b)eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"#)
             .unwrap(),
         // Stripe secret and restricted keys
-        Regex::new(r#"\b((?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,})\b"#).unwrap(),
+        Regex::new(r#"(?-u:\b)((?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,})(?-u:\b)"#).unwrap(),
         // GitLab personal access tokens
-        Regex::new(r#"\b(glpat-[A-Za-z0-9_-]{20,})"#).unwrap(),
+        Regex::new(r#"(?-u:\b)(glpat-[A-Za-z0-9_-]{20,})"#).unwrap(),
         // npm access tokens
-        Regex::new(r#"\b(npm_[A-Za-z0-9]{36})\b"#).unwrap(),
+        Regex::new(r#"(?-u:\b)(npm_[A-Za-z0-9]{36})(?-u:\b)"#).unwrap(),
         // Hugging Face access tokens
-        Regex::new(r#"\b(hf_[A-Za-z0-9]{30,})\b"#).unwrap(),
+        Regex::new(r#"(?-u:\b)(hf_[A-Za-z0-9]{30,})(?-u:\b)"#).unwrap(),
         // PEM private keys
         Regex::new(r#"-----BEGIN (RSA |OPENSSH |EC |DSA |)PRIVATE KEY-----[\s\S]*?-----END (RSA |OPENSSH |EC |DSA |)PRIVATE KEY-----"#).unwrap(),
         // Google API keys
-        Regex::new(r#"\b(AIza[0-9A-Za-z_-]{35})\b"#).unwrap(),
+        Regex::new(r#"(?-u:\b)(AIza[0-9A-Za-z_-]{35})(?-u:\b)"#).unwrap(),
     ]
 });
 
@@ -154,6 +154,20 @@ mod tests {
                         eyJ alone is not a token, ASIA Pacific, glpat- docs, xapp-store, \
                         pk_live_51H8abcDEFghiJKLmnoPQRstu is publishable";
         assert_eq!(redact_text(ordinary), ordinary);
+        let packages = "apt install xapp-sn-watcher xapp-symbolic-icons";
+        assert_eq!(redact_text(packages), packages);
+        // Korean particles follow a token with no space.
+        assert_eq!(
+            redact_text(concat!(
+                "토큰은 hf_",
+                "abcdefghijklmnopqrstuvwxyzABCDEFGH입니다"
+            )),
+            "토큰은 [REDACTED_SECRET]입니다"
+        );
+        assert_eq!(
+            redact_text(concat!("sk_live_", "51H8abcDEFghiJKLmnoPQRstu로 결제")),
+            "[REDACTED_SECRET]로 결제"
+        );
     }
 
     #[test]
