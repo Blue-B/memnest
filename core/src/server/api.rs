@@ -442,6 +442,10 @@ pub(crate) struct SearchOptions {
     pub recent_first: bool,
     pub exclude_reserved: bool,
     pub durable_only: bool,
+    /// Keep only candidates that pass [`on_topic`]. Set for automatic injection;
+    /// an explicit search leaves it off, so low-relevance results stay
+    /// available there.
+    pub on_topic_only: bool,
 }
 
 #[cfg(test)]
@@ -469,6 +473,38 @@ pub(crate) async fn run_hybrid_search_scope(
     options: SearchOptions,
     category: Option<String>,
 ) -> Vec<SearchResultItem> {
+    let query_embedding = embed_query(&system, query).await;
+    hybrid_search_embedded(
+        system,
+        query,
+        query_embedding.as_deref(),
+        scope,
+        n,
+        options,
+        category,
+    )
+    .await
+}
+
+async fn embed_query(system: &Arc<RwLock<MemorySystem>>, query: &str) -> Option<Vec<f32>> {
+    let embedder = system.read().await.embedder.clone();
+    let query = query.to_string();
+    tokio::task::spawn_blocking(move || embedder.encode_query(&query))
+        .await
+        .ok()
+        .and_then(|result| result.ok())
+}
+
+/// The search itself, with the query already embedded.
+async fn hybrid_search_embedded(
+    system: Arc<RwLock<MemorySystem>>,
+    query: &str,
+    query_embedding: Option<&[f32]>,
+    scope: &SearchScope,
+    n: usize,
+    options: SearchOptions,
+    category: Option<String>,
+) -> Vec<SearchResultItem> {
     let n_results = n.clamp(1, 50);
     let scoped_projects = scope.projects().unwrap_or(&[]);
     let candidate_multiplier = if scoped_projects.is_empty() { 4 } else { 20 };
@@ -481,12 +517,6 @@ pub(crate) async fn run_hybrid_search_scope(
         .unwrap_or_default();
     let text_score_by_id: HashMap<String, f32> = text_results.iter().cloned().collect();
 
-    let embedder = sys.embedder.clone();
-    let query_owned = query.to_string();
-    let query_embedding = tokio::task::spawn_blocking(move || embedder.encode_query(&query_owned))
-        .await
-        .ok()
-        .and_then(|result| result.ok());
     let db = sys.db.read().await;
     let scoped_chunks = if scoped_projects.is_empty() {
         Vec::new()
@@ -499,10 +529,10 @@ pub(crate) async fn run_hybrid_search_scope(
             .vector_index
             .read()
             .await
-            .search(&query_embedding, candidate_limit)
+            .search(query_embedding, candidate_limit)
             .unwrap_or_default(),
         Some(query_embedding) => {
-            exact_vector_search(&query_embedding, &scoped_chunks, candidate_limit)
+            exact_vector_search(query_embedding, &scoped_chunks, candidate_limit)
         }
         None => Vec::new(),
     };
@@ -515,7 +545,8 @@ pub(crate) async fn run_hybrid_search_scope(
         crate::index::hybrid::rrf_fusion(&vector_results, &text_results, 60.0).unwrap_or_default();
 
     let keywords = crate::search::extract_keywords(query, 2);
-    let has_korean = query.chars().any(|ch| ('가'..='힣').contains(&ch));
+    let topic_keywords = crate::search::topic_keywords(query);
+    let has_korean = is_korean(query);
     let identifiers: Vec<_> = keywords
         .iter()
         .filter(|word| {
@@ -571,6 +602,18 @@ pub(crate) async fn run_hybrid_search_scope(
                 }
             }
             let keyword_ratio = keyword_match_ratio(&c.document, &keywords);
+            let distance = query_embedding
+                .zip(c.embedding.as_deref())
+                .map(|(query, stored)| 1.0 - crate::similarity::cosine(query, stored));
+            let on_topic = on_topic(
+                &c.document,
+                &topic_keywords,
+                distance,
+                has_korean != is_korean(&c.document),
+            );
+            if options.on_topic_only && !on_topic {
+                continue;
+            }
             let text_hit = text_score_by_id.contains_key(&id);
             let vector_hit = vector_distance_by_id
                 .get(&id)
@@ -1484,8 +1527,9 @@ pub(crate) async fn build_context_scope(
         // search AND hard-required literal keyword overlap, so a Korean query
         // ("바이오스") never matched an English-stored memory ("BIOS") and the
         // pack came back empty. Use false so cross-language / paraphrased recall
-        // actually surfaces; relevance stays bounded by distance_cutoff +
-        // low_relevance_fallback + n_results + max_chars.
+        // actually surfaces. Nobody asked for this text, so unlike /search it
+        // keeps only memories that pass `on_topic`; a prompt with no topic
+        // injects nothing.
         run_hybrid_search_scope(
             system.clone(),
             &query,
@@ -1494,6 +1538,7 @@ pub(crate) async fn build_context_scope(
             SearchOptions {
                 exclude_reserved: project == "all",
                 durable_only: true,
+                on_topic_only: true,
                 ..Default::default()
             },
             category,
@@ -1968,6 +2013,50 @@ fn keyword_match_ratio(document: &str, keywords: &[String]) -> f32 {
     matched as f32 / keywords.len() as f32
 }
 
+fn is_korean(text: &str) -> bool {
+    text.chars().any(|ch| ('가'..='힣').contains(&ch))
+}
+
+/// Cosine-distance limits for [`on_topic`], set from labelled real prompts with
+/// multilingual-e5-base (docs/search-relevance.md). Its distances are narrow:
+/// related memories sat at 0.11–0.16 and unrelated ones started at 0.12, so
+/// distance alone cannot decide and each limit is tied to keyword evidence.
+const ON_TOPIC_TWO_KEYWORDS: f32 = 0.18;
+const ON_TOPIC_ONE_KEYWORD: f32 = 0.13;
+/// A memory in the other language cannot share keywords with the query, so
+/// distance decides alone, and only for a query that has two topic keywords.
+const ON_TOPIC_OTHER_LANGUAGE: f32 = 0.21;
+
+/// Whether a memory shares the query's topic, judged only by the two
+/// retrievers' own signals: topic keywords found in the full record and
+/// embedding distance. The final score is not used because it also carries
+/// age, type and importance. This gates text nobody asked for (automatic
+/// recall); explicit search does not filter on it.
+fn on_topic(
+    document: &str,
+    topic_keywords: &[String],
+    distance: Option<f32>,
+    other_language: bool,
+) -> bool {
+    let Some(distance) = distance else {
+        return false;
+    };
+    let document = document.to_lowercase();
+    let hits = topic_keywords
+        .iter()
+        .filter(|keyword| {
+            if keyword.is_ascii() {
+                contains_latin_term(&document, keyword)
+            } else {
+                document.contains(keyword.as_str())
+            }
+        })
+        .count();
+    (hits >= 2 && distance <= ON_TOPIC_TWO_KEYWORDS)
+        || (hits >= 1 && distance <= ON_TOPIC_ONE_KEYWORD)
+        || (other_language && topic_keywords.len() >= 2 && distance <= ON_TOPIC_OTHER_LANGUAGE)
+}
+
 fn keyword_bonus_from_ratio(ratio: f32, max_bonus: f32) -> f32 {
     max_bonus * ratio
 }
@@ -2081,6 +2170,140 @@ fn mmr_select(
         selected.push(candidates.remove(best_idx));
     }
     selected.into_iter().map(|(it, _)| it).collect()
+}
+
+#[cfg(test)]
+mod on_topic_tests {
+    //! Automatic recall (`/context`) keeps only memories that share the
+    //! prompt's topic. These use the real embedding model: the limits in
+    //! `on_topic` are distances this model produces.
+    use super::test_support::build_system;
+    use super::*;
+
+    const MEMORIES: &[&str] = &[
+        "BIOS was updated to version F15 with Q-Flash; the XMP memory profile is enabled and fast boot is off.",
+        "The deploy port for the staging API server is 8320; production uses 443 behind the proxy.",
+        "Database backups run nightly at 03:00 and are kept for 14 days on the NAS.",
+        "The user prefers dark roast coffee and dislikes meetings before 10am.",
+        "ok so now we then restart the cache server again",
+        "스테이징 API 서버의 배포 포트는 8320이고 운영은 프록시 뒤 443을 쓴다.",
+        "데이터베이스 백업은 매일 새벽 3시에 돌고 NAS에 14일 동안 보관한다.",
+        "결제 모듈은 토스페이먼츠를 쓰고 정기결제는 아직 붙이지 않았다.",
+        "지금 그럼 일단 캐시 서버부터 다시 켜보자 어떻게 되는지",
+    ];
+
+    async fn system_with_memories() -> (tempfile::TempDir, Arc<RwLock<MemorySystem>>) {
+        let (tmp, system) = build_system().await;
+        for text in MEMORIES {
+            super::super::operations::remember(
+                system.clone(),
+                super::super::operations::RememberInput {
+                    text: text.to_string(),
+                    project: "gate".to_string(),
+                    cwd: None,
+                    metadata: None,
+                    sensitive: false,
+                },
+            )
+            .await
+            .unwrap();
+        }
+        (tmp, system)
+    }
+
+    async fn injected(system: &Arc<RwLock<MemorySystem>>, prompt: &str) -> Vec<String> {
+        let pack = build_context_scope(
+            system.clone(),
+            prompt,
+            &SearchScope::explicit("gate"),
+            5,
+            4000,
+            None,
+        )
+        .await;
+        pack.memories
+            .into_iter()
+            .map(|item| item.document)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn a_vague_prompt_injects_nothing_but_explicit_search_still_answers() {
+        let (_tmp, system) = system_with_memories().await;
+        for prompt in [
+            "그럼 이제 어떻게 해? 다시",
+            "그러면 그렇게 해줘 일단 지금 다시",
+            "ok so what should we do now then",
+            "ok then just do that again please",
+        ] {
+            assert_eq!(
+                injected(&system, prompt).await,
+                Vec::<String>::new(),
+                "{prompt}"
+            );
+            let explicit = run_hybrid_search(
+                system.clone(),
+                prompt,
+                "gate",
+                3,
+                SearchOptions::default(),
+                None,
+            )
+            .await;
+            assert!(
+                !explicit.is_empty(),
+                "explicit search must not be gated: {prompt}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_specific_prompt_injects_only_memories_on_its_topic() {
+        let (_tmp, system) = system_with_memories().await;
+        // (prompt, the memory that must be kept, a marker every kept memory shares)
+        for (prompt, expected, topic) in [
+            ("배포 포트가 어떻게 되지", MEMORIES[5], "8320"),
+            (
+                "what did we decide about the deploy port",
+                MEMORIES[1],
+                "8320",
+            ),
+            // Other language: no shared keyword is possible, distance decides.
+            ("how long do we keep database backups", MEMORIES[6], "14"),
+            ("바이오스 설정 어떻게 해놨었지", MEMORIES[0], "BIOS"),
+        ] {
+            let kept = injected(&system, prompt).await;
+            assert!(kept.iter().any(|doc| doc == expected), "{prompt}: {kept:?}");
+            assert!(
+                kept.iter().all(|doc| doc.contains(topic)),
+                "{prompt}: {kept:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn on_topic_needs_keywords_and_distance_to_agree() {
+        let keywords = vec!["deploy".to_string(), "port".to_string()];
+        let both = "the deploy port is 8320";
+        let one = "the report mentions a deploy";
+        assert!(on_topic(both, &keywords, Some(0.18), false));
+        assert!(!on_topic(both, &keywords, Some(0.19), false));
+        // "port" inside "report" is not the word "port".
+        assert!(on_topic(one, &keywords, Some(0.13), false));
+        assert!(!on_topic(one, &keywords, Some(0.14), false));
+        assert!(!on_topic("unrelated text", &keywords, Some(0.05), false));
+        assert!(on_topic("다른 언어로 쓴 기록", &keywords, Some(0.21), true));
+        assert!(!on_topic(
+            "다른 언어로 쓴 기록",
+            &keywords,
+            Some(0.22),
+            true
+        ));
+        // One topic word is not enough to claim a topic by distance alone.
+        let other = "다른 언어로 쓴 기록";
+        assert!(!on_topic(other, &keywords[..1], Some(0.15), true));
+        assert!(!on_topic(both, &keywords, None, false));
+    }
 }
 
 #[cfg(test)]

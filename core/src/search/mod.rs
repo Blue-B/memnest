@@ -4,6 +4,22 @@ const ENGLISH_STOPWORDS: &[&str] = &[
     "where", "which", "who", "why", "with",
 ];
 
+/// Conversational words that say nothing about a topic. Only [`topic_keywords`]
+/// drops them; `extract_keywords` and explicit search still match them. In the
+/// 2026-11-10 measurement these words were the usual reason an unrelated memory
+/// looked related to a prompt (docs/search-relevance.md).
+#[rustfmt::skip]
+const CONVERSATIONAL_FILLERS: &[&str] = &[
+    "그러면", "그럼", "근데", "그런데", "그리고", "그래서", "그러니까", "그니까", "그래도", "그냥",
+    "지금", "이제", "아까", "일단", "다시", "계속", "이미", "원래", "혹시", "진짜", "정말",
+    "이거", "저거", "그거", "이건", "저건", "그건", "이게", "저게", "그게", "이걸", "저걸", "그걸",
+    "이런", "저런", "그런", "이렇게", "저렇게", "그렇게", "어떻게", "어떤", "무슨", "뭔가",
+    "아니", "아니면", "우리", "저기",
+    "so", "now", "then", "ok", "okay", "we", "you", "me", "my", "did", "can", "could", "would",
+    "will", "that", "there", "here", "just", "again", "about", "if", "but", "not", "no", "yes",
+    "please",
+];
+
 fn is_english_stopword(token: &str) -> bool {
     ENGLISH_STOPWORDS
         .iter()
@@ -43,9 +59,32 @@ pub fn extract_keywords(query: &str, min_len: usize) -> Vec<String> {
         .collect()
 }
 
+/// Query keywords that can show a memory shares the query's topic: lowercased,
+/// each once, without conversational fillers.
+pub fn topic_keywords(query: &str) -> Vec<String> {
+    let mut keywords: Vec<String> = Vec::new();
+    for keyword in extract_keywords(query, 2) {
+        let keyword = keyword.to_lowercase();
+        if !CONVERSATIONAL_FILLERS.contains(&keyword.as_str()) && !keywords.contains(&keyword) {
+            keywords.push(keyword);
+        }
+    }
+    keywords
+}
+
 #[cfg(test)]
 mod keyword_tests {
-    use super::extract_keywords;
+    use super::{extract_keywords, topic_keywords};
+
+    #[test]
+    fn topic_keywords_drop_fillers_and_repeats_in_both_languages() {
+        assert_eq!(
+            topic_keywords("그러면 지금 Redis 설정은 어떻게 하고 redis 포트는"),
+            ["redis", "설정", "하고", "포트"]
+        );
+        assert!(topic_keywords("ok so what should we do now then").is_empty());
+        assert!(topic_keywords("확실히 그럼 어떻게 지금").len() == 1);
+    }
 
     #[test]
     fn minimum_length_counts_characters_not_utf8_bytes() {

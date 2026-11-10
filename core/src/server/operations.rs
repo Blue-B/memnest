@@ -368,6 +368,7 @@ pub async fn search(
             recent_first: input.recent_first,
             exclude_reserved: input.exclude_reserved,
             durable_only: input.durable_only,
+            on_topic_only: false,
         },
         input.category,
     )
