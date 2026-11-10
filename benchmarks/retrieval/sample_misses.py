@@ -25,6 +25,7 @@ def main():
     with open(args.results, encoding="utf-8") as handle:
         result = json.load(handle)
     turns, speakers = am.load_turns()
+    am.attach_questions(result["per_question"])
     rows = [
         r for r in result["per_question"]
         if r["relevant"] and r["category"] != "adversarial"

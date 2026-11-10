@@ -94,7 +94,8 @@ def run_group(client, group, dataset):
         deep_ranked = [id_to_key.get(r["id"], "unknown:" + r["id"]) for r in deep]
         record = {
             "type": "question",
-            **question,
+            # The question text stays in the dataset; results carry its id only.
+            **{k: v for k, v in question.items() if k != "question"},
             "ranked": ranked,
             "ranked_sessions": metrics.dedupe_keep_order(
                 [session_of.get(k, "unknown") for k in ranked]

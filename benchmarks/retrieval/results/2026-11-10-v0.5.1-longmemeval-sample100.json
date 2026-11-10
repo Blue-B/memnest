@@ -335,7 +335,6 @@
  "per_question": [
   {
    "id": "01493427",
-   "question": "How many new postcards have I added to my collection since I started collecting again?",
    "category": "knowledge-update",
    "abstention": false,
    "relevant_sessions": [
@@ -466,7 +465,6 @@
   },
   {
    "id": "06878be2",
-   "question": "Can you suggest some accessories that would complement my current photography setup?",
    "category": "single-session-preference",
    "abstention": false,
    "relevant_sessions": [
@@ -599,7 +597,6 @@
   },
   {
    "id": "06f04340",
-   "question": "What should I serve for dinner this weekend with my homegrown ingredients?",
    "category": "single-session-preference",
    "abstention": false,
    "relevant_sessions": [
@@ -721,7 +718,6 @@
   },
   {
    "id": "0862e8bf",
-   "question": "What is the name of my cat?",
    "category": "single-session-user",
    "abstention": false,
    "relevant_sessions": [
@@ -844,7 +840,6 @@
   },
   {
    "id": "08e075c7",
-   "question": "How long have I been using my Fitbit Charge 3?",
    "category": "knowledge-update",
    "abstention": false,
    "relevant_sessions": [
@@ -976,7 +971,6 @@
   },
   {
    "id": "0977f2af",
-   "question": "What new kitchen gadget did I invest in before getting the Air Fryer?",
    "category": "knowledge-update",
    "abstention": false,
    "relevant_sessions": [
@@ -1108,7 +1102,6 @@
   },
   {
    "id": "0a995998",
-   "question": "How many items of clothing do I need to pick up or return from a store?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -1237,7 +1230,6 @@
   },
   {
    "id": "0db4c65d",
-   "question": "How many days had passed since I finished reading 'The Seven Husbands of Evelyn Hugo' when I attended the book reading event at the local library, where the author of 'The Silent Patient' is discussing her latest thriller novel?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -1368,7 +1360,6 @@
   },
   {
    "id": "0ddfec37",
-   "question": "How many autographed baseballs have I added to my collection in the first three months of collection?",
    "category": "knowledge-update",
    "abstention": false,
    "relevant_sessions": [
@@ -1504,7 +1495,6 @@
   },
   {
    "id": "15745da0",
-   "question": "How long have I been collecting vintage cameras?",
    "category": "single-session-user",
    "abstention": false,
    "relevant_sessions": [
@@ -1631,7 +1621,6 @@
   },
   {
    "id": "1d4da289",
-   "question": "I was thinking about our previous conversation about data privacy and security. You mentioned that companies use two-factor authentication to enhance security. Can you remind me what kind of two-factor authentication methods you were referring to?",
    "category": "single-session-assistant",
    "abstention": false,
    "relevant_sessions": [
@@ -1763,7 +1752,6 @@
   },
   {
    "id": "1da05512",
-   "question": "I'm trying to decide whether to buy a NAS device now or wait. What do you think?",
    "category": "single-session-preference",
    "abstention": false,
    "relevant_sessions": [
@@ -1802,7 +1790,6 @@
   },
   {
    "id": "1f2b8d4f",
-   "question": "What is the difference in price between my luxury boots and the similar pair found at the budget store?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -1926,7 +1913,6 @@
   },
   {
    "id": "25e5aa4f",
-   "question": "Where did I complete my Bachelor's degree in Computer Science?",
    "category": "single-session-user",
    "abstention": false,
    "relevant_sessions": [
@@ -1966,7 +1952,6 @@
   },
   {
    "id": "2788b940",
-   "question": "How many fitness classes do I attend in a typical week?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -2096,7 +2081,6 @@
   },
   {
    "id": "28bcfaac",
-   "question": "I'm going back to our previous conversation about music theory. You mentioned some online resources for learning music theory. Can you remind me of the website you recommended for free lessons and exercises?",
    "category": "single-session-assistant",
    "abstention": false,
    "relevant_sessions": [
@@ -2134,7 +2118,6 @@
   },
   {
    "id": "28dc39ac",
-   "question": "How many hours have I spent playing games in total?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -2263,7 +2246,6 @@
   },
   {
    "id": "2b8f3739",
-   "question": "What is the total amount of money I earned from selling my products at the markets?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -2389,7 +2371,6 @@
   },
   {
    "id": "2bf43736",
-   "question": "I was going through our previous chat and I wanted to clarify something about the prayer of beginners in Tanqueray's Spiritual Life treatise. Can you remind me which chapter of the second part discusses vocal prayer and meditation?",
    "category": "single-session-assistant",
    "abstention": false,
    "relevant_sessions": [
@@ -2427,7 +2408,6 @@
   },
   {
    "id": "2c63a862",
-   "question": "How many days did it take for me to find a house I loved after starting to work with Rachel?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -2553,7 +2533,6 @@
   },
   {
    "id": "36b9f61e",
-   "question": "What is the total amount I spent on luxury items in the past few months?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -2680,7 +2659,6 @@
   },
   {
    "id": "37f165cf",
-   "question": "What was the page count of the two novels I finished in January and March?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -2809,7 +2787,6 @@
   },
   {
    "id": "3b6f954b",
-   "question": "Where did I attend for my study abroad program?",
    "category": "single-session-user",
    "abstention": false,
    "relevant_sessions": [
@@ -2946,7 +2923,6 @@
   },
   {
    "id": "3f1e9474",
-   "question": "Who did I have a conversation with about destiny?",
    "category": "single-session-user",
    "abstention": false,
    "relevant_sessions": [
@@ -3077,7 +3053,6 @@
   },
   {
    "id": "41275add",
-   "question": "I wanted to follow up on our previous conversation about YouTube videos for workplace posture. Can you remind me of the Mayo Clinic video you recommended?",
    "category": "single-session-assistant",
    "abstention": false,
    "relevant_sessions": [
@@ -3210,7 +3185,6 @@
   },
   {
    "id": "4bc144e2",
-   "question": "How much did I spend on car wash and parking ticket?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -3340,7 +3314,6 @@
   },
   {
    "id": "561fabcd",
-   "question": "I was thinking back to our previous conversation about the Radiation Amplified zombie, and I was wondering if you remembered what we finally decided to name it?",
    "category": "single-session-assistant",
    "abstention": false,
    "relevant_sessions": [
@@ -3465,7 +3438,6 @@
   },
   {
    "id": "5809eb10",
-   "question": "I'm looking back at our previous conversation about the Bajimaya v Reward Homes Pty Ltd case. Can you remind me what year the construction of the house began?",
    "category": "single-session-assistant",
    "abstention": false,
    "relevant_sessions": [
@@ -3503,7 +3475,6 @@
   },
   {
    "id": "5831f84d",
-   "question": "How many Crash Course videos have I watched in the past few weeks?",
    "category": "knowledge-update",
    "abstention": false,
    "relevant_sessions": [
@@ -3636,7 +3607,6 @@
   },
   {
    "id": "58bf7951",
-   "question": "What play did I attend at the local community theater?",
    "category": "single-session-user",
    "abstention": false,
    "relevant_sessions": [
@@ -3770,7 +3740,6 @@
   },
   {
    "id": "60036106",
-   "question": "What was the total number of people reached by my Facebook ad campaign and Instagram influencer collaboration?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -3889,7 +3858,6 @@
   },
   {
    "id": "60d45044",
-   "question": "What type of rice is my favorite?",
    "category": "single-session-user",
    "abstention": false,
    "relevant_sessions": [
@@ -4021,7 +3989,6 @@
   },
   {
    "id": "6222b6eb",
-   "question": "I was going through our previous conversation about atmospheric correction methods, and I wanted to confirm - you mentioned that 6S, MAJA, and Sen2Cor are all algorithms for atmospheric correction of remote sensing images. Can you remind me which one is implemented in the SIAC_GEE tool?",
    "category": "single-session-assistant",
    "abstention": false,
    "relevant_sessions": [
@@ -4059,7 +4026,6 @@
   },
   {
    "id": "66f24dbb",
-   "question": "What did I buy for my sister's birthday gift?",
    "category": "single-session-user",
    "abstention": false,
    "relevant_sessions": [
@@ -4097,7 +4063,6 @@
   },
   {
    "id": "69fee5aa",
-   "question": "How many pre-1920 American coins do I have in my collection?",
    "category": "knowledge-update",
    "abstention": false,
    "relevant_sessions": [
@@ -4225,7 +4190,6 @@
   },
   {
    "id": "6a1eabeb",
-   "question": "What was my personal best time in the charity 5K run?",
    "category": "knowledge-update",
    "abstention": false,
    "relevant_sessions": [
@@ -4355,7 +4319,6 @@
   },
   {
    "id": "6b7dfb22",
-   "question": "I've been feeling a bit stuck with my paintings lately. Do you have any ideas on how I can find new inspiration?",
    "category": "single-session-preference",
    "abstention": false,
    "relevant_sessions": [
@@ -4395,7 +4358,6 @@
   },
   {
    "id": "6c49646a",
-   "question": "What is the total distance I covered in my four road trips?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -4527,7 +4489,6 @@
   },
   {
    "id": "6cb6f249",
-   "question": "How many days did I take social media breaks in total?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -4652,7 +4613,6 @@
   },
   {
    "id": "6e984302",
-   "question": "I mentioned an investment for a competition four weeks ago? What did I buy?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -4788,7 +4748,6 @@
   },
   {
    "id": "71017277",
-   "question": "I received a piece of jewelry last Saturday from whom?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -4914,7 +4873,6 @@
   },
   {
    "id": "72e3ee87",
-   "question": "How many episodes of the Science series have I completed on Crash Course?",
    "category": "knowledge-update",
    "abstention": false,
    "relevant_sessions": [
@@ -5044,7 +5002,6 @@
   },
   {
    "id": "7e00a6cb",
-   "question": "I'm planning my trip to Amsterdam again and I was wondering, what was the name of that hostel near the Red Light District that you recommended last time?",
    "category": "single-session-assistant",
    "abstention": false,
    "relevant_sessions": [
@@ -5082,7 +5039,6 @@
   },
   {
    "id": "81507db6",
-   "question": "How many graduation ceremonies have I attended in the past three months?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -5219,7 +5175,6 @@
   },
   {
    "id": "86b68151",
-   "question": "Where did I buy my new bookshelf from?",
    "category": "single-session-user",
    "abstention": false,
    "relevant_sessions": [
@@ -5345,7 +5300,6 @@
   },
   {
    "id": "86f00804",
-   "question": "What book am I currently reading?",
    "category": "single-session-user",
    "abstention": false,
    "relevant_sessions": [
@@ -5465,7 +5419,6 @@
   },
   {
    "id": "87f22b4a",
-   "question": "How much have I made from selling eggs this month?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -5594,7 +5547,6 @@
   },
   {
    "id": "8979f9ec",
-   "question": "What is the total number of lunch meals I got from the chicken fajitas and lentil soup?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -5723,7 +5675,6 @@
   },
   {
    "id": "89941a94",
-   "question": "Before I purchased the gravel bike, do I have other bikes in addition to my mountain bike and my commuter bike?",
    "category": "knowledge-update",
    "abstention": false,
    "relevant_sessions": [
@@ -5844,7 +5795,6 @@
   },
   {
    "id": "8aef76bc",
-   "question": "I'm going back to our previous conversation about DIY home decor projects using recycled materials. Can you remind me what sealant you recommended for the newspaper flower vase?",
    "category": "single-session-assistant",
    "abstention": false,
    "relevant_sessions": [
@@ -5884,7 +5834,6 @@
   },
   {
    "id": "8e9d538c",
-   "question": "How many skeins of worsted weight yarn did I find in my stash?",
    "category": "single-session-user",
    "abstention": false,
    "relevant_sessions": [
@@ -6016,7 +5965,6 @@
   },
   {
    "id": "8fb83627",
-   "question": "How many issues of National Geographic have I finished reading?",
    "category": "knowledge-update",
    "abstention": false,
    "relevant_sessions": [
@@ -6143,7 +6091,6 @@
   },
   {
    "id": "982b5123",
-   "question": "How many months ago did I book the Airbnb in San Francisco?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -6266,7 +6213,6 @@
   },
   {
    "id": "9bbe84a2",
-   "question": "What was my previous goal for my Apex Legends level before I updated my goal?",
    "category": "knowledge-update",
    "abstention": false,
    "relevant_sessions": [
@@ -6398,7 +6344,6 @@
   },
   {
    "id": "a08a253f",
-   "question": "How many days a week do I attend fitness classes?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -6529,7 +6474,6 @@
   },
   {
    "id": "a1eacc2a",
-   "question": "How many short stories have I written since I started writing regularly?",
    "category": "knowledge-update",
    "abstention": false,
    "relevant_sessions": [
@@ -6652,7 +6596,6 @@
   },
   {
    "id": "a2f3aa27",
-   "question": "How many followers do I have on Instagram now?",
    "category": "knowledge-update",
    "abstention": false,
    "relevant_sessions": [
@@ -6784,7 +6727,6 @@
   },
   {
    "id": "a3332713",
-   "question": "What is the total amount I spent on gifts for my coworker and brother?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -6909,7 +6851,6 @@
   },
   {
    "id": "a3838d2b",
-   "question": "How many charity events did I participate in before the 'Run for the Cure' event?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -7043,7 +6984,6 @@
   },
   {
    "id": "a40e080f",
-   "question": "I was going through our previous conversation and I was wondering if you could remind me of the two companies you mentioned that prioritize employee safety and well-being like Triumvirate?",
    "category": "single-session-assistant",
    "abstention": false,
    "relevant_sessions": [
@@ -7175,7 +7115,6 @@
   },
   {
    "id": "a4996e51",
-   "question": "How many hours do I work in a typical week during peak campaign seasons?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -7305,7 +7244,6 @@
   },
   {
    "id": "ad7109d1",
-   "question": "What speed is my new internet plan?",
    "category": "single-session-user",
    "abstention": false,
    "relevant_sessions": [
@@ -7436,7 +7374,6 @@
   },
   {
    "id": "b01defab",
-   "question": "Did I finish reading 'The Nightingale' by Kristin Hannah?",
    "category": "knowledge-update",
    "abstention": false,
    "relevant_sessions": [
@@ -7559,7 +7496,6 @@
   },
   {
    "id": "b46e15ee",
-   "question": "What charity event did I participate in a month ago?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -7687,7 +7623,6 @@
   },
   {
    "id": "b9cfe692",
-   "question": "How long did I take to finish 'The Seven Husbands of Evelyn Hugo' and 'The Nightingale' combined?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -7821,7 +7756,6 @@
   },
   {
    "id": "ba358f49",
-   "question": "How many years will I be when my friend Rachel gets married?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -7957,7 +7891,6 @@
   },
   {
    "id": "c4f10528",
-   "question": "I'm planning to visit Bandung again and I was wondering if you could remind me of the name of that restaurant in Cihampelas Walk that serves a great Nasi Goreng?",
    "category": "single-session-assistant",
    "abstention": false,
    "relevant_sessions": [
@@ -7995,7 +7928,6 @@
   },
   {
    "id": "c9f37c46",
-   "question": "How long had I been watching stand-up comedy specials regularly when I attended the open mic night at the local comedy club?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -8124,7 +8056,6 @@
   },
   {
    "id": "caf9ead2",
-   "question": "How long did it take to move to the new apartment?",
    "category": "single-session-user",
    "abstention": false,
    "relevant_sessions": [
@@ -8253,7 +8184,6 @@
   },
   {
    "id": "cc06de0d",
-   "question": "For my daily commute, how much more expensive was the taxi ride compared to the train fare?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -8375,7 +8305,6 @@
   },
   {
    "id": "cf22b7bf",
-   "question": "How much weight have I lost since I started going to the gym consistently?",
    "category": "knowledge-update",
    "abstention": false,
    "relevant_sessions": [
@@ -8510,7 +8439,6 @@
   },
   {
    "id": "d24813b1",
-   "question": "I'm thinking of inviting my colleagues over for a small gathering. Any tips on what to bake?",
    "category": "single-session-preference",
    "abstention": false,
    "relevant_sessions": [
@@ -8552,7 +8480,6 @@
   },
   {
    "id": "d6233ab6",
-   "question": "I've been feeling nostalgic lately. Do you think it would be a good idea to attend my high school reunion?",
    "category": "single-session-preference",
    "abstention": false,
    "relevant_sessions": [
@@ -8593,7 +8520,6 @@
   },
   {
    "id": "d851d5ba",
-   "question": "How much money did I raise for charity in total?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -8723,7 +8649,6 @@
   },
   {
    "id": "dd2973ad",
-   "question": "What time did I go to bed on the day before I had a doctor's appointment?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -8763,7 +8688,6 @@
   },
   {
    "id": "e8a79c70",
-   "question": "I was going through our previous conversation about making a classic French omelette, and I wanted to confirm - how many eggs did you say we need for the recipe?",
    "category": "single-session-assistant",
    "abstention": false,
    "relevant_sessions": [
@@ -8803,7 +8727,6 @@
   },
   {
    "id": "eac54add",
-   "question": "What was the significant buisiness milestone I mentioned four weeks ago?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -8933,7 +8856,6 @@
   },
   {
    "id": "ef66a6e5",
-   "question": "How many sports have I played competitively in the past?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -9061,7 +8983,6 @@
   },
   {
    "id": "f4f1d8a4",
-   "question": "Who gave me a new stand mixer as a birthday gift?",
    "category": "single-session-user",
    "abstention": false,
    "relevant_sessions": [
@@ -9196,7 +9117,6 @@
   },
   {
    "id": "gpt4_2f56ae70",
-   "question": "Which streaming service did I start using most recently?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -9334,7 +9254,6 @@
   },
   {
    "id": "gpt4_385a5000",
-   "question": "Which seeds were started first, the tomatoes or the marigolds?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -9465,7 +9384,6 @@
   },
   {
    "id": "gpt4_4929293b",
-   "question": "What was the the life event of one of my relatives that I participated in a week ago?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -9602,7 +9520,6 @@
   },
   {
    "id": "gpt4_4cd9eba1",
-   "question": "How many weeks have I been accepted into the exchange program when I started attending the pre-departure orientation sessions?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -9737,7 +9654,6 @@
   },
   {
    "id": "gpt4_59149c77",
-   "question": "How many days passed between my visit to the Museum of Modern Art (MoMA) and the 'Ancient Civilizations' exhibit at the Metropolitan Museum of Art?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -9863,7 +9779,6 @@
   },
   {
    "id": "gpt4_59149c78",
-   "question": "I mentioned that I participated in an art-related event two weeks ago. Where was that event held at?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -10004,7 +9919,6 @@
   },
   {
    "id": "gpt4_59c863d7",
-   "question": "How many model kits have I worked on or bought?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -10142,7 +10056,6 @@
   },
   {
    "id": "gpt4_74aed68e",
-   "question": "How many days passed between the day I replaced my spark plugs and the day I participated in the Turbocharged Tuesdays auto racking event?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -10272,7 +10185,6 @@
   },
   {
    "id": "gpt4_7abb270c",
-   "question": "What is the order of the six museums I visited from earliest to latest?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -10400,7 +10312,6 @@
   },
   {
    "id": "gpt4_7ca326fa",
-   "question": "Who graduated first, second and third among Emma, Rachel and Alex?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -10526,7 +10437,6 @@
   },
   {
    "id": "gpt4_7fce9456",
-   "question": "How many properties did I view before making an offer on the townhouse in the Brookside neighborhood?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -10661,7 +10571,6 @@
   },
   {
    "id": "gpt4_8279ba03",
-   "question": "What kitchen appliance did I buy 10 days ago?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -10794,7 +10703,6 @@
   },
   {
    "id": "gpt4_88806d6e",
-   "question": "Who did I meet first, Mark and Sarah or Tom?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -10928,7 +10836,6 @@
   },
   {
    "id": "gpt4_8c8961ae",
-   "question": "Which trip did I take first, the one to Europe with family or the solo trip to Thailand?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -11051,7 +10958,6 @@
   },
   {
    "id": "gpt4_a1b77f9c",
-   "question": "How many weeks in total do I spent on reading 'The Nightingale' and listening to 'Sapiens: A Brief History of Humankind' and 'The Power'?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -11176,7 +11082,6 @@
   },
   {
    "id": "gpt4_ab202e7f",
-   "question": "How many kitchen items did I replace or fix?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -11314,7 +11219,6 @@
   },
   {
    "id": "gpt4_b4a80587",
-   "question": "Which event happened first, the road trip to the coast or the arrival of the new prime lens?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -11444,7 +11348,6 @@
   },
   {
    "id": "gpt4_c27434e8",
-   "question": "Which project did I start first, the Ferrari model or the Japanese Zero fighter plane model?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -11570,7 +11473,6 @@
   },
   {
    "id": "gpt4_d84a3211",
-   "question": "How much total money have I spent on bike-related expenses since the start of the year?",
    "category": "multi-session",
    "abstention": false,
    "relevant_sessions": [
@@ -11712,7 +11614,6 @@
   },
   {
    "id": "gpt4_e414231e",
-   "question": "How many days passed between the day I fixed my mountain bike and the day I decided to upgrade my road bike's pedals?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [
@@ -11754,7 +11655,6 @@
   },
   {
    "id": "gpt4_f420262d",
-   "question": "What was the airline that I flied with on Valentine's day?",
    "category": "temporal-reasoning",
    "abstention": false,
    "relevant_sessions": [

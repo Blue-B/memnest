@@ -63,6 +63,14 @@ def load_turns():
     return turns, speakers
 
 
+def attach_questions(rows):
+    """Result files carry question ids only; the text is read from the dataset cache."""
+    data, _ = datasets.load("locomo")
+    text = {q["id"]: q["question"] for g in build.locomo_groups(data, False) for q in g["questions"]}
+    for row in rows:
+        row.setdefault("question", text[row["id"]])
+
+
 def classify(record, turns, speakers):
     project = record["project"]
     relevant = record["relevant"]
@@ -131,6 +139,7 @@ def main():
         result = json.load(handle)
     turns, speakers = load_turns()
     rows = [r for r in result["per_question"] if r["relevant"]]
+    attach_questions(rows)
     misses = [r for r in rows if not (set(r["ranked"]) & set(r["relevant"]))]
     print(f"scored={len(rows)} misses(top10)={len(misses)} ({len(misses)/len(rows):.1%})")
     label_counts = collections.Counter()
