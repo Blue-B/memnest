@@ -58,9 +58,23 @@ pub fn resolve_master_key(data_dir: &Path) -> Result<String> {
         }
         return Ok(trimmed);
     }
-    // Generate a fresh random key. On Unix the restrictive mode is applied by
-    // open(2), before any key bytes exist on disk.
-    std::fs::create_dir_all(data_dir)?;
+    let Some(encoded) = create_random_secret(&key_path)? else {
+        return resolve_master_key(data_dir);
+    };
+    tracing::info!(
+        "generated new memnest master key at {} (mode 0600)",
+        key_path.display()
+    );
+    Ok(encoded)
+}
+
+/// Writes 32 random bytes (base64) to a new file. On Unix the restrictive mode is
+/// applied by open(2), before any secret bytes exist on disk. `None` means another
+/// process created the file first.
+fn create_random_secret(path: &Path) -> Result<Option<String>> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let mut bytes = [0u8; 32];
     rand::rng().fill_bytes(&mut bytes);
     let encoded = BASE64.encode(bytes);
@@ -71,24 +85,37 @@ pub fn resolve_master_key(data_dir: &Path) -> Result<String> {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let mut file = match options.open(&key_path) {
+    let mut file = match options.open(path) {
         Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            return resolve_master_key(data_dir);
-        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(None),
         Err(error) => {
-            return Err(error)
-                .with_context(|| format!("write master key to {}", key_path.display()));
+            return Err(error).with_context(|| format!("write secret file {}", path.display()));
         }
     };
     use std::io::Write;
     file.write_all(encoded.as_bytes())?;
     file.sync_all()?;
-    tracing::info!(
-        "generated new memnest master key at {} (mode 0600)",
-        key_path.display()
-    );
-    Ok(encoded)
+    Ok(Some(encoded))
+}
+
+/// Per-install bearer token for vault routes, kept in `<data_dir>/api-token` (0600).
+/// Reading it proves the caller can read the data directory, which a web page or
+/// another machine on the network cannot.
+pub fn resolve_api_token(data_dir: &Path) -> Result<String> {
+    let path = data_dir.join("api-token");
+    for _ in 0..2 {
+        if let Some(token) = create_random_secret(&path)? {
+            return Ok(token);
+        }
+        let token = std::fs::read_to_string(&path)
+            .with_context(|| format!("read API token at {}", path.display()))?;
+        if token.trim().len() >= 32 {
+            return Ok(token.trim().to_string());
+        }
+        // An empty or cut-off file would lock the vault or weaken it; replace it.
+        std::fs::remove_file(&path)?;
+    }
+    Err(anyhow!("could not create {}", path.display()))
 }
 
 pub fn init_crypto(master_key: Option<&str>) -> Result<()> {
@@ -245,6 +272,26 @@ mod tests {
 
     // These tests mutate the shared global CIPHER, so serialize them.
     static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn api_token_is_created_once_owner_only_and_reused() {
+        let dir = tempfile::tempdir().unwrap();
+        let token = resolve_api_token(dir.path()).unwrap();
+        assert!(token.len() >= 32);
+        assert_eq!(resolve_api_token(dir.path()).unwrap(), token);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(dir.path().join("api-token"))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        // A cut-off file is replaced instead of becoming a guessable token.
+        std::fs::write(dir.path().join("api-token"), "short").unwrap();
+        assert!(resolve_api_token(dir.path()).unwrap().len() >= 32);
+    }
 
     #[test]
     fn test_roundtrip() {

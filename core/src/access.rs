@@ -52,6 +52,28 @@ pub struct AccessControl {
 }
 
 tokio::task_local! { pub static CURRENT_PRINCIPAL: Principal; }
+// Set for HTTP requests in the mode with no MEMNEST_TOKEN and no policy: whether
+// the request carried the per-install API token. Unset means the caller is already
+// authenticated (token or policy mode) or is the local owner (stdio, library).
+tokio::task_local! { static VAULT_TOKEN_OK: bool; }
+
+fn sha256_hex(value: &str) -> String {
+    format!("{:x}", Sha256::digest(value.as_bytes()))
+}
+
+/// Compares two SHA-256 hex digests without stopping at the first difference.
+fn digest_eq(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |v, (a, b)| v | (a ^ b)) == 0
+}
+
+fn bearer_matches(header: &str, token: &str) -> bool {
+    digest_eq(&sha256_hex(header), &sha256_hex(&format!("Bearer {token}")))
+}
+
+/// Vault operations need the API token when nothing else authenticated the request.
+pub fn vault_token_ok() -> bool {
+    VAULT_TOKEN_OK.try_with(|ok| *ok).unwrap_or(true)
+}
 
 fn valid_project(value: &str) -> bool {
     !value.trim().is_empty()
@@ -147,16 +169,10 @@ impl AccessControl {
         if token.len() < 32 || token.len() > 4096 {
             return None;
         }
-        let digest = format!("{:x}", Sha256::digest(token.as_bytes()));
+        let digest = sha256_hex(token);
         self.principals
             .iter()
-            .find(|p| {
-                p.token_sha256
-                    .bytes()
-                    .zip(digest.bytes())
-                    .fold(0u8, |v, (a, b)| v | (a ^ b))
-                    == 0
-            })
+            .find(|p| digest_eq(&p.token_sha256, &digest))
             .cloned()
     }
 }
@@ -348,7 +364,10 @@ pub async fn middleware(
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let access = system.read().await.access.clone();
+    let (access, api_token) = {
+        let sys = system.read().await;
+        (sys.access.clone(), sys.api_token.clone())
+    };
     let header = request
         .headers()
         .get("authorization")
@@ -356,16 +375,24 @@ pub async fn middleware(
         .unwrap_or("");
     if !access.enabled() {
         if let Some(token) = crate::server::auth_token() {
-            let expected = format!("Bearer {token}");
-            if header != expected {
+            if !bearer_matches(header, &token) {
                 return Err(StatusCode::UNAUTHORIZED);
             }
-        } else if !browser_safe_without_auth(request.headers()) {
+            return Ok(next.run(request).await);
+        }
+        if !browser_safe_without_auth(request.headers()) {
             // Without a credential, a web page could otherwise drive this service
             // (cross-site POST or DNS rebinding).
             return Err(StatusCode::FORBIDDEN);
         }
-        return Ok(next.run(request).await);
+        // Memory stays open to local clients, but the vault holds credentials:
+        // it needs the token only a reader of the data directory can present.
+        let vault_ok = bearer_matches(header, &api_token);
+        let path = request.uri().path();
+        if !vault_ok && (path == "/secrets" || path.starts_with("/secrets/")) {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+        return Ok(VAULT_TOKEN_OK.scope(vault_ok, next.run(request)).await);
     }
     let Some(principal) = access.authenticate(header) else {
         // No credentials, query text, response body, or secret names in the audit trail.

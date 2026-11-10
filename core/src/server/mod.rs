@@ -112,8 +112,9 @@ mod http_tests {
     use super::api::test_support::build_system;
     use serde_json::json;
 
-    async fn serve() -> (tempfile::TempDir, String) {
+    async fn serve() -> (tempfile::TempDir, String, String) {
         let (tmp, system) = build_system().await;
+        let token = system.read().await.api_token.clone();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move {
@@ -121,7 +122,7 @@ mod http_tests {
                 .await
                 .unwrap();
         });
-        (tmp, base)
+        (tmp, base, token)
     }
 
     fn client() -> reqwest::Client {
@@ -130,7 +131,7 @@ mod http_tests {
 
     #[tokio::test]
     async fn cross_site_requests_and_non_json_mcp_posts_are_rejected() {
-        let (_tmp, base) = serve().await;
+        let (_tmp, base, _) = serve().await;
         let list = json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}).to_string();
         let post = |content_type: &'static str, origin: Option<&'static str>| {
             let mut request = client()
@@ -161,5 +162,50 @@ mod http_tests {
                 .status();
             assert_eq!(status.as_u16(), 415, "{path}");
         }
+    }
+
+    #[tokio::test]
+    async fn vault_needs_the_api_token_when_no_other_credential_is_configured() {
+        let (_tmp, base, token) = serve().await;
+        let secrets = |auth: Option<String>| {
+            let mut request = client().get(format!("{base}/secrets"));
+            if let Some(auth) = auth {
+                request = request.header("authorization", auth);
+            }
+            async move { request.send().await.unwrap().status().as_u16() }
+        };
+        assert_eq!(secrets(None).await, 401);
+        assert_eq!(secrets(Some("Bearer wrong".into())).await, 401);
+        assert_eq!(secrets(Some(format!("Bearer {token}"))).await, 200);
+        let one = client().get(format!("{base}/secrets/any"));
+        assert_eq!(one.send().await.unwrap().status().as_u16(), 401);
+        // Memory routes stay open to local clients.
+        let health = client().get(format!("{base}/health")).send().await.unwrap();
+        assert_eq!(health.status().as_u16(), 200);
+
+        // The same rule for secret tools called through POST /mcp.
+        let mcp = |method: &'static str, auth: Option<String>| {
+            let mut request = client().post(format!("{base}/mcp")).json(&json!({
+                "jsonrpc":"2.0","id":1,"method":method,
+                "params":{"name":"secret_list","arguments":{}}
+            }));
+            if let Some(auth) = auth {
+                request = request.header("authorization", auth);
+            }
+            async move {
+                let body: serde_json::Value = request.send().await.unwrap().json().await.unwrap();
+                body["result"].clone()
+            }
+        };
+        let denied = mcp("tools/call", None).await;
+        assert_eq!(denied["isError"], true);
+        assert!(denied.to_string().contains("api-token"));
+        let allowed = mcp("tools/call", Some(format!("Bearer {token}"))).await;
+        assert!(allowed["isError"].is_null(), "{allowed}");
+        let names = |result: serde_json::Value| result["tools"].to_string();
+        assert!(!names(mcp("tools/list", None).await).contains("secret_get"));
+        assert!(
+            names(mcp("tools/list", Some(format!("Bearer {token}"))).await).contains("secret_get")
+        );
     }
 }

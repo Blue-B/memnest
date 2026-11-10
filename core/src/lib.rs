@@ -36,6 +36,8 @@ pub struct MemorySystem {
     pub lifecycle_status: Arc<RwLock<lifecycle::LifecycleStatus>>,
     pub vault_enabled: bool,
     pub secret_tools_enabled: bool,
+    /// Bearer token from `<data_dir>/api-token`; see `access::middleware`.
+    pub api_token: String,
     index_sync: tokio::sync::Mutex<()>,
     _writer_lock: std::fs::File,
 }
@@ -58,6 +60,7 @@ impl MemorySystem {
         // This means PAT/API key storage works out of the box.
         let master_key = crypto::resolve_master_key(&config.data_dir)?;
         crypto::init_crypto(Some(&master_key))?;
+        let api_token = crypto::resolve_api_token(&config.data_dir)?;
         let database = storage::Database::new(&config.data_dir).await?;
         database.ensure_access_mode(access.enabled())?;
         let encrypted_values = database.encrypted_vault_values()?;
@@ -140,6 +143,7 @@ impl MemorySystem {
             vault_enabled: true,
             secret_tools_enabled: std::env::var("MEMNEST_EXPOSE_SECRET_TOOLS")
                 .is_ok_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES")),
+            api_token,
             index_sync: tokio::sync::Mutex::new(()),
             _writer_lock: writer_lock,
         })

@@ -43,7 +43,9 @@ pub async fn dispatch(system: Arc<RwLock<MemorySystem>>, req: &Value) -> Option<
             })
         }
         "tools/list" => {
-            let enabled = system.read().await.secret_tools_enabled && crate::access::is_admin();
+            let enabled = system.read().await.secret_tools_enabled
+                && crate::access::is_admin()
+                && crate::access::vault_token_ok();
             json!({"tools": tools(enabled)})
         }
         "tools/call" => {
@@ -237,6 +239,10 @@ async fn call_tool(system: Arc<RwLock<MemorySystem>>, params: &Value) -> Result<
 
 async fn require_vault(system: &Arc<RwLock<MemorySystem>>) -> Result<()> {
     crate::access::require_admin()?;
+    anyhow::ensure!(
+        crate::access::vault_token_ok(),
+        "secret tools over HTTP need the token from <data_dir>/api-token as Authorization: Bearer"
+    );
     anyhow::ensure!(
         system.read().await.secret_tools_enabled && crate::crypto::is_enabled(),
         "secret tools are disabled; set MEMNEST_EXPOSE_SECRET_TOOLS=1"
