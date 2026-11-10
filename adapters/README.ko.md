@@ -13,7 +13,7 @@ Memnest 코어는 특정 플랫폼에 묶이지 않습니다. 어떤 에이전�
 | stdio 기반 MCP | 자기 자식 프로세스를 띄우는 클라이언트의 도구 연결 |
 | `memnest hook`, `memnest watch` | 확장 없이 어떤 호스트에든 프롬프트 시점 주입과 대화 수집을 주는 코어 명령. `SessionStart`와 `UserPromptSubmit`에서 훅은 [작업 카드](../docs/task-cards.ko.md)도 처리합니다. |
 | MCP `task_card`, `POST /task-card` | MCP 클라이언트나 일반 HTTP 어댑터용 작업 카드 도구 |
-| `pi-extension/` | 기본 기억 도구 5개, 직접 켜는 금고 도구 4개, 범위가 정해진 자동 회상, `/memnest` |
+| `pi-extension/` | 기본 도구 6개(`task_card` 포함), 직접 켜는 금고 도구 4개, 범위가 정해진 자동 회상, `/memnest` |
 | `adapters/generic-http/` | 다른 호스트를 위한, 의존성 없는 JSONL 참고 어댑터 |
 
 ## 어댑터 약속

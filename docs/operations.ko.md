@@ -25,13 +25,13 @@ cargo build --release
 
 ### 한 번에 설치
 
-v0.3.0 Linux 릴리스라면, 실행하기 전에 설치 스크립트를 내려받아 검토하세요.
+v0.5.1 Linux 릴리스라면, 실행하기 전에 설치 스크립트를 내려받아 검토하세요.
 
 ```bash
 installer="$(mktemp)"
-curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.3.0/core/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.5.1/core/scripts/install.sh \
   -o "$installer"
-VERSION=v0.3.0 bash "$installer" --user
+VERSION=v0.5.1 bash "$installer" --user
 ```
 
 소스 체크아웃에서는 빌드한 뒤 `core/`에서 실행합니다.

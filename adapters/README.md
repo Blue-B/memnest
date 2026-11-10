@@ -13,7 +13,7 @@ Memnest keeps the core platform-neutral. Any agent can use the HTTP API or the M
 | MCP over stdio | Tool access for a client that spawns its own child process. |
 | `memnest hook`, `memnest watch` | Core subcommands that give any host prompt-time injection and transcript capture without an extension. On `SessionStart` and `UserPromptSubmit` the hook also runs [task cards](../docs/task-cards.md). |
 | MCP `task_card`, `POST /task-card` | The task card tool for any MCP client or plain HTTP adapter. |
-| `pi-extension/` | Five canonical memory tools, four opt-in vault tools, scoped Autocontext, and `/memnest`. |
+| `pi-extension/` | Six canonical tools (including `task_card`), four opt-in vault tools, scoped Autocontext, and `/memnest`. |
 | `adapters/generic-http/` | Dependency-free JSONL reference adapter for other hosts. |
 
 ## Adapter contract

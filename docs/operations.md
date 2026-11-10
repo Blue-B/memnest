@@ -25,13 +25,13 @@ cargo build --release
 
 ### One-command setup
 
-For the v0.3.0 Linux release, download and review the installer before running it:
+For the v0.5.1 Linux release, download and review the installer before running it:
 
 ```bash
 installer="$(mktemp)"
-curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.3.0/core/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.5.1/core/scripts/install.sh \
   -o "$installer"
-VERSION=v0.3.0 bash "$installer" --user
+VERSION=v0.5.1 bash "$installer" --user
 ```
 
 From a source checkout, run this from `core/` after building:
