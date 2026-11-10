@@ -338,6 +338,22 @@ Open in this session: none
 To change: ask the assistant, e.g. "close the task card" or "mark the task card done".
 ```
 
+## Rules stored before the card existed (2026-11-10)
+
+A card only held what was said after it was created. In a real pi session the user had told the model, five days before the card was first saved, to stop proposing new changes while results were pending. That rule was stored as a memory in the work's project, but none of the card's 15 versions contained it, the default search scope did not reach that project, and the model made the same kind of proposal again until the user repeated the rule.
+
+Now the answer to the first save of a new card lists memories already stored as the user's rules and preferences for that work (importance `preference` or kind `rule`), with their ids, and asks the model to copy the ones that still apply into the card. The work's project is the one that holds at least three of the positively scored search hits for the card's title and text; its rules are listed newest first, then rule hits from the search itself, 10 lines at most, one 200-character excerpt each. The list is labelled as reference data, and stored reminder tags are defused the same way as card text. Saving an existing card adds nothing.
+
+Checked on a copy of the real store (54,000 memories), with the build under test on a scratch port:
+
+| New card | Listed |
+| --- | --- |
+| The same work as the real session (its project holds 16 stored rules) | 10 rules from that project, newest first, including the two that the real session missed |
+| An unrelated topic with no stored memories | 1 unrelated rule (a recent memory that the vector search returned) |
+| Work whose project holds no rules | 1 rule from the shared `playbook` |
+
+Limits: the list is shown once, in the tool result, and the model still decides what to copy; whether models copy the right rules has not been measured. An unrelated line can appear, as in the second row. Hosts that write cards through an older core do not get the list.
+
 ## Remaining limits and how they are handled
 
 | Limit | Handling | Checked |
