@@ -42,7 +42,6 @@ hnsw = { package = "fast-hnsw", version = "1.0" }
 tantivy = "0.26"
 
 # ML / ONNX Runtime
-# ort = { version = "2.0.0-rc.12", optional = true }  # disabled until openssl issue resolved
 fastembed = { version = "5", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"] }
 half = "2.4"
 

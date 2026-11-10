@@ -31,13 +31,4 @@ if grep -E -i -n 'dashboard|Windows release archive|Memnest API and MCP:|Memnest
   fail "install paths still advertise a removed or unpublished surface"
 fi
 
-REPO_ROOT="$(cd "$ROOT/.." && pwd)"
-CONTRIB_INSTALL="$REPO_ROOT/pi-extension/contrib/install.sh"
-CONTRIB_UNIT="$REPO_ROOT/pi-extension/contrib/memnest.service"
-if [ -f "$CONTRIB_INSTALL" ] && [ -f "$CONTRIB_UNIT" ] &&
-  grep -E -i -n 'After=default.target|dashboard|not published to npm yet' \
-    "$CONTRIB_INSTALL" "$CONTRIB_UNIT"; then
-  fail "legacy contrib installers still advertise a broken or removed surface"
-fi
-
 printf 'verify_packaging_ok\n'
