@@ -22,7 +22,7 @@ try {
   };
   const tools = new Map();
   (await import("../dist/index.mjs")).default({registerTool(t){tools.set(t.name,t);},registerCommand(){},on(){}});
-  assert.equal(tools.size, 5);
+  assert.equal(tools.size, 6);
   const input = {text:"repair report", project:"alpha", code_files:["code.rs"]};
   const result = await tools.get("memory_remember").execute("x", input, null, null, {cwd:root});
   assert.match(result.content[0].text, /succeeded/);
@@ -39,7 +39,7 @@ try {
   const bad = await tools.get("memory_remember").execute("x", {...input,code_files:["../outside"]}, null, null, {cwd:root});
   assert.match(bad.content[0].text, /Cannot capture/);
   assert.equal(calls, before);
-  console.log("PASS pi capture/compare runs the real core CLI; source contents not stored; path traversal refused; five tools unchanged");
+  console.log("PASS pi capture/compare runs the real core CLI; source contents not stored; path traversal refused; six tools unchanged");
 } finally {
   await rm(root, {recursive:true, force:true});
 }
