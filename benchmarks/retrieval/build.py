@@ -106,12 +106,20 @@ def lme_groups(data, date_in_text, indices):
     for index in indices:
         item = data[index]
         turns = []
+        seen_sessions = set()
+        repeated_sessions = 0
         for session_id, date, session in zip(
             item["haystack_session_ids"],
             item["haystack_dates"],
             item["haystack_sessions"],
             strict=True,
         ):
+            # 13 questions repeat a byte-identical session id in the haystack;
+            # a transcript replay of the same event is deduplicated by memnest.
+            if session_id in seen_sessions:
+                repeated_sessions += 1
+                continue
+            seen_sessions.add(session_id)
             for position, turn in enumerate(session):
                 label = "User said" if turn["role"] == "user" else "Assistant answered"
                 turns.append(
@@ -129,6 +137,7 @@ def lme_groups(data, date_in_text, indices):
             {
                 "project": f"lme-{item['question_id']}",
                 "turns": turns,
+                "repeated_sessions_skipped": repeated_sessions,
                 "questions": [
                     {
                         "id": item["question_id"],

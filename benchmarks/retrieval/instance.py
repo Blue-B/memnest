@@ -82,7 +82,11 @@ class Instance:
         self.client = None
 
     def __enter__(self):
-        self.start()
+        try:
+            self.start()
+        except BaseException:
+            self.stop()  # a failed start must not leak the temp dir or process
+            raise
         return self
 
     def __exit__(self, *exc):
