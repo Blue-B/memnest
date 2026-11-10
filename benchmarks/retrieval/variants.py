@@ -38,6 +38,12 @@ def content_words(question):
     return " ".join(kept) or question
 
 
+def syntax_safe(question):
+    """Drop punctuation that tantivy's query parser treats as syntax ('s, quotes, brackets...)."""
+    out = re.sub(r"['\u2019]s\b", "", question)
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", out)).strip() or question
+
+
 def label_form(question, names):
     """Mimic the stored form '<Speaker> said: ...' so the query looks like a turn."""
     for name in names:
@@ -96,6 +102,8 @@ def main():
                 nonames = ask(strip_names(text, names), 10)
                 keywords = ask(content_words(text), 10)
                 labelled = ask(label_form(text, names), 10)
+                safe = ask(syntax_safe(text), 10)
+                safe_nonames = ask(syntax_safe(strip_names(text, names)), 10)
                 rows.append({
                     "id": q["id"], "category": q["category"], "relevant": q["relevant"],
                     "variants": {
@@ -106,6 +114,9 @@ def main():
                         "query_without_speaker_names": nonames,
                         "query_content_words_only": keywords,
                         "query_as_stored_form": labelled,
+                        "query_punctuation_stripped": safe,
+                        "query_punctuation_and_names_stripped": safe_nonames,
+                        "rrf_base_plus_punctuation_stripped": rrf([base, safe]),
                         "rrf_base_plus_without_names": rrf([base, nonames]),
                         "rrf_base_plus_content_words": rrf([base, keywords]),
                     },
