@@ -222,15 +222,7 @@ Reaching the HTTP API from something other than a local client takes more than a
 
 ## Development checks
 
-Run everything with one command. It builds, runs each package suite against a scratch instance on its own port, and checks the documentation contract:
-
-```bash
-scripts/preflight.sh
-```
-
-Prefer it over the individual commands: it runs every suite against one scratch instance, so a change in `core/` cannot break a dependent package while each suite separately stays green.
-
-The underlying commands, if you want one at a time. Each block is a subshell, so every line starts from the repository root:
+Run each package suite on its own. Each block is a subshell, so every line starts from the repository root:
 
 ```bash
 (cd core                  && cargo check && cargo test --locked -- --test-threads=1)
@@ -308,10 +300,7 @@ configured service data directory, never this temporary demo. Setup's separate
 scratch roundtrip *does* write to its configured service before trashing the probe.
 Automatic recall remains opt-in; evaluation does not install capture or recall.
 
-`scripts/preflight.sh` remains a legacy release check,
-not this safe demo: it uses fixed/shared defaults and may download a model. Do not
-use it for isolated no-download validation. See the fixed fixture and measured
-limitations in [the product plan](product-upgrade-plan.ko.md).
+See the fixed fixture and measured limitations in [the product plan](product-upgrade-plan.ko.md).
 
 Diagnostic exit status is machine-readable: **0** for the two advertised contracts,
 **1** for a diagnostic failure. Failure categories currently use human-readable fixed
