@@ -43,7 +43,7 @@ Tools: `memory_search`, `memory_get`, `memory_remember`, `memory_update`, `memor
 
 ## Task cards
 
-For work that runs over several days. Your AI writes the card, Memnest adds your own messages to it word for word, and the next session opens the card and continues. In a replay of a real five-day pi session, the reply read 174K context tokens instead of 321K, and stopped proposing things against your stated policy (3 of 3 blind-graded runs, against 0 of 3). [How it works and limits](docs/task-cards.md)
+For work that runs over several days. Your AI writes the card, Memnest adds your own messages to it word for word, and the next session opens the card and continues. In a replay of a real five-day pi session, the reply read 174K context tokens instead of 321K. Your stated policy was respected in 3 of 3 blind-graded runs with the card, against 0 of 3 without it. A card does not force the model to follow it. [How it works and limits](docs/task-cards.md)
 
 ## Also included
 

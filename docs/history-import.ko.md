@@ -57,4 +57,4 @@ python3 scripts/test-memory-lifecycle.py
 
 기록 검사 스크립트는 선택적으로 `snapshot`, `transcript`, `session_id`, `queries`가 든 `--case <private.json>`을 받습니다. 오프라인 모델 캐시를 쓰는, 임의 포트의 인증된 루프백 서비스에만 가져오고, 금고는 복사하지 않은 채 개인 결과물을 남깁니다. 서버는 `finally`에서 멈춥니다.
 
-첫 검색 회상 기준을 못 맞춘 점과 기각한 검색 실험을 포함한 [기록된 검증 결과](history-import-validation-2026-09-27.md)(영문)를 참고하세요.
+첫 검색 회상 기준을 못 맞춘 점과 기각한 검색 실험을 포함한 [기록된 검증 결과](history-import-validation-2026-09-27.md)(한국어 문서)를 참고하세요.

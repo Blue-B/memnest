@@ -101,5 +101,5 @@ The history runner optionally accepts `--case <private.json>` with `snapshot`,
 authenticated loopback service with offline model cache, and retains private
 artifacts without copying vaults. The server is stopped in `finally`.
 
-See [the recorded validation results](history-import-validation-2026-09-27.md),
+See [the recorded validation results](history-import-validation-2026-09-27.md) (Korean),
 including the unmet first-search recall criterion and the rejected search experiment.

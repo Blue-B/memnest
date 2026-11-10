@@ -6,6 +6,17 @@ All notable changes to the `memnest` Rust engine are recorded here.
 
 ## [Unreleased]
 
+### Removed
+
+- Unused code: the `SessionSummary` and `SearchResult` types, `Database::insert_summary`, `get_summaries` and `recent_chunks`, the embedder's `model_name`, `encode` and `encode_batch`, `TextIndex::add`, `remove` and `replace_all_with_project`, and the plain `crypto::encrypt` and `crypto::decrypt` (the row-bound `encrypt_bound` and `decrypt_bound` are unchanged, including the legacy-cipher fallback). `text_search` and `add_text_doc` now exist only in tests.
+- New databases no longer create the empty `session_summaries` table. An existing table is left as it is, the same as `graph_edges`.
+- The old `pi-extension/contrib` source installer, `scripts/preflight.sh`, two unreferenced architecture diagrams, an unreferenced pi-extension logo, and a commented-out `ort` line in `Cargo.toml`.
+
+### Changed
+
+- Documentation fixes: the pinned install example now uses v0.5.1, the supported-versions table lists 0.5.x, the adapters page counts six pi tools, and links to Korean-only documents are labelled as Korean.
+- The task card summary in the README now states the replay result exactly (the policy was respected in 3 of 3 blind-graded runs with the card, 0 of 3 without) and notes that a card does not force the model to follow it.
+
 ## [0.5.1] - 2026-11-09
 
 ### Security
@@ -104,7 +115,7 @@ All notable changes to the `memnest` Rust engine are recorded here.
 - No database reset, automatic history replay, new dependency, or additional generative model call is required.
 - Linux x86_64 and aarch64 archives remain the release targets. macOS remains source-only; Windows builds are covered by CI but no Windows archive is published.
 
-See [history import](../docs/history-import.md), [search relevance](../docs/search-relevance.md), and [following captures](../docs/following-capture.md) for limits and validation.
+See [history import](../docs/history-import.md), [search relevance](../docs/search-relevance.md) (Korean), and [following captures](../docs/following-capture.md) (Korean) for limits and validation.
 
 ## [0.3.0] - 2026-09-15
 
@@ -133,7 +144,7 @@ See [history import](../docs/history-import.md), [search relevance](../docs/sear
 - Transcript neighbors follow capture order, not source chronology or final decisions. Existing stores do not need deletion or recapture.
 - macOS launchd and packaging code remains source-only until native installation, restart, and removal are validated.
 
-See [the v0.3.0 summary](../docs/next-release.ko.md) for user-facing changes since v0.2.1.
+See [the v0.3.0 summary](../docs/next-release.ko.md) (Korean) for user-facing changes since v0.2.1.
 
 ## [0.2.1] - 2026-09-01
 

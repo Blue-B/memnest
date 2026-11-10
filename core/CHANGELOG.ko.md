@@ -6,6 +6,17 @@
 
 ## [출시 전]
 
+### 제거
+
+- 쓰이지 않던 코드를 지웠습니다: `SessionSummary`, `SearchResult` 타입, `Database::insert_summary`, `get_summaries`, `recent_chunks`, 임베더의 `model_name`, `encode`, `encode_batch`, `TextIndex::add`, `remove`, `replace_all_with_project`, 그리고 맥락 없는 `crypto::encrypt`, `crypto::decrypt`. 행 단위로 묶는 `encrypt_bound`, `decrypt_bound`는 예전 암호 대체 경로를 포함해 그대로입니다. `text_search`와 `add_text_doc`은 이제 테스트에서만 존재합니다.
+- 새 데이터베이스는 빈 `session_summaries` 테이블을 만들지 않습니다. 이미 있는 테이블은 `graph_edges`처럼 그대로 둡니다.
+- 예전 `pi-extension/contrib` 소스 설치기, `scripts/preflight.sh`, 참조가 없던 구조도 그림 2장과 pi-extension 로고, `Cargo.toml`의 주석 처리된 `ort` 줄을 지웠습니다.
+
+### 변경
+
+- 문서를 바로잡았습니다: 고정 설치 예시를 v0.5.1로 올렸고, 지원 버전 표를 0.5.x로 고쳤고, 어댑터 문서의 pi 도구 수를 6개로 고쳤고, 한국어로만 쓰인 문서로 가는 링크에 한국어라고 표시했습니다.
+- README의 작업 카드 설명이 다시 돌려 본 결과를 정확히 적습니다(카드가 있을 때 블라인드 채점 3번 중 3번, 없을 때 3번 중 0번 방침을 지킴). 카드가 있다고 모델이 반드시 따르는 것은 아니라는 문구도 넣었습니다.
+
 ## [0.5.1] - 2026-11-09
 
 ### 보안
@@ -104,7 +115,7 @@
 - 데이터베이스 초기화, 자동 과거 기록 재생, 새 의존성, 추가 생성 모델 호출이 필요 없습니다.
 - 릴리스 대상은 계속 Linux x86_64와 aarch64 압축 파일입니다. macOS는 소스만 지원합니다. Windows 빌드는 CI로 확인하지만 Windows 압축 파일은 배포하지 않습니다.
 
-한계와 검증은 [과거 기록 가져오기](../docs/history-import.ko.md), [검색 관련성](../docs/search-relevance.md)(영문), [뒤이은 대화 조각](../docs/following-capture.md)(영문)을 보세요.
+한계와 검증은 [과거 기록 가져오기](../docs/history-import.ko.md), [검색 관련성](../docs/search-relevance.md)(한국어 문서), [뒤이은 대화 조각](../docs/following-capture.md)(한국어 문서)을 보세요.
 
 ## [0.3.0] - 2026-09-15
 

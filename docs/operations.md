@@ -300,7 +300,7 @@ configured service data directory, never this temporary demo. Setup's separate
 scratch roundtrip *does* write to its configured service before trashing the probe.
 Automatic recall remains opt-in; evaluation does not install capture or recall.
 
-See the fixed fixture and measured limitations in [the product plan](product-upgrade-plan.ko.md).
+See the fixed fixture and measured limitations in [the product plan](product-upgrade-plan.ko.md) (Korean).
 
 Diagnostic exit status is machine-readable: **0** for the two advertised contracts,
 **1** for a diagnostic failure. Failure categories currently use human-readable fixed
