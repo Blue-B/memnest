@@ -22,9 +22,15 @@
 curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh | bash
 ```
 
+Windows에서는 PowerShell에서 실행합니다(관리자 권한이 필요 없습니다).
+
+```powershell
+irm https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.ps1 | iex
+```
+
 서버와 대화 수집기를 시작하고, 찾은 Claude Code, Codex, Cursor 설정에 Memnest를 연결합니다. 기존 설정은 먼저 백업하고 복구 명령을 출력합니다. Codex는 새 훅을 `/hooks`에서 한 번 신뢰해야 실행합니다.
 
-Apple Silicon macOS, 또는 systemd가 있는 Linux(x86_64는 glibc 2.35 이상, Arm64는 glibc 2.39 이상)와 Python 3이 필요합니다. 처음 저장하거나 검색할 때 약 1.1GB 임베딩 모델을 내려받습니다.
+Apple Silicon macOS, systemd가 있는 Linux(x86_64는 glibc 2.35 이상, Arm64는 glibc 2.39 이상), 또는 64비트 x86 Windows 10/11과 Python 3이 필요합니다. Windows에서 Python은 클라이언트 연결에만 쓰이고, Windows 압축 파일은 v0.5.1 다음 릴리스부터 제공됩니다([자세히](docs/operations.ko.md#windows)). 처음 저장하거나 검색할 때 약 1.1GB 임베딩 모델을 내려받습니다.
 
 - pi: `pi install npm:pi-memnest@0.5.0`을 실행하고 `/memnest`로 확인합니다.
 - 그 밖의 MCP 도구: `http://127.0.0.1:3111/mcp`에 연결합니다([연결 예시](adapters/README.ko.md)).

@@ -99,20 +99,45 @@ scripts/install-linux.sh --user --bin target/release/memnest
 
 WSL 안의 `memnest watch`는 WSL 홈 폴더의 대화 기록을 읽습니다. Windows 쪽에서 실행되는 Claude Code나 Codex의 기록은 `memnest watch --path /mnt/c/Users/<사용자>/.claude/projects`처럼 경로를 지정해야 합니다. 수집기는 5초마다 파일을 확인하는 방식이라 `/mnt/c` 경로에서도 동작할 것으로 보지만, 시험하지는 않았습니다.
 
-### Windows 서비스
+### Windows
 
-`core`에서 `memnest.exe`를 빌드한 뒤, 저장소 루트에서 관리자 PowerShell을 실행합니다.
+네이티브 Windows 설치에는 64비트 x86 Windows 10 또는 11과 Microsoft Visual C++ 재배포 가능 패키지(x64)가 필요합니다. 대부분의 PC에는 이미 설치되어 있고, 없으면 설치기가 내려받을 주소를 알려 주고 멈춥니다. ARM64용 압축 파일은 없습니다. Windows 압축 파일은 v0.5.1 다음 릴리스부터 제공됩니다.
 
 ```powershell
-.\core\scripts\preflight-windows.ps1
-.\core\scripts\install-windows.ps1 -BinPath .\core\target\release\memnest.exe
+irm https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.ps1 | iex
 ```
 
-네이티브 서비스는 데이터를 `%ProgramData%\Memnest\data`에 두고 localhost에 바인드합니다.
+이 스크립트는 GitHub 릴리스에서 `memnest-<버전>-x86_64-pc-windows-msvc.zip`을 내려받아 SHA-256을 확인한 뒤, 그 안의 `scripts\install-windows.ps1`을 실행합니다. 관리자 권한이 필요 없고 Windows 서비스를 만들지 않습니다.
 
-서비스 래퍼는 WinSW입니다. 설치기는 한 버전과 그 SHA-256을 고정하고, 래퍼를 내려받았든 스크립트 옆에서 찾았든 설치 전에 파일을 검증하며, 맞지 않으면 파일을 지우고 멈춥니다. 그래서 `-WinSWVersion`을 바꾸려면 맞는 `-WinSWSha256`을 넘기거나 래퍼 옆에 `WinSW-x64.exe.sha256`을 두어야 합니다. 확인할 수 없는 바이트로는 관리자 권한 설치를 하지 않습니다.
+- `memnest.exe`, 제거·확인·지원 스크립트, 로그는 `%LOCALAPPDATA%\memnest`에 두고, 그 `bin` 폴더를 사용자 `PATH`에 추가합니다.
+- 기억은 `%USERPROFILE%\.memnest`에 저장합니다. 실행 파일의 기본 위치와 같습니다.
+- 로그인할 때 내 계정으로 시작하는 예약 작업 두 개를 등록합니다. `Memnest`(서버, `127.0.0.1:3111`)와 `Memnest Watch`(대화 수집)입니다. 둘 다 창 없이 실행되고, 멈추면 작업 스케줄러가 5분 안에 다시 시작합니다.
+- `Memnest Watch`는 `%USERPROFILE%\.claude\projects`, `%USERPROFILE%\.pi\agent\sessions`, `%USERPROFILE%\.codex\sessions`를 따라갑니다. 다른 폴더를 따라가게 하려면 `-WatchPath`를 넘깁니다.
+- `PATH`에 Python 3이 있으면 찾은 Claude Code, Codex, Cursor 설정을 Linux와 똑같이 병합하고, 같은 백업과 복구 명령을 제공합니다. Python이 없으면 직접 추가할 MCP 주소와 훅 명령을 출력합니다.
 
-Windows 설치기는 `memnest watch`를 자동으로 시작하지 않습니다. 대화 수집이 필요하면 따로 실행해야 하며, Windows 네이티브 수집은 시험하지 않았습니다.
+옵션을 넘기려면 내려받은 스크립트를 블록으로 실행합니다. `-Port`, `-InstallDir`, `-DataDir`, `-TaskName`, `-WatchPath`, `-Autocontext`, `-NoClients`, `-NoVerify`, `-NoPath`는 `install-windows.ps1`로 전달되고, `$env:MEMNEST_VERSION`으로 릴리스 태그를 고릅니다.
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.ps1))) -Port 3222 -Autocontext
+```
+
+소스에서 설치하려면 `core`를 빌드한 뒤 `.\core\scripts\install-windows.ps1 -BinPath .\core\target\release\memnest.exe`를 실행합니다. `preflight-windows.ps1`은 아무것도 바꾸지 않고 필요한 조건만 확인합니다.
+
+**WSL과 네이티브를 같은 포트에 함께 두지 마세요.** WSL 2는 `localhost`를 전달하므로, WSL 안의 Memnest와 네이티브 Memnest가 둘 다 3111을 쓸 수 없고, 어느 쪽 클라이언트든 먼저 시작한 서버에 연결됩니다. 설치기는 이미 응답하는 포트에는 설치하지 않습니다. 한쪽만 쓰거나, 네이티브 설치에 `-Port`로 다른 포트를 주고 Windows 쪽 클라이언트를 그 포트에 연결하세요. 두 저장소는 서로 별개입니다. 기억을 옮기려면 한쪽에서 `memnest --backup-dir <폴더>`, 다른 쪽에서 `memnest --restore-dir <폴더>`를 실행합니다.
+
+설치 확인, 진단 자료 수집, 제거는 `%LOCALAPPDATA%\memnest\scripts`에 복사된 스크립트로 합니다. 기본 설정의 Windows에서는 스크립트 파일을 실행할 때 그 프로세스에만 정책 우회를 지정해야 하며, 시스템 전체 설정은 바꾸지 않습니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\memnest\scripts\validate-installed-windows.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\memnest\scripts\support-bundle-windows.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\memnest\scripts\uninstall-windows.ps1"
+```
+
+제거하면 예약 작업 두 개, `PATH` 항목, `%LOCALAPPDATA%\memnest`가 지워집니다. `-RemoveData`를 넘기지 않으면 `%USERPROFILE%\.memnest`는 남습니다. Linux와 마찬가지로 클라이언트 설정을 먼저 복원하세요. 로그는 `%LOCALAPPDATA%\memnest\logs\server.log`와 `watch.log`이고, 기본으로는 오류만 기록됩니다.
+
+이전 버전의 `install-windows.ps1`은 관리자 권한으로 WinSW 서비스를 등록하고 데이터를 `%ProgramData%\Memnest`에 두었습니다. 서비스 계정은 사용자의 대화 기록을 읽을 수 없어서 이 방식은 없앴습니다. 그 방식으로 설치했다면 `memnest --data-dir "$env:ProgramData\Memnest\data" --backup-dir <폴더>`로 백업하고, 관리자 PowerShell에서 서비스를 중지·제거한 다음(`%ProgramData%\Memnest\app\memnest-service.exe stop`, 이어서 `uninstall`), 위 방법으로 설치하고, `Memnest` 작업을 멈춘 상태에서 `memnest --restore-dir <폴더>`를 실행하세요.
+
+확인하지 못한 부분: 압축 파일은 코드 서명이 되어 있지 않아 SmartScreen이나 백신이 `memnest.exe`를 확인하라고 할 수 있습니다. 자동 시작은 예약 작업을 직접 시작해서 확인했고, 실제 로그오프와 로그인으로는 시험하지 않았습니다. 작업공간은 클라이언트가 알려 준 경로로 구분하는데 드라이브 문자만 대소문자를 맞추므로, `C:\Work\App`과 `C:\work\app`은 서로 다른 작업공간이 됩니다.
 
 구조별 제거 스크립트는 `core/scripts/`에 있습니다.
 

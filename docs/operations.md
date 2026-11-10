@@ -99,20 +99,45 @@ The script installs the Linux user service and registers a Windows logon task th
 
 Inside WSL, `memnest watch` reads transcripts under the WSL home directory. For Claude Code or Codex running on the Windows side, pass the path, for example `memnest watch --path /mnt/c/Users/<you>/.claude/projects`. The watcher polls every five seconds, so `/mnt/c` paths should work, but this has not been tested.
 
-### Windows service
+### Windows
 
-Build `memnest.exe` from `core`, then run an administrator PowerShell prompt from the repository root:
+Native Windows needs 64-bit x86 Windows 10 or 11 and the Microsoft Visual C++ Redistributable (x64), which most machines already have; the installer stops with the download link when it is missing. There is no ARM64 archive. The first release with a Windows archive is the one after v0.5.1.
 
 ```powershell
-.\core\scripts\preflight-windows.ps1
-.\core\scripts\install-windows.ps1 -BinPath .\core\target\release\memnest.exe
+irm https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.ps1 | iex
 ```
 
-The native service stores data in `%ProgramData%\Memnest\data` and binds to localhost.
+The script downloads `memnest-<version>-x86_64-pc-windows-msvc.zip` from the GitHub release, checks its SHA-256, and runs `scripts\install-windows.ps1` from it. Nothing needs administrator rights and no Windows service is created:
 
-The service wrapper is WinSW. The installer pins one version and its SHA-256 and verifies the file before installing it, whether the wrapper was downloaded or found next to the script, and it deletes the file and stops on a mismatch. Overriding `-WinSWVersion` therefore requires passing the matching `-WinSWSha256` (or dropping a `WinSW-x64.exe.sha256` beside the wrapper); the install refuses to run elevated against bytes it cannot check.
+- `memnest.exe`, the uninstall, validation and support scripts, and logs go to `%LOCALAPPDATA%\memnest`; its `bin` folder is added to your user `PATH`.
+- Memories stay in `%USERPROFILE%\.memnest`, the same default the binary uses.
+- Two scheduled tasks start at logon and run as you: `Memnest` (the server on `127.0.0.1:3111`) and `Memnest Watch` (conversation capture). Both run without a window. Task Scheduler starts a stopped one again within five minutes.
+- `Memnest Watch` follows `%USERPROFILE%\.claude\projects`, `%USERPROFILE%\.pi\agent\sessions` and `%USERPROFILE%\.codex\sessions`. Pass `-WatchPath` to follow other folders instead.
+- With Python 3 on `PATH`, detected Claude Code, Codex and Cursor configurations are merged exactly as on Linux, with the same backup and restore command. Without Python the installer prints the MCP endpoint and the hook command to add by hand.
 
-The Windows installer does not start `memnest watch`. Run it separately if you want conversation capture; native Windows capture has not been tested.
+To pass options, run the downloaded script as a block. `-Port`, `-InstallDir`, `-DataDir`, `-TaskName`, `-WatchPath`, `-Autocontext`, `-NoClients`, `-NoVerify` and `-NoPath` are forwarded to `install-windows.ps1`; `$env:MEMNEST_VERSION` selects a release tag.
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.ps1))) -Port 3222 -Autocontext
+```
+
+From a source checkout, build `core` and run `.\core\scripts\install-windows.ps1 -BinPath .\core\target\release\memnest.exe`. `preflight-windows.ps1` checks the prerequisites without changing anything.
+
+**WSL or native, not both on one port.** WSL 2 forwards `localhost`, so a Memnest inside WSL and a native one cannot both listen on 3111, and clients on either side would reach whichever started first. The installer refuses a port that already answers. Choose one, or give the native install another port with `-Port` and point the Windows clients at it. They are separate stores; move memories with `memnest --backup-dir <folder>` on one side and `memnest --restore-dir <folder>` on the other.
+
+Validate, collect diagnostics, or remove the install with the copies under `%LOCALAPPDATA%\memnest\scripts`. Script files need a per-process policy bypass on a default Windows; nothing machine-wide is changed.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\memnest\scripts\validate-installed-windows.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\memnest\scripts\support-bundle-windows.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\memnest\scripts\uninstall-windows.ps1"
+```
+
+Uninstall removes both tasks, the `PATH` entry and `%LOCALAPPDATA%\memnest`. It keeps `%USERPROFILE%\.memnest` unless you pass `-RemoveData`. Restore client configuration first, as on Linux. Logs are `%LOCALAPPDATA%\memnest\logs\server.log` and `watch.log`; by default only errors are written.
+
+Earlier versions of `install-windows.ps1` registered an elevated WinSW service with data in `%ProgramData%\Memnest`. That mode is gone, because a service account cannot read your transcripts. If you used it, back up with `memnest --data-dir "$env:ProgramData\Memnest\data" --backup-dir <folder>`, stop and uninstall the service from an elevated prompt (`%ProgramData%\Memnest\app\memnest-service.exe stop`, then `uninstall`), install as above, and run `memnest --restore-dir <folder>` while the `Memnest` task is stopped.
+
+Not covered: the archive is not code-signed, so SmartScreen or antivirus may ask about `memnest.exe`. Automatic start has been exercised by starting the tasks, not by an actual logoff and logon. A workspace is identified by the path a client reports, and only the drive letter is case-normalized, so `C:\Work\App` and `C:\work\app` are separate workspaces.
 
 Uninstallers for each layout are in `core/scripts/`.
 
