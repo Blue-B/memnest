@@ -386,7 +386,19 @@ async fn earlier_rules(system: &System, title: &str, body: &str) -> String {
     let Ok(out) = operations::search(
         system.clone(),
         SearchInput {
-            query: format!("{title} {}", clip(body, 300)),
+            // Section headings are the same in every card; as search terms they only
+            // find other cards.
+            query: format!(
+                "{title} {}",
+                clip(
+                    &body
+                        .lines()
+                        .filter(|line| !line.trim_start().starts_with('#'))
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                    300
+                )
+            ),
             project: "all".into(),
             cwd: None,
             n_results: 20,
@@ -402,10 +414,11 @@ async fn earlier_rules(system: &System, title: &str, body: &str) -> String {
     else {
         return String::new();
     };
+    // A score at or below zero is an old memory that barely matches: not this work.
     let hits: Vec<_> = out
         .results
         .into_iter()
-        .filter(|hit| !crate::models::is_task_card_project(&hit.project))
+        .filter(|hit| hit.score > 0.0 && !crate::models::is_task_card_project(&hit.project))
         .collect();
     // The work's own project is where most related memories live; `playbook` holds
     // rules for every task, so it never counts as that project.
