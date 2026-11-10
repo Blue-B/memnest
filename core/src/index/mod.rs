@@ -344,7 +344,20 @@ impl TextIndex {
         }
         let searcher = self.reader.searcher();
         let parser = QueryParser::for_index(&self.index, vec![self.body_field]);
-        let body = parser.parse_query(query)?;
+        // People type questions, not query syntax: "Caroline's", a trailing "." or a
+        // leading "-" must not cost the search its keyword half. A query the parser
+        // rejects is searched again as plain words.
+        let body = match parser.parse_query(query) {
+            Ok(body) => body,
+            Err(_) => {
+                let words: String = query
+                    .chars()
+                    .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+                    .collect();
+                // Lowercase, so a bare AND, OR or NOT is a word and not an operator.
+                parser.parse_query_lenient(&words.to_lowercase()).0
+            }
+        };
         let scoped: Box<dyn Query> = if projects.is_empty() {
             body
         } else {
@@ -506,6 +519,33 @@ mod tests {
         let index = TextIndex::new(temp.path()).unwrap();
         let results = index.search("durable", 3).unwrap();
         assert_eq!(results.first().map(|(id, _)| id.as_str()), Some("alpha"));
+    }
+
+    #[test]
+    fn punctuation_in_a_question_keeps_the_keyword_search() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut index = TextIndex::new(temp.path()).unwrap();
+        index
+            .add_with_project("alpha", "p", "the zebraquux report")
+            .unwrap();
+        index.commit().unwrap();
+        // Each of these is rejected by the query parser as written.
+        for query in [
+            "zebraquux's",
+            "zebraquux.",
+            "-zebraquux",
+            "+zebraquux",
+            "(zebraquux",
+            "zebraquux AND",
+            "nofield:zebraquux",
+            "\"zebraquux",
+        ] {
+            let found = index.search(query, 3).unwrap();
+            assert_eq!(found.len(), 1, "{query}");
+        }
+        // Query syntax that parses keeps its meaning.
+        assert!(index.search("\"report zebraquux\"", 3).unwrap().is_empty());
+        assert!(index.search("...", 3).unwrap().is_empty());
     }
 
     #[test]
