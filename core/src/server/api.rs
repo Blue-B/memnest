@@ -2132,13 +2132,6 @@ mod visibility_tests {
             .map(|stat| stat.name)
             .collect();
         assert_eq!(names, vec!["survivor".to_string()]);
-        assert!(
-            db.recent_chunks(10)
-                .unwrap()
-                .iter()
-                .all(|chunk| chunk.id != doomed),
-            "trashed row still in recent saves"
-        );
         // Still addressable by id, so restore keeps working.
         assert_eq!(
             db.get_chunk(&doomed).unwrap().unwrap().project,

@@ -50,16 +50,6 @@ fn infer_collection_kind(name: &str) -> String {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct RecentChunk {
-    pub id: String,
-    pub project: String,
-    pub document: String,
-    pub created_at: chrono::DateTime<Utc>,
-    pub chunk_type: ChunkType,
-    pub importance: Importance,
-}
-
 fn is_transcript_id(id: &str) -> bool {
     id.strip_prefix("transcript_")
         .is_some_and(|digest| digest.len() == 32 && digest.bytes().all(|b| b.is_ascii_hexdigit()))
@@ -126,16 +116,6 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_workspaces_legacy
                 ON workspaces(legacy_project);
 
-            CREATE TABLE IF NOT EXISTS session_summaries (
-                id TEXT PRIMARY KEY,
-                project TEXT NOT NULL,
-                session_id TEXT NOT NULL,
-                summary TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_summaries_project ON session_summaries(project);
-            CREATE INDEX IF NOT EXISTS idx_summaries_created ON session_summaries(created_at);
-
             CREATE TABLE IF NOT EXISTS secrets (
                 key TEXT PRIMARY KEY,
                 kind TEXT NOT NULL DEFAULT '',
@@ -144,7 +124,7 @@ impl Database {
                 updated TEXT NOT NULL
             );
 
-            -- Per-collection metadata: kind + free-form description shown in the viewer.
+            -- Per-collection metadata: kind + free-form description. Read by collection_stats; no API route returns it.
             CREATE TABLE IF NOT EXISTS collection_meta (
                 name        TEXT PRIMARY KEY,
                 kind        TEXT NOT NULL DEFAULT 'project',  -- playbook|project|autolog|archive
@@ -714,31 +694,6 @@ impl Database {
         Ok((over_30d, over_90d, over_180d))
     }
 
-    /// Most recently stored user-visible chunks. Soft-deleted rows are excluded.
-    pub fn recent_chunks(&self, limit: usize) -> Result<Vec<RecentChunk>> {
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare(&format!(
-            "SELECT id, project, document, metadata, created_at
-             FROM chunks
-             WHERE {VISIBLE_CHUNKS_SQL}
-             ORDER BY created_at DESC
-             LIMIT ?1"
-        ))?;
-        let rows = stmt.query_map(params![limit as i64], |row| {
-            let meta: String = row.get(3)?;
-            let metadata: Metadata = serde_json::from_str(&meta).unwrap_or_default();
-            Ok(RecentChunk {
-                id: row.get(0)?,
-                project: row.get(1)?,
-                document: row.get(2)?,
-                chunk_type: metadata.chunk_type,
-                importance: metadata.importance,
-                created_at: row.get(4)?,
-            })
-        })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
-    }
-
     pub fn canonical_chunk_id(&self, id: &str) -> Result<String> {
         let conn = self.pool.get()?;
         Ok(conn
@@ -978,36 +933,6 @@ impl Database {
             created_at: row.get(5)?,
             updated_at: row.get(6)?,
         })
-    }
-
-    // ── Session Summaries ────────────────────────────────────
-
-    pub fn insert_summary(&self, summary: &SessionSummary) -> Result<()> {
-        let conn = self.pool.get()?;
-        conn.execute(
-            "INSERT OR REPLACE INTO session_summaries (id, project, session_id, summary, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![summary.id, summary.project, summary.session_id, summary.summary, summary.created_at.to_rfc3339()],
-        )?;
-        Ok(())
-    }
-
-    pub fn get_summaries(&self, limit: usize) -> Result<Vec<SessionSummary>> {
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, project, session_id, summary, created_at
-             FROM session_summaries ORDER BY created_at DESC LIMIT ?1",
-        )?;
-        let rows = stmt.query_map(params![limit as i64], |row| {
-            Ok(SessionSummary {
-                id: row.get(0)?,
-                project: row.get(1)?,
-                session_id: row.get(2)?,
-                summary: row.get(3)?,
-                created_at: row.get(4)?,
-            })
-        })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.into())
     }
 
     // ── Secrets (encrypted) ──────────────────────────────────
@@ -1496,6 +1421,90 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fresh_database_does_not_create_session_summaries() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(dir.path()).await.unwrap();
+        drop(db);
+
+        let conn = Connection::open(dir.path().join("memory.db")).unwrap();
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_summaries')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(!exists);
+    }
+
+    #[tokio::test]
+    async fn legacy_session_summaries_survive_reopen_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("memory.db");
+        let conn = Connection::open(&db_path).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE session_summaries (
+                id TEXT PRIMARY KEY,
+                project TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            INSERT INTO session_summaries (id, project, session_id, summary, created_at)
+            VALUES ('s1', 'alpha', 'one', 'alpha summary', '2026-01-02T03:04:05Z');
+            "#,
+        )
+        .unwrap();
+        let original_schema: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'session_summaries'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        drop(conn);
+
+        let db = Database::new(dir.path()).await.unwrap();
+        drop(db);
+
+        let conn = Connection::open(&db_path).unwrap();
+        let reopened_schema: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'session_summaries'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let row: (String, String, String, String, String) = conn
+            .query_row(
+                "SELECT id, project, session_id, summary, created_at FROM session_summaries",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(reopened_schema, original_schema);
+        assert_eq!(
+            row,
+            (
+                "s1".to_string(),
+                "alpha".to_string(),
+                "one".to_string(),
+                "alpha summary".to_string(),
+                "2026-01-02T03:04:05Z".to_string(),
+            )
+        );
+    }
+
+    #[tokio::test]
     async fn lightweight_dashboard_queries_do_not_require_embedding_decode() {
         let dir = tempfile::tempdir().unwrap();
         let db = Database::new(dir.path()).await.unwrap();
@@ -1515,37 +1524,6 @@ mod tests {
         assert_eq!(stats[0].chunk_count, 2);
         assert_eq!(stats[1].name, "beta");
         assert_eq!(stats[1].chunk_count, 1);
-
-        let recent = db.recent_chunks(2).unwrap();
-        assert_eq!(recent.len(), 2);
-        assert!(recent.iter().all(|chunk| !chunk.document.is_empty()));
-    }
-
-    #[tokio::test]
-    async fn get_summaries_returns_all_projects_by_recency() {
-        let dir = tempfile::tempdir().unwrap();
-        let db = Database::new(dir.path()).await.unwrap();
-        let now = Utc::now();
-        db.insert_summary(&SessionSummary {
-            id: "s1".to_string(),
-            project: "alpha".to_string(),
-            session_id: "one".to_string(),
-            summary: "alpha summary".to_string(),
-            created_at: now,
-        })
-        .unwrap();
-        db.insert_summary(&SessionSummary {
-            id: "s2".to_string(),
-            project: "beta".to_string(),
-            session_id: "two".to_string(),
-            summary: "beta summary".to_string(),
-            created_at: now + chrono::TimeDelta::seconds(1),
-        })
-        .unwrap();
-
-        let summaries = db.get_summaries(10).unwrap();
-        assert_eq!(summaries.len(), 2);
-        assert_eq!(summaries[0].project, "beta");
     }
 
     #[tokio::test]

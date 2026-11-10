@@ -179,15 +179,6 @@ pub enum MemoryKind {
     Procedure,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionSummary {
-    pub id: String,
-    pub project: String,
-    pub session_id: String,
-    pub summary: String,
-    pub created_at: DateTime<Utc>,
-}
-
 /// Encrypted secret entry (PAT, API key, password, etc.).
 /// `value` is always stored AES-GCM encrypted on disk; `get_secret` returns
 /// plaintext after automatic decryption. `kind` is a free-form classifier
@@ -201,18 +192,6 @@ pub struct Secret {
     #[serde(default)]
     pub note: String,
     pub updated: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SearchResult {
-    pub chunk: MemoryChunk,
-    pub vector_score: f32,
-    pub text_score: f32,
-    pub combined_score: f32,
-    pub recency_penalty: f32,
-    pub type_bonus: f32,
-    pub importance_bonus: f32,
-    pub keyword_bonus: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -250,11 +229,11 @@ pub struct CollectionStat {
     /// Autolog chunks (`chunk_type == "auto_log"`). Tool-call dumps, noisy.
     #[serde(default)]
     pub autolog_count: usize,
-    /// Collection kind — drives viewer color/icon and write policy.
-    /// Possible values: `playbook` | `project` | `autolog` | `archive`.
+    /// Collection kind, read from `collection_meta` or inferred from the name.
+    /// `playbook` | `project` | `autolog` | `archive`.
     #[serde(default = "default_kind")]
     pub kind: String,
-    /// Free-form description shown in the viewer card.
+    /// Free-form description from `collection_meta`. No API route returns it.
     #[serde(default)]
     pub description: String,
     /// Sum of document byte lengths for all chunks in this collection.
