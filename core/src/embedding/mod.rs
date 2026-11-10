@@ -63,16 +63,8 @@ impl Embedder {
         self.dim
     }
 
-    pub fn model_name(&self) -> &str {
-        &self.model_name
-    }
-
     pub fn is_loaded(&self) -> bool {
         self.model.lock().is_ok_and(|model| model.is_some())
-    }
-
-    pub fn encode(&self, text: &str) -> Result<Vec<f32>> {
-        self.encode_document(text)
     }
 
     pub fn encode_query(&self, text: &str) -> Result<Vec<f32>> {
@@ -81,22 +73,6 @@ impl Embedder {
 
     pub fn encode_document(&self, text: &str) -> Result<Vec<f32>> {
         self.encode_with_prefix(text, "passage: ")
-    }
-
-    pub fn encode_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
-        let inputs: Vec<String> = texts.iter().map(|t| format!("passage: {t}")).collect();
-        let mut slot = self
-            .model
-            .lock()
-            .map_err(|_| anyhow!("embedding model lock poisoned"))?;
-        let model = self.ensure_model(&mut slot)?;
-        let embeddings = model
-            .embed(inputs, None)
-            .context("native embedding failed")?;
-        if !self.keep_loaded {
-            *slot = None;
-        }
-        Ok(embeddings)
     }
 
     fn encode_with_prefix(&self, text: &str, prefix: &'static str) -> Result<Vec<f32>> {

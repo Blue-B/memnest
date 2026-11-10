@@ -302,10 +302,6 @@ impl TextIndex {
         Ok(())
     }
 
-    pub fn add(&mut self, id: &str, text: &str) -> Result<()> {
-        self.add_with_project(id, "", text)
-    }
-
     pub fn add_with_project(&mut self, id: &str, project: &str, text: &str) -> Result<()> {
         self.add_many_with_project(&[(id.to_string(), project.to_string(), text.to_string())])
     }
@@ -321,24 +317,6 @@ impl TextIndex {
             .map_err(|_| anyhow::anyhow!("writer lock poisoned"))?;
         for (id, project, text) in docs {
             w.delete_term(Term::from_field_text(self.id_field, id));
-            w.add_document(doc!(
-                self.id_field => id.as_str(),
-                self.project_field => project.as_str(),
-                self.body_field => text.as_str(),
-            ))?;
-        }
-        w.commit()?;
-        drop(w);
-        self.reader.reload()?;
-        Ok(())
-    }
-
-    pub fn replace_all_with_project(&mut self, docs: &[(String, String, String)]) -> Result<()> {
-        // Full rebuild: drop existing writer and create fresh
-        self.writer = None;
-        let mut w = self.index.writer(50_000_000)?;
-        w.delete_all_documents()?;
-        for (id, project, text) in docs {
             w.add_document(doc!(
                 self.id_field => id.as_str(),
                 self.project_field => project.as_str(),
@@ -397,10 +375,6 @@ impl TextIndex {
             }
         }
         Ok(results)
-    }
-
-    pub fn remove(&mut self, id: &str) -> Result<()> {
-        self.remove_many(&[id.to_string()])
     }
 
     pub fn remove_many(&mut self, ids: &[String]) -> Result<()> {
