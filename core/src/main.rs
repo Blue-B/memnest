@@ -248,6 +248,9 @@ async fn main() -> anyhow::Result<()> {
             config.data_dir.display(),
             Path::new(path).display()
         );
+        if let Some(warning) = backup_key_warning(Path::new(path)) {
+            eprintln!("{warning}");
+        }
         return Ok(());
     }
 
@@ -427,6 +430,17 @@ fn backup_data_dir(source: &Path, target: &Path) -> anyhow::Result<()> {
         let _ = std::fs::remove_dir_all(&staging);
     }
     result.with_context(|| format!("failed to backup {}", source.display()))
+}
+
+/// The key stays in the backup so a restore can still open the vault. Anyone who
+/// reads the backup can then decrypt the stored secrets, so say so once.
+fn backup_key_warning(backup: &Path) -> Option<String> {
+    backup.join("master.key").is_file().then(|| {
+        format!(
+            "warning: this backup contains the vault key ({}); store the backup like a password",
+            backup.join("master.key").display()
+        )
+    })
 }
 
 fn restore_data_dir(source: &Path, target: &Path, force: bool) -> anyhow::Result<()> {
@@ -768,6 +782,15 @@ mod tests {
         backup_data_dir(&source, &backup).unwrap();
         assert_eq!(read_test_marker(&backup), "source");
         assert!(!backup.join("vectors").exists());
+        assert!(backup_key_warning(&backup).is_none());
+        std::fs::write(source.join("master.key"), "key").unwrap();
+        let keyed = temp.path().join("keyed-backup");
+        backup_data_dir(&source, &keyed).unwrap();
+        assert!(
+            backup_key_warning(&keyed)
+                .unwrap()
+                .contains("store the backup like a password")
+        );
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
