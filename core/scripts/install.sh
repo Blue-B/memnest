@@ -13,10 +13,8 @@ Usage:
 
 Downloads a release archive and runs the idempotent Linux systemd or macOS
 launchd setup, including detected client configuration and a scratch round trip.
-For WSL and Windows native installs, use:
-
-  scripts/install-wsl.ps1
-  scripts/install-windows.ps1
+On Windows, use scripts/install.ps1 (native, per-user) or
+scripts/install-wsl.ps1 (Linux service inside WSL).
 EOF
 }
 

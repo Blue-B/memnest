@@ -35,7 +35,12 @@
   New-Item -ItemType Directory -Path $temp | Out-Null
   try {
     Write-Host "Installing Memnest $version for $target"
-    Invoke-WebRequest -UseBasicParsing "$base/$archive" -OutFile (Join-Path $temp $archive)
+    try {
+      Invoke-WebRequest -UseBasicParsing "$base/$archive" -OutFile (Join-Path $temp $archive)
+    }
+    catch {
+      throw "could not download $base/$archive ($($_.Exception.Message)). Releases up to v0.5.1 have no Windows archive; pick a newer one with `$env:MEMNEST_VERSION or build from source: $repo"
+    }
     Invoke-WebRequest -UseBasicParsing "$base/$archive.sha256" -OutFile (Join-Path $temp "$archive.sha256")
 
     $expected = ((Get-Content (Join-Path $temp "$archive.sha256") -Raw).Trim() -split "\s+")[0].ToLowerInvariant()
