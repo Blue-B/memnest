@@ -5090,6 +5090,10 @@ function register(pi) {
     evidence=${JSON.stringify(item.evidence)} (local-model selection, not verified truth)` : ""}`
           );
         if (!(data.results ?? []).length) lines.push("no results");
+        if (typeof data.scope_hint === "string" && data.scope_hint.trim())
+          lines.push(
+            data.scope_hint.replace(/\s+/g, " ").trim().slice(0, 400)
+          );
         return result2(lines.join("\n"));
       } catch {
         return result2(r.text);
