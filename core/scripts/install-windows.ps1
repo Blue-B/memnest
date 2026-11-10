@@ -1,144 +1,203 @@
 param(
-  [string]$InstallDir = "$env:ProgramData\Memnest\app",
-  [string]$DataDir = "$env:ProgramData\Memnest\data",
-  [string]$ServiceName = "memnest",
-  [string]$HostAddress = "127.0.0.1",
+  [string]$InstallDir = "$env:LOCALAPPDATA\memnest",
+  [string]$DataDir = "$env:USERPROFILE\.memnest",
+  [string]$TaskName = "Memnest",
   [int]$Port = 3111,
-  [string]$WinSWVersion = "v2.12.0",
   [string]$BinPath = "",
-  [string]$WinSWPath = "",
-  [string]$WinSWSha256 = ""
+  [string[]]$WatchPath = @(),
+  [switch]$Autocontext,
+  [switch]$NoClients,
+  [switch]$NoVerify,
+  [switch]$NoPath
 )
 
+# Per-user install: no elevation, no Windows service. Two scheduled tasks start
+# the server and the conversation watcher at logon, as the current user, so the
+# watcher can read that user's transcripts. Keep this file ASCII: Windows
+# PowerShell 5.1 reads a script without a BOM in the system code page.
 $ErrorActionPreference = "Stop"
-
-# The service wrapper runs elevated, so its bytes are pinned. This is the
-# SHA-256 of WinSW-x64.exe from the winsw/winsw release tagged $PinnedWinSWVersion.
-# Bump both values together, never one alone.
-$PinnedWinSWVersion = "v2.12.0"
-$PinnedWinSWSha256 = "05b82d46ad331cc16bdc00de5c6332c1ef818df8ceefcd49c726553209b3a0da"
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+# install.ps1 runs this file as a script block from the unpacked archive root,
+# where there is no script path to read.
+$ScriptDir = $PSScriptRoot
+if (-not $ScriptDir) { $ScriptDir = Join-Path (Get-Location).Path "scripts" }
 $Root = Split-Path -Parent $ScriptDir
-$LocalHosts = @("127.0.0.1", "localhost", "::1")
-$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).
-  IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
-  throw "install-windows.ps1 must run from an elevated PowerShell prompt."
-}
-if ($LocalHosts -notcontains $HostAddress) {
-  throw "install-windows.ps1 only supports local service binds. Use 127.0.0.1 for packaged installs; configure remote access manually with MEMNEST_TOKEN and a reviewed network policy."
-}
+$BaseUrl = "http://127.0.0.1:$Port"
+$BinDir = Join-Path $InstallDir "bin"
+$LogDir = Join-Path $InstallDir "logs"
+$Exe = Join-Path $BinDir "memnest.exe"
 
 if (-not $BinPath) {
-  if (Test-Path ".\memnest.exe") {
-    $BinPath = ".\memnest.exe"
-  }
-  elseif (Test-Path "$Root\memnest.exe") {
-    $BinPath = "$Root\memnest.exe"
-  }
-  elseif (Test-Path ".\target\release\memnest.exe") {
-    $BinPath = ".\target\release\memnest.exe"
-  }
-  elseif (Test-Path "$Root\target\release\memnest.exe") {
-    $BinPath = "$Root\target\release\memnest.exe"
-  }
-  elseif (Test-Path "$Root\Cargo.toml") {
-    Push-Location $Root
-    cargo build --release
-    Pop-Location
-    $BinPath = "$Root\target\release\memnest.exe"
+  foreach ($candidate in ".\memnest.exe", "$Root\memnest.exe", ".\target\release\memnest.exe", "$Root\target\release\memnest.exe") {
+    if (Test-Path $candidate) { $BinPath = $candidate; break }
   }
 }
-
 if (-not $BinPath -or -not (Test-Path $BinPath)) {
-  throw "memnest.exe not found. Build from source or pass -BinPath C:\path\memnest.exe"
+  throw "memnest.exe not found. Extract a release zip, build from source, or pass -BinPath C:\path\memnest.exe"
+}
+$BinPath = (Resolve-Path $BinPath).Path
+
+# memnest.exe links the Visual C++ runtime dynamically. Starting it without the
+# runtime opens a blocking error dialog, so check for the files instead.
+$missing = @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll", "msvcp140_1.dll") | Where-Object {
+  -not (Test-Path (Join-Path "$env:SystemRoot\System32" $_)) -and -not (Test-Path (Join-Path (Split-Path -Parent $BinPath) $_))
+}
+if ($missing) {
+  throw "Microsoft Visual C++ Redistributable (x64) is required but $($missing -join ', ') is missing. Install https://aka.ms/vs/17/release/vc_redist.x64.exe and run this installer again."
 }
 
-if (-not $WinSWPath -and (Test-Path ".\WinSW-x64.exe")) {
-  $WinSWPath = ".\WinSW-x64.exe"
-}
-elseif (-not $WinSWPath -and (Test-Path "$Root\WinSW-x64.exe")) {
-  $WinSWPath = "$Root\WinSW-x64.exe"
-}
-
-if (-not $WinSWSha256 -and (Test-Path ".\WinSW-x64.exe.sha256")) {
-  $WinSWSha256 = (Get-Content ".\WinSW-x64.exe.sha256" -Raw).Trim().Split(" ")[0]
-}
-elseif (-not $WinSWSha256 -and (Test-Path "$Root\WinSW-x64.exe.sha256")) {
-  $WinSWSha256 = (Get-Content "$Root\WinSW-x64.exe.sha256" -Raw).Trim().Split(" ")[0]
-}
-
-if (-not $WinSWSha256) {
-  if ($WinSWVersion -eq $PinnedWinSWVersion) {
-    $WinSWSha256 = $PinnedWinSWSha256
-  }
-  else {
-    throw "no SHA-256 to verify WinSW against. This script only pins $PinnedWinSWVersion; pass -WinSWSha256 <hash> together with -WinSWVersion $WinSWVersion, or drop a WinSW-x64.exe.sha256 next to the wrapper."
-  }
-}
-
-$LogDir = "$env:ProgramData\Memnest\logs"
-New-Item -ItemType Directory -Force -Path $InstallDir, $DataDir, $LogDir | Out-Null
-Copy-Item $BinPath "$InstallDir\memnest.exe" -Force
-
-$winsw = "$InstallDir\memnest-service.exe"
-$escapedDataDir = [System.Security.SecurityElement]::Escape($DataDir)
-$escapedLogDir = [System.Security.SecurityElement]::Escape($LogDir)
-$escapedServiceName = [System.Security.SecurityElement]::Escape($ServiceName)
-$escapedHost = [System.Security.SecurityElement]::Escape($HostAddress)
-$escapedPort = [System.Security.SecurityElement]::Escape($Port.ToString())
-$xmlTemplate = "$Root\packaging\windows\memnest-service.xml"
-if (-not (Test-Path $xmlTemplate)) {
-  throw "service template not found: $xmlTemplate"
-}
-$xml = Get-Content $xmlTemplate -Raw
-$xml = $xml.Replace("<id>memnest</id>", "<id>$escapedServiceName</id>")
-$xml = $xml.Replace("%BASE%\..\data", $escapedDataDir)
-$xml = $xml.Replace("%BASE%\..\logs", $escapedLogDir)
-$xml = $xml.Replace("--host 127.0.0.1", "--host $escapedHost")
-$xml = $xml.Replace("--port 3111", "--port $escapedPort")
-Set-Content -Path "$InstallDir\memnest-service.xml" -Value $xml -Encoding UTF8
-if (-not (Test-Path $winsw)) {
-  if ($WinSWPath) {
-    if (-not (Test-Path $WinSWPath)) {
-      throw "WinSW wrapper not found: $WinSWPath"
+function Stop-Memnest {
+  # Stopping a task ends its console host but not the memnest.exe under it.
+  foreach ($name in $TaskName, "$TaskName Watch") {
+    if (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) {
+      Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
     }
-    Copy-Item $WinSWPath $winsw -Force
   }
-  else {
-    $url = "https://github.com/winsw/winsw/releases/download/$WinSWVersion/WinSW-x64.exe"
-    Invoke-WebRequest -Uri $url -OutFile $winsw
+  Get-Process -Name memnest -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -eq $Exe } |
+    Stop-Process -Force -ErrorAction SilentlyContinue
+  for ($i = 0; $i -lt 50; $i++) {
+    if (-not (Get-Process -Name memnest -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $Exe })) { return }
+    Start-Sleep -Milliseconds 200
   }
+  throw "could not stop the running $Exe"
 }
 
-$actualHash = (Get-FileHash $winsw -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($actualHash -ne $WinSWSha256.ToLowerInvariant()) {
-  Remove-Item $winsw -Force -ErrorAction SilentlyContinue
-  throw "WinSW SHA-256 mismatch. Expected $WinSWSha256 but got $actualHash. The wrapper was removed; nothing was installed."
-}
-
-Push-Location $InstallDir
-try {
-  & $winsw stop 2>$null | Out-Null
-  & $winsw uninstall 2>$null | Out-Null
-  & $winsw install
-  & $winsw start
-}
-finally {
-  Pop-Location
-}
-
-$health = "http://${HostAddress}:$Port/health"
-for ($i = 0; $i -lt 30; $i++) {
+function Test-PortOpen {
+  $client = New-Object System.Net.Sockets.TcpClient
   try {
-    Invoke-WebRequest -UseBasicParsing $health | Out-Null
-    Write-Host "Health check passed: $health"
+    $pending = $client.BeginConnect("127.0.0.1", $Port, $null, $null)
+    return ($pending.AsyncWaitHandle.WaitOne(1000) -and $client.Connected)
+  }
+  catch { return $false }
+  finally { $client.Close() }
+}
+
+function Register-MemnestTask {
+  param([string]$Name, [string]$Arguments, [string]$Launcher, [string]$LogName, [string]$Description)
+  # A launcher file keeps every path quoted however the task runs it, and lets
+  # cmd append the output to a log. NO_COLOR keeps escape codes out of the log.
+  # cmd reads batch files in the OEM code page and expands %, hence both steps.
+  $launcherPath = Join-Path $InstallDir $Launcher
+  $lines = "@echo off", "set NO_COLOR=1", "`"$Exe`" $Arguments >> `"$LogDir\$LogName`" 2>&1"
+  Set-Content -Path $launcherPath -Value ($lines | ForEach-Object { $_.Replace("%", "%%") }) -Encoding Oem
+  # conhost --headless runs the console program without a window.
+  $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+  $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\conhost.exe" `
+    -Argument "--headless `"$env:SystemRoot\System32\cmd.exe`" /d /c `"$launcherPath`"" -WorkingDirectory $InstallDir
+  # The repeating trigger restarts a crashed process within five minutes; a
+  # running instance makes it a no-op (the default policy ignores the new start).
+  $triggers = @(
+    (New-ScheduledTaskTrigger -AtLogOn -User $user),
+    (New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5))
+  )
+  $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
+  $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero)
+  Register-ScheduledTask -TaskName $Name -Action $action -Trigger $triggers -Principal $principal -Settings $settings -Description $Description -Force | Out-Null
+  Start-ScheduledTask -TaskName $Name
+}
+
+function Add-UserPathEntry {
+  param([string]$Dir, [string]$Name = "Path")
+  $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Environment", $true)
+  try {
+    # Read unexpanded and keep the value kind, so %VAR% entries survive.
+    $current = [string]$key.GetValue($Name, "", [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    $entries = @($current.Split(";") | Where-Object { $_ })
+    if ($entries | Where-Object { $_.TrimEnd("\") -eq $Dir.TrimEnd("\") }) { return $false }
+    $kind = [Microsoft.Win32.RegistryValueKind]::ExpandString
+    if ($current) { $kind = $key.GetValueKind($Name) }
+    $key.SetValue($Name, (($entries + $Dir) -join ";"), $kind)
+  }
+  finally { $key.Close() }
+  # Deleting a variable that does not exist still broadcasts the environment
+  # change, so new terminals pick up the entry without a logoff.
+  [Environment]::SetEnvironmentVariable("MEMNEST_PATH_REFRESH", $null, "User")
+  return $true
+}
+
+function Find-Python {
+  # The Microsoft Store alias named python.exe exists without Python installed,
+  # so a candidate counts only when it really runs.
+  foreach ($candidate in @("py", "-3"), @("python"), @("python3")) {
+    if (-not (Get-Command $candidate[0] -ErrorAction SilentlyContinue)) { continue }
+    $probe = @($candidate | Select-Object -Skip 1) + @("-c", "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)")
+    try {
+      & $candidate[0] @probe 2>$null | Out-Null
+      if ($LASTEXITCODE -eq 0) { return $candidate }
+    }
+    catch { }
+  }
+  return $null
+}
+
+function Invoke-MemnestJson {
+  param([string]$Path, [hashtable]$Body)
+  $bytes = [System.Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Compress))
+  Invoke-RestMethod -Method Post -Uri "$BaseUrl$Path" -ContentType "application/json" -Body $bytes -TimeoutSec 600
+}
+
+Stop-Memnest
+if (Test-PortOpen) {
+  throw "port $Port on 127.0.0.1 is already in use. A memnest running inside WSL shares localhost with Windows, so the two cannot both use port $Port; stop the other service or pass -Port <free port>."
+}
+
+New-Item -ItemType Directory -Force -Path $BinDir, $LogDir, (Join-Path $InstallDir "scripts"), $DataDir | Out-Null
+Copy-Item $BinPath $Exe -Force
+foreach ($script in "uninstall-windows.ps1", "validate-installed-windows.ps1", "support-bundle-windows.ps1", "setup-clients.py") {
+  Copy-Item (Join-Path $ScriptDir $script) (Join-Path $InstallDir "scripts") -Force
+}
+
+$watchArguments = "--data-dir `"$DataDir`" watch --url $BaseUrl"
+foreach ($path in $WatchPath) { $watchArguments += " --path `"$path`"" }
+Register-MemnestTask -Name $TaskName -Launcher "memnest-server.cmd" -LogName "server.log" -Description "Memnest memory server (per-user, 127.0.0.1:$Port)" `
+  -Arguments "--host 127.0.0.1 --port $Port --data-dir `"$DataDir`""
+Register-MemnestTask -Name "$TaskName Watch" -Launcher "memnest-watch.cmd" -LogName "watch.log" -Description "Memnest conversation watcher" `
+  -Arguments $watchArguments
+
+for ($i = 0; $i -lt 60; $i++) {
+  try {
+    Invoke-WebRequest -UseBasicParsing "$BaseUrl/health" | Out-Null
+    Write-Host "Health check passed: $BaseUrl/health"
     break
   }
   catch {
-    if ($i -eq 29) { throw "Memnest did not answer health check at $health" }
+    if ($i -eq 59) { throw "Memnest did not answer $BaseUrl/health. See $LogDir\server.log" }
     Start-Sleep -Seconds 1
   }
 }
 
-Write-Host "Installed Windows service '$ServiceName'."
+if (-not $NoPath) {
+  if (Add-UserPathEntry -Dir $BinDir) { Write-Host "Added $BinDir to your user PATH. Open a new terminal to use the memnest command." }
+}
+
+if (-not $NoClients) {
+  $python = Find-Python
+  if ($python) {
+    $clientArguments = @($python | Select-Object -Skip 1) + @((Join-Path $InstallDir "scripts\setup-clients.py"), "--bin", $Exe, "--url", $BaseUrl)
+    if ($Autocontext) { $clientArguments += "--autocontext" }
+    & $python[0] @clientArguments
+    if ($LASTEXITCODE -ne 0) { throw "client setup failed; the server and watcher are installed and running" }
+  }
+  else {
+    Write-Host "Python 3 was not found, so no client was configured. Either install Python and run"
+    Write-Host "  python `"$InstallDir\scripts\setup-clients.py`" --bin `"$Exe`" --url $BaseUrl"
+    Write-Host "or connect a client by hand:"
+    Write-Host "  MCP endpoint (Claude Code, Codex, Cursor, others): $BaseUrl/mcp"
+    Write-Host "  Task card hook for SessionStart and UserPromptSubmit: `"$($Exe.Replace('\', '/'))`" hook --url $BaseUrl --no-recall"
+  }
+}
+
+if (-not $NoVerify) {
+  Write-Host "Verifying a scratch remember/search round trip. The first one downloads the embedding model (about 1.1 GB)."
+  $marker = "memnest-setup-roundtrip-$([guid]::NewGuid().ToString('N'))"
+  $created = Invoke-MemnestJson "/add" @{ text = $marker; project = "memnest-setup-check" }
+  $found = Invoke-MemnestJson "/search" @{ query = $marker; project = "memnest-setup-check"; n_results = 5 }
+  if (-not (($found | ConvertTo-Json -Depth 8) -match $marker)) { throw "scratch remember/search verification failed" }
+  if ($created.id) { Invoke-MemnestJson "/delete" @{ ids = @($created.id) } | Out-Null }
+  Write-Host "setup_roundtrip_ok"
+}
+
+Write-Host "Setup complete. MCP endpoint: $BaseUrl/mcp"
+Write-Host "Scheduled tasks: '$TaskName' (server) and '$TaskName Watch' (conversation capture). Logs: $LogDir"
+Write-Host "Uninstall: powershell -ExecutionPolicy Bypass -File `"$InstallDir\scripts\uninstall-windows.ps1`""
+Write-Host "Data in $DataDir is retained unless -RemoveData is passed to the uninstaller."
