@@ -72,6 +72,11 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.runtime == 'node22'
         run: npm pack --dry-run
 
+      # Known advisories in what the published package installs at runtime.
+      - name: npm audit (runtime dependencies)
+        if: matrix.os == 'ubuntu-latest' && matrix.runtime == 'node22'
+        run: npm audit --omit=dev
+
   e2e:
     # The end-to-end check drives the real stdio MCP server, so it needs the
     # Rust core built from this checkout.

@@ -60,12 +60,53 @@ jobs:
           bash scripts/verify-packaging.sh
           bash scripts/verify-macos-packaging.sh
           python3 scripts/test-setup-clients.py
+          python3 scripts/test-install-download.py
+          python3 scripts/test-install-linux.py
           bash scripts/support-bundle.sh --out "$RUNNER_TEMP/support.txt" > /dev/null
           echo body > "$RUNNER_TEMP/artifact"
           sha256sum "$RUNNER_TEMP/artifact" > "$RUNNER_TEMP/artifact.sha256"
           bash scripts/verify-artifact.sh "$RUNNER_TEMP/artifact" "$RUNNER_TEMP/artifact.sha256"
       - name: Third-party notices are current
         run: python3 scripts/generate-third-party-notices.py --check
+      # verify-contract.sh calls what the README documents on a running
+      # service, and guards the save guidance that is written twice (the MCP
+      # tool list and the pi bundle). The model cache left by `cargo test` is
+      # reused so the search probe does not download it again.
+      - name: Documented contract matches the running service
+        run: |
+          data="$RUNNER_TEMP/contract-data"
+          mkdir -p "$data"
+          ln -s "$PWD/target/test-model-cache" "$data/models"
+          target/release/memnest --data-dir "$data" --port 3997 > "$RUNNER_TEMP/contract.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:3997/health >/dev/null 2>&1 && break
+            sleep 1
+          done
+          # Load the embedding model first; the script's search probe allows 15 seconds.
+          curl -fsS -m 300 -X POST http://127.0.0.1:3997/search -H 'content-type: application/json' \
+            -d '{"query":"warm-up","project":"contract-warmup"}' >/dev/null
+          bash ../scripts/verify-contract.sh http://127.0.0.1:3997 "$PWD/target/release/memnest" "$data" ||
+            { tail -40 "$RUNNER_TEMP/contract.log"; exit 1; }
+
+  # Known advisories in the locked dependency tree. Separate from the build so
+  # a new advisory shows up as its own failure.
+  audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: cargo audit
+        run: cargo audit
 
   # Apple Silicon is the only macOS target ort ships prebuilt binaries for.
   # The lifecycle steps gate the published aarch64-apple-darwin archive.
@@ -114,9 +155,57 @@ jobs:
         run: cargo test --locked --quiet -- --test-threads=1
       - name: Release build
         run: cargo build --release --locked
+      # Parses every .ps1 under scripts and rejects non-ASCII bytes.
       - name: Validate PowerShell installers
         shell: pwsh
         run: .\scripts\verify-release.ps1
+      - name: Server starts, answers /health and stops
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "target\release\memnest.exe").Path
+          $data = Join-Path $env:RUNNER_TEMP "memnest-data"
+          $log = Join-Path $env:RUNNER_TEMP "memnest-server.log"
+          $server = Start-Process -FilePath $exe -ArgumentList "--host 127.0.0.1 --port 3995 --data-dir `"$data`"" -RedirectStandardError $log -PassThru
+          try {
+            $healthy = $false
+            foreach ($attempt in 1..60) {
+              try {
+                $healthy = (Invoke-RestMethod "http://127.0.0.1:3995/health").status -eq "ok"
+                if ($healthy) { break }
+              }
+              catch { Start-Sleep -Seconds 1 }
+            }
+            if (-not $healthy) {
+              Get-Content $log
+              throw "memnest.exe did not answer /health"
+            }
+            & $exe --port 3995 --data-dir $data status
+            if ($LASTEXITCODE -ne 0) { throw "memnest status failed" }
+          }
+          finally {
+            Stop-Process -Id $server.Id -Force
+            $server.WaitForExit()
+          }
+          if (Get-NetTCPConnection -LocalPort 3995 -State Listen -ErrorAction SilentlyContinue) {
+            throw "port 3995 is still listening after the server was stopped"
+          }
+      # The same staging and zip commands core-release.yml runs on a tag, so a
+      # broken Windows archive fails here and not at release time.
+      - name: Stage the Windows release archive
+        shell: bash
+        run: bash scripts/package-release.sh x86_64-pc-windows-msvc target/release/memnest.exe "$RUNNER_TEMP/stage"
+      - name: Windows archive unpacks and its binary runs
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "memnest-ci-x86_64-pc-windows-msvc.zip"
+          Compress-Archive -Path "$env:RUNNER_TEMP\stage\*" -DestinationPath $archive
+          $unpacked = Join-Path $env:RUNNER_TEMP "unpacked"
+          Expand-Archive -Path $archive -DestinationPath $unpacked
+          foreach ($file in "memnest.exe", "LICENSE", "THIRD_PARTY_NOTICES.md", "README.md", "scripts/install-windows.ps1", "scripts/uninstall-windows.ps1", "scripts/setup-clients.py") {
+            if (-not (Test-Path (Join-Path $unpacked $file))) { throw "archive lacks $file" }
+          }
+          & (Join-Path $unpacked "memnest.exe") --version
+          if ($LASTEXITCODE -ne 0) { throw "packaged memnest.exe did not run" }
       - name: Validate Bash installers
         shell: bash
         run: |
@@ -131,6 +220,7 @@ jobs:
           bash -n scripts/install-macos.sh
           bash -n scripts/uninstall-macos.sh
           bash -n scripts/validate-installed-macos.sh
+          bash -n scripts/package-release.sh
       - name: License metadata
         shell: bash
         run: python3 scripts/check-licenses.py
