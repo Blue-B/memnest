@@ -8,6 +8,7 @@ import os
 import pathlib
 import shlex
 import shutil
+import subprocess
 
 try:
     import tomllib
@@ -19,11 +20,20 @@ def executable(name):
     return shutil.which(name) is not None
 
 
+def command_line(argv, windows=os.name == "nt"):
+    """One shell command line. Windows hosts run hooks in Git Bash or cmd, so the
+    binary is written with forward slashes and double quotes, which both accept."""
+    if windows:
+        return subprocess.list2cmdline(argv)
+    return shlex.join(argv)
+
+
 def load_json(path):
     if not path.exists():
         return {}
     try:
-        value = json.loads(path.read_text())
+        # Client files are UTF-8 on every OS; the Windows locale default is not.
+        value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise ValueError(f"could not read JSON config {path}: {error}") from error
     if not isinstance(value, dict):
@@ -90,7 +100,7 @@ def configure(home, binary, url, force_all, autocontext=False):
             codex, codex_unchecked = False, True
         else:
             try:
-                tomllib.loads(path.read_text())
+                tomllib.loads(path.read_text(encoding="utf-8"))
             except (OSError, UnicodeError, tomllib.TOMLDecodeError) as error:
                 raise ValueError(f"could not read TOML config {path}: {error}") from error
 
@@ -128,15 +138,15 @@ def configure(home, binary, url, force_all, autocontext=False):
 
     # Task cards need SessionStart and UserPromptSubmit hooks, so they are installed
     # by default in their cards-only form. Automatic recall stays opt-in.
-    cards_command = shlex.join([str(binary), "hook", "--url", url, "--no-recall"])
-    recall_command = shlex.join([str(binary), "hook", "--url", url])
+    cards_command = command_line([binary.as_posix(), "hook", "--url", url, "--no-recall"])
+    recall_command = command_line([binary.as_posix(), "hook", "--url", url])
 
     def ours(handler):
         try:
             argv = shlex.split(handler.get("command", ""))
         except ValueError:
             return False
-        return len(argv) >= 2 and pathlib.Path(argv[0]).name == "memnest" and argv[1] == "hook"
+        return len(argv) >= 2 and pathlib.Path(argv[0]).stem == "memnest" and argv[1] == "hook"
 
     def add_hooks(cfg):
         events = cfg.setdefault("hooks", {})
@@ -212,7 +222,8 @@ def configure(home, binary, url, force_all, autocontext=False):
 
     print("Detected clients: " + (", ".join(detected) if detected else "none"))
     if entries:
-        command = shlex.join(["python3", str(backup_dir / "setup-clients.py"), "--restore", str(manifest)])
+        python = "python" if os.name == "nt" else "python3"
+        command = command_line([python, str(backup_dir / "setup-clients.py"), "--restore", str(manifest)])
         print("Config backup manifest: " + str(manifest))
         print("Restore command: " + command)
         return manifest
@@ -222,7 +233,7 @@ def configure(home, binary, url, force_all, autocontext=False):
 
 def restore(manifest_path, force=False):
     try:
-        doc = json.loads(manifest_path.read_text())
+        doc = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise ValueError(f"could not read backup manifest {manifest_path}: {error}") from error
     if not isinstance(doc, dict) or not isinstance(doc.get("files"), list) or not doc.get("home"):

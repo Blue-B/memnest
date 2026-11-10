@@ -53,6 +53,16 @@ class SetupClientsTest(unittest.TestCase):
             self.assertFalse((home / ".codex" / "config.toml").exists())
             self.assertFalse((home / ".codex" / "hooks.json").exists())
 
+    def test_windows_hook_command_runs_in_git_bash_and_cmd(self):
+        binary = pathlib.PureWindowsPath(r"C:\Users\Kim Dev\AppData\Local\memnest\bin\memnest.exe")
+        command = setup_clients.command_line([binary.as_posix(), "hook", "--url", "http://127.0.0.1:3111"], windows=True)
+        self.assertEqual(command, '"C:/Users/Kim Dev/AppData/Local/memnest/bin/memnest.exe" hook --url http://127.0.0.1:3111')
+        plain = pathlib.PureWindowsPath(r"C:\Users\me\AppData\Local\memnest\bin\memnest.exe")
+        self.assertEqual(
+            setup_clients.command_line([plain.as_posix(), "hook"], windows=True),
+            "C:/Users/me/AppData/Local/memnest/bin/memnest.exe hook",
+        )
+
     def test_default_installs_card_hooks_and_recall_stays_opt_in(self):
         with tempfile.TemporaryDirectory() as directory:
             home = pathlib.Path(directory)
