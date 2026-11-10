@@ -123,10 +123,6 @@ pub fn is_enabled() -> bool {
     CIPHER.read().map(|c| c.is_some()).unwrap_or(false)
 }
 
-pub fn encrypt(plaintext: &str) -> Result<String> {
-    encrypt_bound("", plaintext)
-}
-
 pub fn encrypt_bound(context: &str, plaintext: &str) -> Result<String> {
     let guard = CIPHER.read().map_err(|_| anyhow!("crypto lock poisoned"))?;
     let Some(cipher) = guard.as_ref() else {
@@ -199,10 +195,6 @@ fn decrypt_with_ciphers(
     ))
 }
 
-pub fn decrypt(ciphertext: &str) -> Result<String> {
-    decrypt_bound("", ciphertext)
-}
-
 pub fn decrypt_bound(context: &str, ciphertext: &str) -> Result<String> {
     let guard = CIPHER.read().map_err(|_| anyhow!("crypto lock poisoned"))?;
     let cipher = guard
@@ -251,10 +243,10 @@ mod tests {
         let _g = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         init_crypto(Some("test-master-key-123")).unwrap();
         let original = "secret-password-123!";
-        let encrypted = encrypt(original).unwrap();
+        let encrypted = encrypt_bound("", original).unwrap();
         assert!(encrypted.starts_with("$enc2$"));
         assert_ne!(encrypted, original);
-        let decrypted = decrypt(&encrypted).unwrap();
+        let decrypted = decrypt_bound("", &encrypted).unwrap();
         assert_eq!(decrypted, original);
     }
 
@@ -271,7 +263,7 @@ mod tests {
         let ct = legacy.encrypt(nonce, b"old-vault-secret".as_ref()).unwrap();
         // primary (new salt) must NOT decrypt a legacy-salt ciphertext ...
         assert!(primary.decrypt(nonce, ct.as_ref()).is_err());
-        // ... but the legacy cipher does, which is exactly the decrypt() fallback.
+        // ... but the legacy cipher does, which is exactly the decrypt_bound() fallback.
         assert_eq!(
             legacy.decrypt(nonce, ct.as_ref()).unwrap(),
             b"old-vault-secret"
@@ -302,8 +294,8 @@ mod tests {
 
     #[test]
     fn plaintext_and_corrupt_ciphertext_fail_closed() {
-        assert!(decrypt("plain-text").is_err());
-        assert!(decrypt("$enc$not-base64").is_err());
+        assert!(decrypt_bound("", "plain-text").is_err());
+        assert!(decrypt_bound("", "$enc$not-base64").is_err());
     }
 
     #[test]
@@ -336,8 +328,8 @@ mod tests {
     fn wrong_key_cannot_decrypt_ciphertext() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         init_crypto(Some("correct-key")).unwrap();
-        let encrypted = encrypt("secret").unwrap();
+        let encrypted = encrypt_bound("", "secret").unwrap();
         init_crypto(Some("wrong-key")).unwrap();
-        assert!(decrypt(&encrypted).is_err());
+        assert!(decrypt_bound("", &encrypted).is_err());
     }
 }

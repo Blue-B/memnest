@@ -203,6 +203,7 @@ impl MemorySystem {
         Ok(())
     }
 
+    #[cfg(test)]
     pub async fn text_search(&self, query: &str, k: usize) -> Result<Vec<(String, f32)>> {
         self.text_search_projects(query, &[], k).await
     }
@@ -218,6 +219,7 @@ impl MemorySystem {
         text.search_projects(query, projects, k)
     }
 
+    #[cfg(test)]
     pub async fn add_text_doc(&self, id: &str, project: &str, text_body: &str) -> Result<()> {
         let mut guard = self.text_index.write().await;
         let text = ensure_text_index(&mut guard, &self.config.data_dir)?;
