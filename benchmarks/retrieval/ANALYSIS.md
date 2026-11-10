@@ -165,6 +165,8 @@ Session R@10 is 94.0%; six questions have no answer session in the top 10 turns'
 | 3 | Return +-1 neighbour turns (or index adjacent turns as windows) | `link_following_capture`, `transcript_neighbors`, chunking in `core/src/watch.rs` | upper bound R@1 39.7 to 47.1; at equal text budget plain top-10 is better | More text per result; windowing needs re-index |
 | 4 | Reconsider default `n_results` (3) | `default_n` in `api.rs`, MCP schema | R@3 55.4 / R@5 60.7 / R@10 69.1 | Token cost; product decision |
 
+Status (2026-11-10): proposal 1 is implemented (`TextIndex::search_projects` retries a rejected query as plain words) and was measured with the real build: LoCoMo category 1-4 R@10 69.1 to 70.7 (45 wins, 21 losses), R@3 55.4 to 54.7; on the 17 affected LongMemEval sample questions session R@1 fell from 16 to 11 while R@3 to R@10 stayed at 16. See docs/benchmarks.md. Proposals 2-4 are not implemented.
+
 Not addressable by retrieval alone: multi-turn answers (all-evidence R@10 14.5% on multi-hop), calendar arithmetic from relative dates, and world-knowledge questions.
 These need the reader (an LLM or agent) to combine turns. Proposals 1-3 are measured by client-side emulation only; the same harness can measure the real implementation
 (`python3 benchmarks/retrieval/run.py --binary <new build> --dataset locomo`).

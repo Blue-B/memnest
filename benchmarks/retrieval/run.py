@@ -283,6 +283,8 @@ def main():
     parser.add_argument("--checkpoint", default="",
                         help="JSONL checkpoint; finished groups are skipped on rerun")
     parser.add_argument("--port", type=int, default=0)
+    parser.add_argument("--only-ids", default="",
+                        help="comma-separated LongMemEval question ids: keep only these from the sample (paired re-runs)")
     args = parser.parse_args()
 
     shard_index, shard_count = (int(x) for x in args.shard.split("/"))
@@ -296,6 +298,9 @@ def main():
             sample_indices = build.stratified_sample(data, args.sample, args.seed)
         else:
             sample_indices = list(range(len(data)))
+        if args.only_ids:
+            keep = set(args.only_ids.split(","))
+            sample_indices = [i for i in sample_indices if data[i]["question_id"] in keep]
         groups = build.lme_groups(data, date_in_text, sample_indices)
     groups = [g for i, g in enumerate(groups) if i % shard_count == shard_index]
     if args.max_groups:
@@ -381,6 +386,7 @@ def main():
             "sample_size": args.sample if sampled else None,
             "sample_seed": args.seed if sampled else None,
             "sample_question_ids": [data[i]["question_id"] for i in sample_indices] if sampled else None,
+            "only_ids": bool(args.only_ids),
             "shard": args.shard,
             "max_groups": args.max_groups or None,
             "questions_scored": scored_n,

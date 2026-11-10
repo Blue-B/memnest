@@ -91,6 +91,39 @@ answer session (multi-session questions have up to 6). "turn R@10": turns marked
 Temporal-reasoning questions are sent exactly as written (for example "What kitchen appliance did I buy 10 days ago?") without the
 dataset's `question_date`, so relative expressions cannot be resolved by search; they are the weakest type.
 
+## After the keyword-query fix (unreleased build, same harness)
+
+The miss analysis found that 0.5.1 drops the keyword half of a search when the question contains an apostrophe-s, a trailing
+period and some other characters, and then returns 3 results instead of 10 (330 of 1,986 LoCoMo questions, 17 of the 100
+sampled LongMemEval questions). The fix searches such a question again as plain words. The same harness was run against a
+build of commit `7937264` (0.5.1 plus that one change). It is not a pure gain, and both directions are shown.
+
+LoCoMo, full run, categories 1-4 (n = 1,536), recall in percent:
+
+| Build | R@1 | R@3 | R@5 | R@10 | all-evidence R@10 | R@50 (probe) | MRR@10 |
+|---|---|---|---|---|---|---|---|
+| 0.5.1 | 39.7 | 55.4 | 60.7 | 69.1 | 56.4 | 82.1 | 0.490 |
+| with the fix | 40.0 | 54.7 | 60.9 | 70.7 | 58.1 | 86.9 | 0.491 |
+
+Paired on the same questions, R@10 gained 45 questions and lost 21. Questions that got fewer than 10 results: 238 before,
+2 after. R@3 is 0.7 points lower. All five categories: R@10 66.7 to 69.0. Search latency p50 37.5 ms, p95 45.3 ms and
+ingest 6.9 memories/s in that run (1-minute load 2.2 on average).
+
+LongMemEval-S: only the 17 affected questions of the sample were run again; the other 83 do not reach the changed code and
+were not re-run. Session recall on those 17:
+
+| Build | R@1 | R@3 | R@5 | R@10 |
+|---|---|---|---|---|
+| 0.5.1 (vector search only for these questions) | 16 of 17 | 16 | 16 | 16 |
+| with the fix (keyword and vector) | 11 of 17 | 16 | 16 | 16 |
+
+Five questions whose answer session was first are now second or third. With the 83 unchanged rows, the sample's session R@1
+would be 78 instead of 83; R@3, R@5 and R@10 stay at 89, 91 and 94. So on long conversational turns the vector half alone
+ranked the first result better than the hybrid ranking does. The fix is kept because a search should not silently return 3
+results and lose exact-term matching depending on punctuation, but the first-rank ordering of the hybrid ranking is an open
+problem that this measurement exposes. Result files:
+`2026-11-10-unreleased-7937264-locomo.json` and `2026-11-10-unreleased-7937264-longmemeval-affected17.json`.
+
 ## Speed (single-machine measurement)
 
 | Measure | Value |
@@ -123,7 +156,7 @@ Datasets are downloaded to `~/.cache/memnest-bench` and are never committed; the
 * One machine, one run per configuration. Two LoCoMo runs of the same data differed in the order of the top 10 for 9 of 1,986 questions
   (all metrics within 0.1 point), so tiny differences between builds are not meaningful.
 * 330 of the 1,986 LoCoMo questions (17%; they contain an apostrophe, such as "Caroline's", or a colon) lose the keyword (BM25) half of the search in 0.5.1 and return only 3 results;
-  see ANALYSIS.md section 4.1. The tables above include that effect: they are what 0.5.1 does today.
+  see ANALYSIS.md section 4.1. The 0.5.1 tables include that effect: they are what the released 0.5.1 does. The section "After the keyword-query fix" shows the build that fixes it.
 
 ## Reproduce
 
