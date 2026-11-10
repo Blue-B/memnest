@@ -25,17 +25,27 @@
 ### 추가
 
 - 새 작업 카드를 저장하면, 그 작업에 대해 이미 저장돼 있던 규칙과 선호 기억을 id와 함께 답에 붙입니다. 모델이 아직 유효한 것을 카드에 옮겨 적을 수 있습니다. 전에는 카드가 만들어진 뒤에 한 말만 카드에 들어가서, 실제 사용에서 카드보다 5일 먼저 저장된 규칙이 사용자가 다시 말할 때까지 빠져 있었습니다. 관련 기억이 가장 많은 프로젝트에서 최신순으로 먼저 고르고, 그다음 검색 결과에서 골라 최대 10줄을 보여 줍니다.
+- 관리자 권한 없이 설치하는 네이티브 Windows 지원(64비트 x86, Windows 10/11). `irm https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.ps1 | iex`가 릴리스 zip을 내려받아 SHA-256을 확인하고 `install-windows.ps1`을 실행합니다. 설치 위치는 `%LOCALAPPDATA%\memnest`, 데이터는 `%USERPROFILE%\.memnest`이고, 로그인 때 시작하는 예약 작업 두 개(서버와 `memnest watch`)를 등록합니다. `docs/operations.ko.md`를 참고하세요.
+- 릴리스에 `memnest-<버전>-x86_64-pc-windows-msvc.zip`과 `.sha256`이 포함됩니다. Microsoft Visual C++ 재배포 가능 패키지(x64)가 필요하고, 코드 서명은 되어 있지 않습니다.
+
+### 변경
+
+- 문서를 바로잡았습니다: 고정 설치 예시를 v0.5.1로 올렸고, 지원 버전 표를 0.5.x로 고쳤고, 어댑터 문서의 pi 도구 수를 6개로 고쳤고, 한국어로만 쓰인 문서로 가는 링크에 한국어라고 표시했습니다.
+- README의 작업 카드 설명이 다시 돌려 본 결과를 정확히 적습니다(카드가 있을 때 블라인드 채점 3번 중 3번, 없을 때 3번 중 0번 방침을 지킴). 카드가 있다고 모델이 반드시 따르는 것은 아니라는 문구도 넣었습니다.
+- `install-windows.ps1`은 더 이상 관리자 권한의 WinSW 서비스를 설치하지 않고 데이터를 `%ProgramData%\Memnest`에 두지 않습니다. 서비스 계정은 사용자의 대화 기록을 읽을 수 없기 때문입니다. `uninstall-windows.ps1`은 그런 설치가 남아 있으면 경고하고, 데이터를 옮기는 방법은 `docs/operations.ko.md`에 있습니다.
+- 릴리스 압축 파일에는 해당 운영체제 설치에 쓰는 스크립트와 서비스 템플릿만 들어갑니다. Linux와 macOS 압축 파일에 PowerShell, 테스트, 개발용 스크립트가 더 이상 들어가지 않습니다.
+
+### 수정
+
+- Windows: 같은 폴더인데도 `memnest evidence`가 훅이나 MCP와 다른 작업공간 ID를 쓰던 문제를 고쳤습니다. 정규화된 경로가 `\\?\`로 시작해서 생긴 문제입니다.
+- Windows: `memnest watch`의 기본 대화 기록 폴더를 역슬래시로 표기해, 나중에 같은 폴더를 `--path`로 지정해도 같은 파일로 인식합니다.
+- Windows의 `setup-clients.py`가 클라이언트 설정 파일을 시스템 코드 페이지가 아니라 UTF-8로 읽고, `memnest.exe`를 자기 훅으로 인식해 다시 실행해도 중복으로 추가하지 않으며, Git Bash와 cmd에서 모두 실행되는 훅·복구 명령을 씁니다.
 
 ### 제거
 
 - 쓰이지 않던 코드를 지웠습니다: `SessionSummary`, `SearchResult` 타입, `Database::insert_summary`, `get_summaries`, `recent_chunks`, 임베더의 `model_name`, `encode`, `encode_batch`, `TextIndex::add`, `remove`, `replace_all_with_project`, 그리고 맥락 없는 `crypto::encrypt`, `crypto::decrypt`. 행 단위로 묶는 `encrypt_bound`, `decrypt_bound`는 예전 암호 대체 경로를 포함해 그대로입니다. `text_search`와 `add_text_doc`은 이제 테스트에서만 존재합니다.
 - 새 데이터베이스는 빈 `session_summaries` 테이블을 만들지 않습니다. 이미 있는 테이블은 `graph_edges`처럼 그대로 둡니다.
 - 예전 `pi-extension/contrib` 소스 설치기, `scripts/preflight.sh`, 참조가 없던 구조도 그림 2장과 pi-extension 로고, `Cargo.toml`의 주석 처리된 `ort` 줄을 지웠습니다.
-
-### 변경
-
-- 문서를 바로잡았습니다: 고정 설치 예시를 v0.5.1로 올렸고, 지원 버전 표를 0.5.x로 고쳤고, 어댑터 문서의 pi 도구 수를 6개로 고쳤고, 한국어로만 쓰인 문서로 가는 링크에 한국어라고 표시했습니다.
-- README의 작업 카드 설명이 다시 돌려 본 결과를 정확히 적습니다(카드가 있을 때 블라인드 채점 3번 중 3번, 없을 때 3번 중 0번 방침을 지킴). 카드가 있다고 모델이 반드시 따르는 것은 아니라는 문구도 넣었습니다.
 
 ### 업그레이드할 때
 

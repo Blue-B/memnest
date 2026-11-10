@@ -87,6 +87,15 @@ pub fn identity(cwd: &str) -> Result<WorkspaceIdentity> {
 
 fn normalize_absolute(cwd: &str) -> Result<String> {
     let replaced = cwd.trim().replace('\\', "/");
+    // `std::fs::canonicalize` on Windows returns a verbatim path (`\\?\C:\...`).
+    // It names the same directory as `C:\...`, so it must get the same id.
+    let replaced = match replaced.strip_prefix("//?/") {
+        Some(rest) => match rest.strip_prefix("UNC/") {
+            Some(share) => format!("//{share}"),
+            None => rest.to_string(),
+        },
+        None => replaced,
+    };
     let (prefix, rest) = if let Some(rest) = replaced.strip_prefix('/') {
         ("/".to_string(), rest)
     } else if replaced.len() >= 3
@@ -141,6 +150,18 @@ mod tests {
         assert_eq!(
             identity(r"C:\\Users\\me\\api").unwrap().id,
             identity("c:/Users/me/api/").unwrap().id
+        );
+    }
+
+    #[test]
+    fn windows_verbatim_paths_match_their_plain_form() {
+        assert_eq!(
+            identity(r"\\?\C:\Users\me\api").unwrap().id,
+            identity(r"C:\Users\me\api").unwrap().id
+        );
+        assert_eq!(
+            identity(r"\\?\UNC\server\share\api").unwrap().id,
+            identity(r"\\server\share\api").unwrap().id
         );
     }
 

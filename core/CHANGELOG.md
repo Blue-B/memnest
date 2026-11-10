@@ -25,17 +25,27 @@ All notable changes to the `memnest` Rust engine are recorded here.
 ### Added
 
 - Saving a new task card answers with the rules and preferences already stored for that work, with their ids, so the model can copy the ones that still apply into the card. A card used to hold only what was said after it was created; in real use a rule stored five days before the card was missed until the user repeated it. The list comes from the project most of the related memories live in, newest first, then from the search results, at most 10 lines.
+- Native Windows install (64-bit x86, Windows 10/11) without administrator rights. `irm https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.ps1 | iex` downloads the release zip, checks its SHA-256 and runs `install-windows.ps1`, which installs under `%LOCALAPPDATA%\memnest`, keeps data in `%USERPROFILE%\.memnest`, and registers two logon scheduled tasks: the server and `memnest watch`. See `docs/operations.md`.
+- Releases publish `memnest-<version>-x86_64-pc-windows-msvc.zip` with a `.sha256`. It needs the Microsoft Visual C++ Redistributable (x64) and is not code-signed.
+
+### Changed
+
+- Documentation fixes: the pinned install example now uses v0.5.1, the supported-versions table lists 0.5.x, the adapters page counts six pi tools, and links to Korean-only documents are labelled as Korean.
+- The task card summary in the README now states the replay result exactly (the policy was respected in 3 of 3 blind-graded runs with the card, 0 of 3 without) and notes that a card does not force the model to follow it.
+- `install-windows.ps1` no longer installs an elevated WinSW service with data in `%ProgramData%\Memnest`; a service account cannot read the user's transcripts. `uninstall-windows.ps1` warns when such an install is still present, and `docs/operations.md` has the steps to move its data.
+- Release archives contain only the scripts and service templates their own system installs with. Linux and macOS archives no longer carry PowerShell, test, and development scripts.
+
+### Fixed
+
+- Windows: `memnest evidence` used a different workspace id than hooks and MCP for the same directory, because the canonical path starts with `\\?\`.
+- Windows: the default transcript folders of `memnest watch` are written with backslashes, so a later `--path` to the same folder identifies the same files.
+- `setup-clients.py` on Windows reads client files as UTF-8 instead of the system code page, recognises `memnest.exe` as its own hook so a second run adds nothing, and writes hook and restore commands that Git Bash and cmd both run.
 
 ### Removed
 
 - Unused code: the `SessionSummary` and `SearchResult` types, `Database::insert_summary`, `get_summaries` and `recent_chunks`, the embedder's `model_name`, `encode` and `encode_batch`, `TextIndex::add`, `remove` and `replace_all_with_project`, and the plain `crypto::encrypt` and `crypto::decrypt` (the row-bound `encrypt_bound` and `decrypt_bound` are unchanged, including the legacy-cipher fallback). `text_search` and `add_text_doc` now exist only in tests.
 - New databases no longer create the empty `session_summaries` table. An existing table is left as it is, the same as `graph_edges`.
 - The old `pi-extension/contrib` source installer, `scripts/preflight.sh`, two unreferenced architecture diagrams, an unreferenced pi-extension logo, and a commented-out `ort` line in `Cargo.toml`.
-
-### Changed
-
-- Documentation fixes: the pinned install example now uses v0.5.1, the supported-versions table lists 0.5.x, the adapters page counts six pi tools, and links to Korean-only documents are labelled as Korean.
-- The task card summary in the README now states the replay result exactly (the policy was respected in 3 of 3 blind-graded runs with the card, 0 of 3 without) and notes that a card does not force the model to follow it.
 
 ### Upgrade notes
 

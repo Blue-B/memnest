@@ -22,9 +22,15 @@ Your coding AI forgets everything when the session ends. Memnest lets it look up
 curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.sh | bash
 ```
 
+On Windows, in PowerShell (no administrator rights needed):
+
+```powershell
+irm https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.ps1 | iex
+```
+
 This starts the server and the conversation watcher, and connects the Claude Code, Codex, and Cursor setups it finds. Existing configuration is backed up first, and the restore command is printed. Codex runs the new hooks after you trust them once with `/hooks`.
 
-Needs macOS on Apple Silicon or Linux with systemd (x86_64 with glibc 2.35+, Arm64 with glibc 2.39+), and Python 3. The first write or search downloads an embedding model of about 1.1 GB.
+Needs macOS on Apple Silicon, Linux with systemd (x86_64 with glibc 2.35+, Arm64 with glibc 2.39+), or 64-bit x86 Windows 10/11, and Python 3. On Windows, Python is only used to connect clients, and the Windows archive starts with the release after v0.5.1 ([details](docs/operations.md#windows)). The first write or search downloads an embedding model of about 1.1 GB.
 
 - pi: `pi install npm:pi-memnest@0.5.0`, then check with `/memnest`.
 - Other MCP clients: connect to `http://127.0.0.1:3111/mcp` ([examples](adapters/README.md)).

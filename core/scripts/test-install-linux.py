@@ -42,8 +42,10 @@ class Probe(BaseHTTPRequestHandler):
 with tempfile.TemporaryDirectory(prefix='memnest-install-test-') as directory:
     scratch = Path(directory)
     core = scratch / 'core'
-    for name in ('scripts', 'packaging'):
-        shutil.copytree(ROOT / name, core / name)
+    # Install from the layout a Linux release archive ships, not the whole checkout.
+    (scratch / 'memnest').write_text('fixture binary')
+    subprocess.run(['bash', str(ROOT / 'scripts/package-release.sh'), 'x86_64-unknown-linux-gnu',
+                    str(scratch / 'memnest'), str(core)], check=True)
     # Map system paths in this PRIVATE COPY, never run sudo or systemctl on the host.
     for file in [*core.glob('scripts/*.sh'), *core.glob('packaging/systemd/*.service')]:
         text = file.read_text()

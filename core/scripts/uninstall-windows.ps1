@@ -1,30 +1,56 @@
 param(
-  [string]$InstallDir = "$env:ProgramData\Memnest\app",
+  [string]$InstallDir = "$env:LOCALAPPDATA\memnest",
+  [string]$DataDir = "$env:USERPROFILE\.memnest",
+  [string]$TaskName = "Memnest",
   [switch]$RemoveData
 )
 
+# Removes the per-user install made by install-windows.ps1. No elevation.
+# Keep this file ASCII (see install-windows.ps1).
 $ErrorActionPreference = "Stop"
-$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).
-  IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
-  throw "uninstall-windows.ps1 must run from an elevated PowerShell prompt."
-}
+$BinDir = Join-Path $InstallDir "bin"
+$Exe = Join-Path $BinDir "memnest.exe"
 
-$winsw = "$InstallDir\memnest-service.exe"
-if (Test-Path $winsw) {
-  Push-Location $InstallDir
-  try {
-    & $winsw stop 2>$null | Out-Null
-    & $winsw uninstall 2>$null | Out-Null
-  }
-  finally {
-    Pop-Location
+foreach ($name in "$TaskName Watch", $TaskName) {
+  if (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) {
+    Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $name -Confirm:$false
   }
 }
+# Stopping a task ends its console host but not the memnest.exe under it.
+Get-Process -Name memnest -ErrorAction SilentlyContinue |
+  Where-Object { $_.Path -eq $Exe } |
+  Stop-Process -Force -ErrorAction SilentlyContinue
+for ($i = 0; $i -lt 50; $i++) {
+  if (-not (Get-Process -Name memnest -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $Exe })) { break }
+  Start-Sleep -Milliseconds 200
+}
 
-Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue
+$key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Environment", $true)
+try {
+  $current = [string]$key.GetValue("Path", "", [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+  $entries = @($current.Split(";") | Where-Object { $_ })
+  $kept = @($entries | Where-Object { $_.TrimEnd("\") -ne $BinDir.TrimEnd("\") })
+  if ($kept.Count -ne $entries.Count) {
+    $key.SetValue("Path", ($kept -join ";"), $key.GetValueKind("Path"))
+    [Environment]::SetEnvironmentVariable("MEMNEST_PATH_REFRESH", $null, "User")
+  }
+}
+finally { $key.Close() }
+
+# This script normally runs from $InstallDir\scripts; PowerShell has already
+# read it, so the directory can go.
+if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
 if ($RemoveData) {
-  Remove-Item -Recurse -Force "$env:ProgramData\Memnest" -ErrorAction SilentlyContinue
+  if (Test-Path $DataDir) { Remove-Item -Recurse -Force $DataDir }
+  $lock = Join-Path (Split-Path -Parent $DataDir) ".$(Split-Path -Leaf $DataDir).writer.lock"
+  if (Test-Path $lock) { Remove-Item -Force $lock }
+}
+
+# Releases before the per-user installer registered an elevated WinSW service.
+if (Test-Path "$env:ProgramData\Memnest") {
+  Write-Warning "An older service install remains in $env:ProgramData\Memnest. From an elevated prompt run '$env:ProgramData\Memnest\app\memnest-service.exe stop' and 'uninstall', then delete that folder. To keep its memories, first run: memnest --data-dir `"$env:ProgramData\Memnest\data`" --backup-dir <folder>, then memnest --restore-dir <folder>."
 }
 
 Write-Host "Memnest uninstalled."
+if (-not $RemoveData) { Write-Host "Data was kept in $DataDir." }
