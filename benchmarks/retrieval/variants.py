@@ -38,6 +38,21 @@ def content_words(question):
     return " ".join(kept) or question
 
 
+SERVER_STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "do", "does", "for", "from", "how", "in",
+    "is", "it", "of", "on", "or", "our", "should", "the", "this", "to", "was", "what", "when",
+    "where", "which", "who", "why", "with",
+}  # ENGLISH_STOPWORDS in core/src/search/mod.rs
+
+
+def server_keywords(question):
+    """What the server's extract_keywords(query, 2) keeps (English-only path), joined by spaces.
+    Punctuation that breaks the BM25 query parser is dropped from the words."""
+    tokens = re.split(r"[\s,;:!?'\"()\[\]{}]+", question)
+    kept = [t for t in tokens if len(t) >= 2 and t.lower() not in SERVER_STOPWORDS]
+    return " ".join(kept) or question
+
+
 def syntax_safe(question):
     """Drop punctuation that tantivy's query parser treats as syntax ('s, quotes, brackets...)."""
     out = re.sub(r"['\u2019]s\b", "", question)
@@ -103,6 +118,7 @@ def main():
                 keywords = ask(content_words(text), 10)
                 labelled = ask(label_form(text, names), 10)
                 safe = ask(syntax_safe(text), 10)
+                srv = ask(server_keywords(text), 10)
                 safe_nonames = ask(syntax_safe(strip_names(text, names)), 10)
                 rows.append({
                     "id": q["id"], "category": q["category"], "relevant": q["relevant"],
@@ -115,6 +131,8 @@ def main():
                         "query_content_words_only": keywords,
                         "query_as_stored_form": labelled,
                         "query_punctuation_stripped": safe,
+                        "query_server_keywords_only": srv,
+                        "rrf_base_plus_server_keywords": rrf([base, srv]),
                         "query_punctuation_and_names_stripped": safe_nonames,
                         "rrf_base_plus_punctuation_stripped": rrf([base, safe]),
                         "rrf_base_plus_without_names": rrf([base, nonames]),
