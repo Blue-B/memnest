@@ -922,6 +922,7 @@ pub async fn run(
         ));
     }
 
+    crate::secure_data_dir(state_dir)?;
     let state_path = state_dir.join(STATE_FILE);
     let mut state = load_state(&state_path)?;
 

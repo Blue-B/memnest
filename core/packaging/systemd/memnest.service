@@ -11,10 +11,16 @@ Environment=MEMNEST_PORT=3111
 ExecStart=/usr/local/bin/memnest --host ${MEMNEST_HOST} --port ${MEMNEST_PORT} --data-dir /var/lib/memnest
 Restart=on-failure
 RestartSec=5
+UMask=0077
 StateDirectory=memnest
+StateDirectoryMode=0700
 WorkingDirectory=/usr/local/share/memnest
 NoNewPrivileges=true
 PrivateTmp=true
+# Read-only file system except the state directory. /var/lib itself stays
+# writable because the single-writer lock is /var/lib/.memnest.writer.lock.
+ProtectSystem=strict
+ReadWritePaths=/var/lib
 
 [Install]
 WantedBy=multi-user.target

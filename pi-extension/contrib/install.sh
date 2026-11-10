@@ -14,6 +14,7 @@ done
 DATA="${MEMNEST_DATA_DIR:-$HOME/.memnest}"
 BIN="${MEMNEST_BIN_DIR:-$HOME/.local/bin}"
 mkdir -p "$DATA" "$BIN"
+chmod 700 "$DATA"
 
 # 1. install memnest core binary
 if ! command -v memnest >/dev/null 2>&1; then

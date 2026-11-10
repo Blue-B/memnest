@@ -40,6 +40,7 @@ command -v plutil >/dev/null || { echo "plutil is required" >&2; exit 1; }
 command -v python3 >/dev/null || { echo "install-macos.sh requires python3" >&2; exit 1; }
 
 mkdir -p "$BIN_DIR" "$AGENTS" "$LOGS" "$DATA_DIR" "$BACKUPS" "$SHARE"
+chmod 700 "$DATA_DIR"
 install -m 0755 "$ROOT/scripts/setup-clients.py" "$ROOT/scripts/uninstall-macos.sh" "$ROOT/scripts/validate-installed-macos.sh" "$SHARE/"
 if ! [ "$BIN_SRC" -ef "$BIN_DIR/memnest" ]; then
   install -m 0755 "$BIN_SRC" "$BIN_DIR/memnest"

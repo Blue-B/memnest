@@ -128,6 +128,12 @@ struct ImportRecord {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // The store, its indexes, backups, and watcher state hold conversation text.
+    // SAFETY: umask(2) only swaps the process file-mode mask and cannot fail.
+    #[cfg(unix)]
+    unsafe {
+        libc::umask(0o077);
+    }
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())

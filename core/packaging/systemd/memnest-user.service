@@ -9,6 +9,7 @@ Environment=MEMNEST_PORT=3111
 ExecStart=%h/.local/bin/memnest --host ${MEMNEST_HOST} --port ${MEMNEST_PORT} --data-dir %h/.memnest
 Restart=on-failure
 RestartSec=5
+UMask=0077
 WorkingDirectory=%h/.local/share/memnest
 
 [Install]
