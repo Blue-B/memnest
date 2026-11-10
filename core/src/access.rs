@@ -530,7 +530,7 @@ mod tests {
         )])));
         assert!(browser_safe_without_auth(&headers(&[(
             "host",
-            "100.74.125.103:3111"
+            "100.64.0.10:3111"
         )])));
         assert!(!browser_safe_without_auth(&headers(&[(
             "host",
@@ -568,8 +568,8 @@ mod tests {
             "http://127.0.0.1:3111"
         )])));
         assert!(browser_safe_without_auth(&headers(&[
-            ("host", "100.74.125.103:3111"),
-            ("origin", "http://100.74.125.103:3111")
+            ("host", "100.64.0.10:3111"),
+            ("origin", "http://100.64.0.10:3111")
         ])));
         assert!(!browser_safe_without_auth(&headers(&[
             ("host", "127.0.0.1:3111"),

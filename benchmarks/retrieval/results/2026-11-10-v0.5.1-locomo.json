@@ -2,7 +2,7 @@
  "benchmark": "memnest retrieval-only (no LLM): locomo",
  "run_date": "2026-11-10",
  "binary": {
-  "path": "/home/shell/.local/bin/memnest",
+  "path": "~/.local/bin/memnest",
   "sha256": "39a420937cd9c41d0e5731d9fd30a7b15e196955561d3adc1c60f653b6ecaf40",
   "version_from_health": "0.5.1",
   "embed_model": "intfloat/multilingual-e5-base"

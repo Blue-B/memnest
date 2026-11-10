@@ -350,7 +350,7 @@ mod tests {
         }
         for url in [
             "http://192.168.0.10:3111",
-            "http://100.74.125.103:3111",
+            "http://100.64.0.10:3111",
             "http://memnest.example.com",
             "http://localhost.evil.example:3111",
             "not a url",
