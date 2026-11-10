@@ -53,7 +53,7 @@ python3 ~/.memnest/setup-backups/<timestamp>/setup-clients.py \
   --restore ~/.memnest/setup-backups/<timestamp>/manifest.json
 ```
 
-Linux에서는 systemd를 쓰고 사용자 데이터를 `~/.memnest`에 둡니다. `/var/lib/memnest`를 쓰려면 `--system`을 쓰세요. 시스템 모드는 root로 대화 수집기를 돌리지 않으므로, 수집은 데스크톱 사용자가 실행해야 합니다. macOS는 `~/Library/LaunchAgents`의 `io.memnest.service`와 `io.memnest.watch`를 쓰고, 로그는 `~/Library/Logs/Memnest`에 남습니다. CI는 GitHub의 macOS 15 러너에서 설치, 재설치, 재시작, 제거를 확인하며, 개인 Mac에서는 확인하지 않았습니다.
+Linux에서는 systemd를 쓰고 사용자 데이터를 `~/.memnest`에 둡니다. `/var/lib/memnest`를 쓰려면 `--system`을 쓰세요. 시스템 모드는 root로 대화 수집기를 돌리지 않으므로, 수집은 데스크톱 사용자가 실행해야 합니다. 시스템 유닛은 root로 돌고 `ProtectSystem=strict`와 소유자 전용 상태 폴더를 씁니다. `DynamicUser=yes`는 쓰지 않습니다. 쓰기 잠금 파일이 상태 폴더 옆(`/var/lib/.memnest.writer.lock`)에 있고, root 소유인 기존 `/var/lib/memnest`가 그 설정에서도 그대로 동작하는지 확인하지 못했기 때문입니다. macOS는 `~/Library/LaunchAgents`의 `io.memnest.service`와 `io.memnest.watch`를 쓰고, 로그는 `~/Library/Logs/Memnest`에 남습니다. CI는 GitHub의 macOS 15 러너에서 설치, 재설치, 재시작, 제거를 확인하며, 개인 Mac에서는 확인하지 않았습니다.
 
 더 낮은 수준의 Linux 설치기도 그대로 쓸 수 있습니다.
 
@@ -179,9 +179,19 @@ memnest --data-dir ~/.memnest --backup-dir ~/memnest-backup
 memnest --data-dir ~/.memnest --restore-dir ~/memnest-backup --force
 ```
 
-백업에는 `master.key`가 들어가지만, 이 키의 보호된 사본을 하나 더 보관하세요.
+백업에는 `master.key`가 들어가므로, 백업을 읽을 수 있는 사람은 금고를 복호화할 수 있습니다. 백업을 비밀번호처럼 보관하세요. 명령이 끝날 때 이 안내를 한 줄 출력합니다. 이 키의 보호된 사본도 하나 더 보관하세요.
 
-새 금고 행은 `$enc2$` 암호문을 쓰며, AES-GCM 연관 데이터에 비밀 키 이름이나 서버 이름이 들어갑니다. 그래서 암호문을 다른 행으로 옮기면 복호화가 실패합니다. 기존 `$enc$` 행은 호환 복호화 경로를 쓰고, 다시 쓰기 전까지 읽을 수 있습니다. 모델이 쓰는 비밀 도구는 `MEMNEST_EXPOSE_SECRET_TOOLS=1`이 아니면 숨겨지며, localhost HTTP 금고 API는 그대로 쓸 수 있습니다.
+새 금고 행은 `$enc2$` 암호문을 쓰며, AES-GCM 연관 데이터에 비밀 키 이름이나 서버 이름이 들어갑니다. 그래서 암호문을 다른 행으로 옮기면 복호화가 실패합니다. 기존 `$enc$` 행은 호환 복호화 경로를 쓰고, 다시 쓰기 전까지 읽을 수 있습니다. 모델이 쓰는 비밀 도구는 `MEMNEST_EXPOSE_SECRET_TOOLS=1`이 아니면 숨겨집니다.
+
+HTTP 금고 API(`/secrets`, `/secrets/{key}`)는 항상 bearer 토큰이 필요합니다. `MEMNEST_TOKEN`이나 접근 정책을 쓰고 있다면 지금 쓰는 그 토큰입니다(정책 모드에서는 관리자 토큰). 둘 다 없으면 서비스가 처음 시작할 때 `<data-dir>/api-token`(권한 0600)에 써 두는 설치별 토큰입니다.
+
+```bash
+curl -H "Authorization: Bearer $(cat ~/.memnest/api-token)" http://127.0.0.1:3111/secrets
+```
+
+`POST /mcp`로 부르는 비밀 도구도 같은 규칙을 따릅니다. HTTP로 연결하는 MCP 클라이언트는 이 헤더를 보내야 비밀 도구가 보이고 쓸 수 있습니다. stdio MCP(`--mcp`)는 토큰이 필요 없습니다. pi 확장은 이 파일을 직접 읽고, `MEMNEST_URL`이 루프백 주소일 때만 토큰을 보냅니다. 기억 관련 경로는 그대로이며 루프백에서는 토큰이 필요 없습니다.
+
+Unix에서는 프로세스가 시작할 때마다 umask를 077로 두고 데이터 폴더 권한을 0700으로 맞춥니다. 그래서 저장소, 색인, 백업, 수집기 상태 파일은 소유자만 읽을 수 있습니다.
 
 ## CLI 참고
 
@@ -210,7 +220,7 @@ memnest --help
 | 변수 | 효과 |
 | --- | --- |
 | `MEMNEST_DATA_DIR` | 데이터 폴더. `--data-dir`과 같음 |
-| `MEMNEST_TOKEN` | 로컬이 아닌 주소에 바인드할 때 필수. 클라이언트는 `Authorization: Bearer <token>`을 보냄 |
+| `MEMNEST_TOKEN` | 로컬이 아닌 주소에 바인드할 때 필수. 클라이언트는 `Authorization: Bearer <token>`을 보냄. `memnest hook`, `memnest watch`, pi 확장은 루프백이나 `https` 주소로만 보냄 |
 | `MEMNEST_EMBED_MODEL` | 임베딩 모델. 기본값 `intfloat/multilingual-e5-base` |
 | `MEMNEST_EMBED_DIM` | 임베딩 차원. 기본값 768 |
 | `MEMNEST_TTL_AUTOLOG_DAYS` | 예전 AutoLog 보존 기간. 기본값 30. 대화 이벤트는 영구 보존 |

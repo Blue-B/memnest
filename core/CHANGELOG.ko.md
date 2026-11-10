@@ -6,6 +6,26 @@
 
 ## [출시 전]
 
+### 보안
+
+- 다른 사이트에서 온 요청: `Origin`은 요청을 받은 호스트와 포트를 가리킬 때만 받습니다(`localhost`, `127.0.0.1`, `[::1]`은 같은 호스트로 봅니다). 전에는 아무 IP 주소나 다른 로컬 포트도 통과했습니다. `Sec-Fetch-Site: cross-site`가 붙은 요청은 거절하고, `POST /mcp`는 본문이 `application/json`이 아니면 415로 답합니다.
+- 작업 카드: `task-cards`와 `task-cards-done` 컬렉션은 작업 카드 경로만 쓸 수 있습니다. `memory_remember`, `memory_update`, `/add`, `/update`로는 카드를 만들거나 고치거나 옮길 수 없으므로, 저장된 글이 카드나 사용자 발언인 척할 수 없습니다. 카드 삭제는 그대로 됩니다. 제목은 한 줄 120자로 자르고 `<`와 `>`를 바꾸며, 모델에게 보여 주는 카드 글은 안내문 태그를 닫을 수 없습니다. `POST /task-card`는 사용자 메시지를 직접 기록하는 호스트(pi 확장)가 보낸 메시지를 받습니다. MCP 도구는 받지 않습니다.
+- 금고: `MEMNEST_TOKEN`도 접근 정책도 없을 때에도 `/secrets` 경로와 `POST /mcp`의 `secret_*` 도구는 bearer 토큰이 필요합니다. 서비스가 설치별 토큰을 `<data-dir>/api-token`(권한 0600)에 쓰고, 이 모드에서는 그 토큰을 요구합니다. stdio MCP는 그대로입니다.
+- 프로세스가 시작할 때마다 umask를 077로 두고 데이터 폴더 권한을 0700으로 맞춥니다. 배포용 systemd 유닛에 `UMask=0077`을 넣었고, 설치 스크립트는 폴더를 0700으로 만듭니다.
+- 시스템 모드 systemd 유닛에 `StateDirectoryMode=0700`과 `ProtectSystem=strict`를 넣었습니다. 쓰기 잠금 파일이 `/var/lib/.memnest.writer.lock`이라서 `/var/lib`은 쓸 수 있게 둡니다. 이미 설치된 유닛 파일은 업그레이드 때 다시 쓰지 않습니다.
+- 가리기 대상에 JWT, Stripe `sk_live_`/`sk_test_`/`rk_live_`/`rk_test_` 키, GitLab `glpat-`, `npm_`, Hugging Face `hf_`, Slack `xapp-`와 `xoxe-`, AWS `ASIA` 임시 키를 더했습니다.
+- `MEMNEST_TOKEN`을 일정 시간 비교로 확인합니다.
+- 읽기 전용 MCP 게이트웨이는 주소의 비밀 값을 일정 시간 비교로 확인합니다. `MEMNEST_GATEWAY_TOOLS`에 넣더라도 `memory_remember`, `memory_update`, `memory_delete`, `task_card`와 모든 `secret_*` 도구를 거절하고, 호출을 넘기기 전에 `evidence_only`를 지웁니다.
+- `--backup-dir`은 백업에 금고 키가 들어 있다는 경고를 출력합니다. 복원이 계속 되도록 키는 그대로 복사합니다.
+- `memnest hook`과 `memnest watch`는 루프백이 아닌 주소에 일반 HTTP로 `MEMNEST_TOKEN`을 보내지 않습니다.
+
+### 업그레이드할 때
+
+- `pi-memnest` 0.5.0은 카드를 `/add`로 저장하는데, 이 코어는 그 요청을 거절합니다. 확장을 코어와 함께 업데이트하세요.
+- `MEMNEST_TOKEN` 없이 금고를 쓰는 스크립트나 HTTP MCP 클라이언트는 `Authorization: Bearer $(cat <data-dir>/api-token)`을 보내야 합니다.
+- `Content-Type: application/json` 없이 `/mcp`에 보내는 클라이언트는 415를 받습니다.
+- 이름이 `task-cards`나 `task-cards-done`인 프로젝트에는 기억 도구로 더 이상 쓸 수 없습니다.
+
 ## [0.5.1] - 2026-11-09
 
 ### 보안

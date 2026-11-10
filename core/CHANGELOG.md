@@ -6,6 +6,26 @@ All notable changes to the `memnest` Rust engine are recorded here.
 
 ## [Unreleased]
 
+### Security
+
+- Cross-site requests: an `Origin` is accepted only when it names the host and port the request was sent to (`localhost`, `127.0.0.1` and `[::1]` count as one host). Before, any IP address or any local port passed. Requests marked `Sec-Fetch-Site: cross-site` are refused, and `POST /mcp` answers 415 unless the body is `application/json`.
+- Task cards: the `task-cards` and `task-cards-done` collections are reserved for the task-card path. `memory_remember`, `memory_update`, `/add` and `/update` can no longer create, edit or move a card, so a stored text cannot pose as a card or as the user's own words. Deleting a card still works. Titles are cut to 120 characters on one line with `<` and `>` replaced, and card text shown to a model cannot close the reminder wrapper. `POST /task-card` accepts user messages from a host that records them itself (the pi extension); the MCP tool does not.
+- Vault: `/secrets` routes and `secret_*` tools over `POST /mcp` now need a bearer token even with no `MEMNEST_TOKEN` and no access policy. The service writes a per-install token to `<data-dir>/api-token` (mode 0600) and requires it in that mode. Stdio MCP is unchanged.
+- The process sets umask 077 and makes the data directory mode 0700 on every start. Packaged systemd units set `UMask=0077`, and installers create the directory 0700.
+- The system-mode systemd unit adds `StateDirectoryMode=0700` and `ProtectSystem=strict`. `/var/lib` stays writable because the writer lock is `/var/lib/.memnest.writer.lock`. Existing unit files are not rewritten on upgrade.
+- Redaction also covers JWTs, Stripe `sk_live_`/`sk_test_`/`rk_live_`/`rk_test_` keys, GitLab `glpat-`, `npm_`, Hugging Face `hf_`, Slack `xapp-` and `xoxe-`, and AWS `ASIA` temporary keys.
+- `MEMNEST_TOKEN` is compared in constant time.
+- The read-only MCP gateway compares its URL secret in constant time, refuses `memory_remember`, `memory_update`, `memory_delete`, `task_card` and every `secret_*` tool even when `MEMNEST_GATEWAY_TOOLS` lists them, and removes `evidence_only` before forwarding a call.
+- `--backup-dir` prints a warning that the backup contains the vault key. The key is still copied, so a restore keeps working.
+- `memnest hook` and `memnest watch` refuse to send `MEMNEST_TOKEN` over plain HTTP to an address that is not loopback.
+
+### Upgrade notes
+
+- `pi-memnest` 0.5.0 saves cards through `/add`, which this core rejects. Update the extension together with the core.
+- A script or MCP-over-HTTP client that uses the vault without `MEMNEST_TOKEN` must send `Authorization: Bearer $(cat <data-dir>/api-token)`.
+- A client that posts to `/mcp` without `Content-Type: application/json` gets 415.
+- A project named `task-cards` or `task-cards-done` can no longer be written with the memory tools.
+
 ## [0.5.1] - 2026-11-09
 
 ### Security

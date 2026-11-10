@@ -53,7 +53,7 @@ python3 ~/.memnest/setup-backups/<timestamp>/setup-clients.py \
   --restore ~/.memnest/setup-backups/<timestamp>/manifest.json
 ```
 
-On Linux this uses systemd and stores user data in `~/.memnest`. Use `--system` for `/var/lib/memnest`; system mode intentionally does not run a root transcript watcher, so capture must be run by the desktop user. The macOS implementation targets `io.memnest.service` and `io.memnest.watch` in `~/Library/LaunchAgents`, with logs in `~/Library/Logs/Memnest`. CI installs, reinstalls, restarts and removes it on a GitHub-hosted macOS 15 runner; it has not been checked on a personal Mac.
+On Linux this uses systemd and stores user data in `~/.memnest`. Use `--system` for `/var/lib/memnest`; system mode intentionally does not run a root transcript watcher, so capture must be run by the desktop user. The system unit runs as root with `ProtectSystem=strict` and an owner-only state directory; it does not use `DynamicUser=yes`, because the writer lock sits beside the state directory (`/var/lib/.memnest.writer.lock`) and an existing root-owned `/var/lib/memnest` was not shown to keep working with it. The macOS implementation targets `io.memnest.service` and `io.memnest.watch` in `~/Library/LaunchAgents`, with logs in `~/Library/Logs/Memnest`. CI installs, reinstalls, restarts and removes it on a GitHub-hosted macOS 15 runner; it has not been checked on a personal Mac.
 
 The lower-level Linux installer remains available:
 
@@ -179,9 +179,19 @@ Stop the service before restore. Restore rejects source and target paths that ov
 memnest --data-dir ~/.memnest --restore-dir ~/memnest-backup --force
 ```
 
-The backup includes `master.key`, but keep a second protected copy of that key.
+The backup includes `master.key`, so anyone who can read the backup can decrypt the vault. Store the backup like a password; the command prints a reminder. Keep a second protected copy of that key as well.
 
-New vault rows use `$enc2$` ciphertext whose AES-GCM associated data includes the secret key or server name. Moving ciphertext to another row therefore fails decryption. Existing `$enc$` rows use the compatibility decrypt path and remain readable until rewritten. Model-facing secret tools are hidden unless `MEMNEST_EXPOSE_SECRET_TOOLS=1`; the localhost HTTP vault API remains available.
+New vault rows use `$enc2$` ciphertext whose AES-GCM associated data includes the secret key or server name. Moving ciphertext to another row therefore fails decryption. Existing `$enc$` rows use the compatibility decrypt path and remain readable until rewritten. Model-facing secret tools are hidden unless `MEMNEST_EXPOSE_SECRET_TOOLS=1`.
+
+The HTTP vault API (`/secrets` and `/secrets/{key}`) always needs a bearer token. With `MEMNEST_TOKEN` or an access policy, that is the token you already use (an administrator's in policy mode). With neither, it is the per-install token the service writes to `<data-dir>/api-token` (mode 0600) at first start:
+
+```bash
+curl -H "Authorization: Bearer $(cat ~/.memnest/api-token)" http://127.0.0.1:3111/secrets
+```
+
+Secret tools called through `POST /mcp` follow the same rule, so an MCP client that connects over HTTP has to send that header to see and use them. Stdio MCP (`--mcp`) needs no token. The pi extension reads the file itself and sends the token only to a loopback `MEMNEST_URL`. Memory routes are unchanged and need no token on loopback.
+
+On Unix the process sets umask 077 and makes the data directory mode 0700 on every start, so the store, indexes, backups and watcher state are readable by their owner only.
 
 ## CLI reference
 
@@ -210,7 +220,7 @@ For previously tracked history, use `memnest watch --path /absolute/original/ses
 | Variable | Effect |
 | --- | --- |
 | `MEMNEST_DATA_DIR` | Data directory, same as `--data-dir` |
-| `MEMNEST_TOKEN` | Required for a non-local bind; clients send `Authorization: Bearer <token>` |
+| `MEMNEST_TOKEN` | Required for a non-local bind; clients send `Authorization: Bearer <token>`. `memnest hook`, `memnest watch` and the pi extension send it only to a loopback or `https` URL |
 | `MEMNEST_EMBED_MODEL` | Embedding model, defaults to `intfloat/multilingual-e5-base` |
 | `MEMNEST_EMBED_DIM` | Embedding dimension, defaults to 768 |
 | `MEMNEST_TTL_AUTOLOG_DAYS` | Legacy AutoLog retention window, defaults to 30; transcript events are permanent |

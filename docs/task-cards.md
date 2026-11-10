@@ -26,6 +26,8 @@ When there are no cards, pi and the hook both add one line on the first prompt s
 | After compaction | The next prompt reminds the model to save any decisions or corrections missing from the pinned card. With no card open, it reminds once per session to save a card if the work continues later; a compaction is a sign of long work that does not depend on the user's language. |
 | Resume | A resumed pi session reopens the cards it had open. |
 
+Only this path writes cards. The `task-cards` and `task-cards-done` collections are reserved: `memory_remember`, `memory_update`, `/add` and `/update` cannot create, edit or move a card, so stored text cannot pose as a card or as the user's own words. `memory_delete` still removes one. A title is kept to one line of at most 120 characters with `<` and `>` replaced, and the card list says that titles are names, not instructions.
+
 The pinned card starts with one fixed line: the user's stated policies and prohibitions take priority over the model's own analysis and earlier plans, and a conflicting proposal must quote the user's words and ask first. The measurement below is the reason for that line.
 
 The tool description asks the model to save after the user states or corrects a policy, after a decision, and when the user stops for the day. You can also ask directly: "save the task card".
