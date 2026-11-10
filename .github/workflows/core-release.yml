@@ -10,13 +10,11 @@ permissions:
 
 jobs:
   build:
-    # Linux and Apple Silicon macOS archives are published. core-ci.yml runs the
-    # macOS install, restart and removal lifecycle on macos-15; Intel Macs have
-    # no prebuilt onnxruntime. Nothing downloads a published Windows archive:
-    # install-windows.ps1 takes a -BinPath that defaults to a locally built
-    # target\release\memnest.exe, which is the path the operations guide
-    # documents. Windows still gets compile coverage from the windows-latest job
-    # in core-ci.yml.
+    # Linux, Apple Silicon macOS and x86_64 Windows archives are published.
+    # core-ci.yml runs the macOS install, restart and removal lifecycle on
+    # macos-15; Intel Macs have no prebuilt onnxruntime. The Windows zip is what
+    # scripts/install.ps1 downloads; the windows-latest job in core-ci.yml runs
+    # the tests, a real server start, and this same packaging on every change.
     # x86_64 builds on ubuntu-22.04 so it runs on glibc 2.35 (Debian 12,
     # Ubuntu 22.04). The prebuilt aarch64 onnxruntime needs GCC 14's
     # libstdc++ at runtime, so aarch64 stays on 24.04 and glibc 2.39.
@@ -31,12 +29,16 @@ jobs:
             glibc_floor: GLIBC_2.39
           - target: aarch64-apple-darwin
             os: macos-15
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
 
     runs-on: ${{ matrix.os }}
     env:
       TARGET: ${{ matrix.target }}
+    # bash everywhere: on windows-latest that is Git Bash, not the default pwsh.
     defaults:
       run:
+        shell: bash
         working-directory: core
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -46,7 +48,6 @@ jobs:
       # A tag is the only trigger, so this is the one place that can stop
       # v0.3.0 from shipping a binary that still reports 0.2.0.
       - name: Tag matches core/Cargo.toml version
-        shell: bash
         run: |
           manifest_version="$(sed -n '/^\[package\]/,/^\[/ s/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -1)"
           if [ -z "$manifest_version" ]; then
@@ -84,13 +85,11 @@ jobs:
         run: cargo test --locked -- --test-threads=1
 
       - name: Build release
-        shell: bash
         run: cargo build --release --locked --target "$TARGET"
 
       # readelf reads both architectures, so the cross build is checked too.
       - name: Binary stays within the documented glibc floor
         if: runner.os == 'Linux'
-        shell: bash
         env:
           FLOOR: ${{ matrix.glibc_floor }}
         run: |
@@ -105,33 +104,36 @@ jobs:
 
       - name: Get version
         id: get_version
-        shell: bash
         run: echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
 
+      # package-release.sh picks the scripts and service templates this target
+      # installs with; test and development scripts stay out of the archive.
       - name: Package
         env:
           VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
-          mkdir -p dist
-          cp "target/$TARGET/release/memnest" dist/
-          cp -r scripts dist/
-          cp -r packaging dist/
-          cp LICENSE THIRD_PARTY_NOTICES.md dist/
-          cp ../README.md dist/
-          tar -czf "memnest-$VERSION-$TARGET.tar.gz" -C dist .
+          case "$TARGET" in
+            *windows*) binary=memnest.exe archive="memnest-$VERSION-$TARGET.zip" ;;
+            *) binary=memnest archive="memnest-$VERSION-$TARGET.tar.gz" ;;
+          esac
+          bash scripts/package-release.sh "$TARGET" "target/$TARGET/release/$binary" dist
+          case "$archive" in
+            *.zip) pwsh -NoProfile -Command "Compress-Archive -Path dist/* -DestinationPath '$archive'" ;;
+            *) tar -czf "$archive" -C dist . ;;
+          esac
           if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "memnest-$VERSION-$TARGET.tar.gz" > "memnest-$VERSION-$TARGET.tar.gz.sha256"
+            sha256sum "$archive" > "$archive.sha256"
           else
-            shasum -a 256 "memnest-$VERSION-$TARGET.tar.gz" > "memnest-$VERSION-$TARGET.tar.gz.sha256"
+            shasum -a 256 "$archive" > "$archive.sha256"
           fi
 
       # Unpack exactly what would be published and run it, so a broken archive
       # fails here instead of on a user's machine. A cross-built aarch64 binary
       # cannot execute on this runner, so it only gets the layout checks.
       - name: Verify packaged archive
+        if: runner.os != 'Windows'
         env:
           VERSION: ${{ steps.get_version.outputs.VERSION }}
-        shell: bash
         run: |
           archive="memnest-$VERSION-$TARGET.tar.gz"
           scripts/verify-artifact.sh "$archive" "$archive.sha256"
@@ -139,6 +141,7 @@ jobs:
           tar -xzf "$archive" -C "$unpacked"
           test -f "$unpacked/THIRD_PARTY_NOTICES.md"
           test -x "$unpacked/memnest"
+          test -x "$unpacked/scripts/setup.sh"
           if [ "$TARGET" != aarch64-unknown-linux-gnu ]; then
             packaged_version="$("$unpacked/memnest" --version)"
             echo "packaged binary reports: $packaged_version"
@@ -148,6 +151,26 @@ jobs:
             esac
             "$unpacked/memnest" --help > /dev/null
           fi
+
+      - name: Verify packaged archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          $archive = "memnest-$env:VERSION-$env:TARGET.zip"
+          ./scripts/verify-artifact-windows.ps1 -Artifact $archive -Checksum "$archive.sha256"
+          $unpacked = Join-Path $env:RUNNER_TEMP "unpacked"
+          Expand-Archive -Path $archive -DestinationPath $unpacked
+          foreach ($file in "memnest.exe", "LICENSE", "THIRD_PARTY_NOTICES.md", "README.md", "scripts/install-windows.ps1", "scripts/uninstall-windows.ps1", "scripts/setup-clients.py") {
+            if (-not (Test-Path (Join-Path $unpacked $file))) { throw "archive lacks $file" }
+          }
+          $reported = & (Join-Path $unpacked "memnest.exe") --version
+          Write-Host "packaged binary reports: $reported"
+          if ($LASTEXITCODE -ne 0 -or $reported -notlike "*$($env:VERSION.TrimStart('v'))*") {
+            throw "packaged binary does not report $env:VERSION"
+          }
+          & (Join-Path $unpacked "memnest.exe") --help | Out-Null
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
