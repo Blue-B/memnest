@@ -384,7 +384,7 @@ pub async fn health(State(system): State<Arc<RwLock<MemorySystem>>>) -> Json<Hea
             "restricted".into()
         },
         embed_model: sys.config.embed_model.clone(),
-        capabilities: serde_json::json!({"code_evidence": true, "project_access_policy":sys.access.enabled(), "access_audit":sys.access.enabled()}),
+        capabilities: serde_json::json!({"code_evidence": true, "task_card_log": true, "project_access_policy":sys.access.enabled(), "access_audit":sys.access.enabled()}),
         embedding: EmbeddingInfo {
             loaded: sys.embedder.is_loaded(),
         },

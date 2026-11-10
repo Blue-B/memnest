@@ -15,6 +15,15 @@ pub fn is_internal_project(project: &str) -> bool {
     INTERNAL_PROJECTS.contains(&project.trim())
 }
 
+/// Collections that hold task cards. A card's text is shown to the model as the
+/// user's standing instructions, so only the task-card code writes here; the
+/// general memory write paths refuse these names.
+pub const TASK_CARD_PROJECTS: &[&str] = &["task-cards", "task-cards-done"];
+
+pub fn is_task_card_project(project: &str) -> bool {
+    TASK_CARD_PROJECTS.contains(&project.trim())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryChunk {
     pub id: String,
