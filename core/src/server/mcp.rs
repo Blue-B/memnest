@@ -525,6 +525,7 @@ pub(crate) async fn memory_search(
             item.document
         ));
     }
+    lines.extend(out.scope_hint);
     Ok(lines.join("\n"))
 }
 

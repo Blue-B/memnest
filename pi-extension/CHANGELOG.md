@@ -15,6 +15,7 @@ All notable changes to `pi-memnest` are recorded here.
 
 ### Added
 
+- `memory_search` shows the core's scope hint. When a search of the current workspace missed clearly stronger matches in other projects, the result ends with one line that names those projects and says to search again with `project="<name>"` or `project="all"`. Needs a core that sends `scope_hint`; with an older core nothing changes.
 - Saving a new task card passes on the core's list of rules and preferences already stored for that work, so they can be copied into the card. Needs a core that reserves the card collections.
 
 ## [0.5.0] - 2026-11-08

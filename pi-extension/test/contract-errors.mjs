@@ -51,6 +51,19 @@ assert.deepEqual(JSON.parse(requests.at(-1).init.body), {
 	n_results: 2,
 	adapter: "pi",
 });
+// A core that found stronger matches outside the workspace scope says so in
+// scope_hint; the tool shows that line after the results, on one line.
+const hint =
+	'hint: stronger matches exist outside this workspace scope: shop-app (2). Search again with project="shop-app" (or project="all").';
+globalThis.fetch = async () =>
+	new Response(JSON.stringify({ results: [], scope_hint: `${hint}\n` }));
+const hinted = await tools
+	.get("memory_search")
+	.execute("id", { query: "scoped" }, undefined, undefined, { cwd: "/work" });
+assert.equal(
+	hinted.content[0].text,
+	`=== memory search results (scoped) ===\nno results\n${hint}`,
+);
 console.log(
-	"pi contract errors: secret 404 and fail-closed/explicit search passed",
+	"pi contract errors: secret 404, fail-closed/explicit search and scope hint passed",
 );

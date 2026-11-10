@@ -258,11 +258,21 @@ async fn fetch_context(
         return Err(anyhow!("service returned {}", response.status()));
     }
     let body: Value = response.json().await?;
-    Ok(body
-        .get("prompt")
+    Ok(context_text(&body))
+}
+
+/// The pack to inject, or nothing when it holds neither a memory nor a hint:
+/// an empty pack would only add its wrapper and safety line to the prompt.
+fn context_text(body: &Value) -> String {
+    let empty = body["memories"].as_array().is_some_and(Vec::is_empty)
+        && body.get("scope_hint").is_none_or(Value::is_null);
+    if empty {
+        return String::new();
+    }
+    body.get("prompt")
         .and_then(Value::as_str)
         .unwrap_or_default()
-        .to_string())
+        .to_string()
 }
 
 /// Everything between stdin and stdout, so tests can drive the whole path.
@@ -440,6 +450,22 @@ mod tests {
     fn slash_commands_are_skipped() {
         assert!(!should_search("/memnest status please show me everything"));
         assert!(should_search("memnest status please show me everything"));
+    }
+
+    #[test]
+    fn a_pack_without_memories_or_hint_injects_nothing() {
+        let prompt = "<memnest_context>...</memnest_context>";
+        assert_eq!(context_text(&json!({"memories": [], "prompt": prompt})), "");
+        assert_eq!(
+            context_text(&json!({"memories": [], "scope_hint": "hint: x", "prompt": prompt})),
+            prompt
+        );
+        assert_eq!(
+            context_text(&json!({"memories": [{"id": "m"}], "prompt": prompt})),
+            prompt
+        );
+        // An older service without the field list still gets its pack through.
+        assert_eq!(context_text(&json!({"prompt": prompt})), prompt);
     }
 
     #[test]
