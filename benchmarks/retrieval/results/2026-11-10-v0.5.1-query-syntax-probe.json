@@ -1,0 +1,222 @@
+{
+ "version": "0.5.1",
+ "rare_word": "zebraquux",
+ "cases": [
+  {
+   "case": "plain",
+   "query": "zebraquux",
+   "lexical_channel_worked": true,
+   "results": 1
+  },
+  {
+   "case": "apostrophe 's",
+   "query": "zebraquux's",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "possessive before",
+   "query": "Caroline's zebraquux",
+   "lexical_channel_worked": true,
+   "results": 2
+  },
+  {
+   "case": "trailing question mark",
+   "query": "zebraquux?",
+   "lexical_channel_worked": true,
+   "results": 1
+  },
+  {
+   "case": "comma",
+   "query": "zebraquux, ok",
+   "lexical_channel_worked": true,
+   "results": 2
+  },
+  {
+   "case": "period",
+   "query": "zebraquux.",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "exclamation",
+   "query": "zebraquux!",
+   "lexical_channel_worked": true,
+   "results": 1
+  },
+  {
+   "case": "colon after word",
+   "query": "error: zebraquux",
+   "lexical_channel_worked": true,
+   "results": 2
+  },
+  {
+   "case": "colon path:line",
+   "query": "src/lib.rs:10 zebraquux",
+   "lexical_channel_worked": true,
+   "results": 2
+  },
+  {
+   "case": "double colon",
+   "query": "std::zebraquux",
+   "lexical_channel_worked": true,
+   "results": 2
+  },
+  {
+   "case": "hyphen inside word",
+   "query": "well-known zebraquux",
+   "lexical_channel_worked": true,
+   "results": 2
+  },
+  {
+   "case": "leading minus",
+   "query": "-zebraquux",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "flag --",
+   "query": "--zebraquux",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "plus",
+   "query": "+zebraquux",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "open paren",
+   "query": "(zebraquux",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "paren pair",
+   "query": "foo(zebraquux)",
+   "lexical_channel_worked": true,
+   "results": 2
+  },
+  {
+   "case": "unbalanced close paren",
+   "query": "zebraquux)",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "square bracket",
+   "query": "[zebraquux]",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "curly brace",
+   "query": "{zebraquux}",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "one double quote",
+   "query": "zebraquux \"",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "balanced double quotes",
+   "query": "\"zebraquux\"",
+   "lexical_channel_worked": true,
+   "results": 1
+  },
+  {
+   "case": "tilde",
+   "query": "zebraquux~",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "caret",
+   "query": "zebraquux^2",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "asterisk",
+   "query": "zebraquux*",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "slash",
+   "query": "a/b zebraquux",
+   "lexical_channel_worked": true,
+   "results": 2
+  },
+  {
+   "case": "backslash",
+   "query": "a\\b zebraquux",
+   "lexical_channel_worked": true,
+   "results": 2
+  },
+  {
+   "case": "ampersand",
+   "query": "a && zebraquux",
+   "lexical_channel_worked": true,
+   "results": 2
+  },
+  {
+   "case": "uppercase AND",
+   "query": "zebraquux AND",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "uppercase OR",
+   "query": "zebraquux OR",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "hash",
+   "query": "#zebraquux",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "at sign",
+   "query": "@zebraquux",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "dollar",
+   "query": "$zebraquux",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "equals",
+   "query": "a=zebraquux",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "semicolon",
+   "query": "zebraquux;",
+   "lexical_channel_worked": true,
+   "results": 1
+  },
+  {
+   "case": "angle brackets",
+   "query": "<zebraquux>",
+   "lexical_channel_worked": false,
+   "results": 0
+  },
+  {
+   "case": "curly apostrophe",
+   "query": "zebraquux’s",
+   "lexical_channel_worked": false,
+   "results": 0
+  }
+ ]
+}
