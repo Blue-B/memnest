@@ -261,10 +261,12 @@ async fn fetch_context(
     Ok(context_text(&body))
 }
 
-/// The pack to inject, or nothing when it holds no memory: an empty pack
-/// would only add its wrapper and safety line to the prompt.
+/// The pack to inject, or nothing when it holds neither a memory nor a hint:
+/// an empty pack would only add its wrapper and safety line to the prompt.
 fn context_text(body: &Value) -> String {
-    if body["memories"].as_array().is_some_and(Vec::is_empty) {
+    let empty = body["memories"].as_array().is_some_and(Vec::is_empty)
+        && body.get("scope_hint").is_none_or(Value::is_null);
+    if empty {
         return String::new();
     }
     body.get("prompt")
@@ -451,9 +453,13 @@ mod tests {
     }
 
     #[test]
-    fn a_pack_without_memories_injects_nothing() {
+    fn a_pack_without_memories_or_hint_injects_nothing() {
         let prompt = "<memnest_context>...</memnest_context>";
         assert_eq!(context_text(&json!({"memories": [], "prompt": prompt})), "");
+        assert_eq!(
+            context_text(&json!({"memories": [], "scope_hint": "hint: x", "prompt": prompt})),
+            prompt
+        );
         assert_eq!(
             context_text(&json!({"memories": [{"id": "m"}], "prompt": prompt})),
             prompt
