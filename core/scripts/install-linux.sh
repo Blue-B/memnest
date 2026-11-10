@@ -102,7 +102,8 @@ wait_for_health() {
 }
 
 if [ "$MODE" = "system" ]; then
-  sudo install -d /usr/local/bin /var/lib/memnest /usr/local/share/memnest/scripts
+  sudo install -d /usr/local/bin /usr/local/share/memnest/scripts
+  sudo install -d -m 0700 /var/lib/memnest
   if ! [ "$BIN_SRC" -ef /usr/local/bin/memnest ]; then
     sudo install -m 0755 "$BIN_SRC" /usr/local/bin/memnest
   fi
@@ -114,7 +115,8 @@ if [ "$MODE" = "system" ]; then
   sudo systemctl status memnest.service --no-pager -l
   echo "System installs do not run a root transcript watcher; run memnest watch as the desktop user if capture is wanted."
 else
-  install -d "$HOME/.local/bin" "$HOME/.local/share/memnest/scripts" "$SERVICE_DIR" "$HOME/.memnest"
+  install -d "$HOME/.local/bin" "$HOME/.local/share/memnest/scripts" "$SERVICE_DIR"
+  install -d -m 0700 "$HOME/.memnest"
   if ! [ "$BIN_SRC" -ef "$HOME/.local/bin/memnest" ]; then
     install -m 0755 "$BIN_SRC" "$HOME/.local/bin/memnest"
   fi

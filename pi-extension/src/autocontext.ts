@@ -7,6 +7,7 @@
  * or phrasings get memory.
  */
 
+import { bearerAllowed } from "./auth.js";
 import { memoryReadAllowed } from "./model-policy.js";
 
 type ExtensionAPI = {
@@ -137,6 +138,8 @@ async function searchMemnest(
 	cwd: string | undefined,
 ): Promise<MemResult[]> {
 	if (!cwd) return [];
+	// Neither the token nor the prompt it protects leaves in the clear.
+	if (MEMNEST_TOKEN && !bearerAllowed(MEMNEST_URL)) return [];
 	const ctrl = new AbortController();
 	const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
 	try {

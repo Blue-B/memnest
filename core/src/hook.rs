@@ -187,24 +187,42 @@ fn client(timeout_ms: u64) -> Result<reqwest::Client> {
         .build()?)
 }
 
-fn authorized(request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-    match std::env::var("MEMNEST_TOKEN") {
-        Ok(token) if !token.trim().is_empty() => request.bearer_auth(token.trim()),
-        _ => request,
+/// Whether a bearer token may travel to `base_url`: loopback, or TLS anywhere else.
+/// Plain HTTP to another machine would show the token to the network.
+pub fn token_may_be_sent(base_url: &str) -> bool {
+    reqwest::Url::parse(base_url.trim()).is_ok_and(|url| {
+        url.scheme() == "https"
+            || matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"))
+    })
+}
+
+/// Adds MEMNEST_TOKEN when one is set. Refuses instead of sending it, or the
+/// request it protects, in the clear to a non-loopback address.
+pub fn authorized(
+    request: reqwest::RequestBuilder,
+    base_url: &str,
+) -> Result<reqwest::RequestBuilder> {
+    let Some(token) = crate::server::auth_token() else {
+        return Ok(request);
+    };
+    if !token_may_be_sent(base_url) {
+        return Err(anyhow!(
+            "MEMNEST_TOKEN is only sent to a loopback or https MEMNEST_URL"
+        ));
     }
+    Ok(request.bearer_auth(token))
 }
 
 /// Task-card context for this event; also records the prompt into an open card.
 async fn fetch_cards(base_url: &str, resolved: &Resolved, timeout_ms: u64) -> Result<String> {
     let url = format!("{}/task-card/hook", base_url.trim().trim_end_matches('/'));
-    let response = authorized(client(timeout_ms)?.post(url).json(&json!({
+    let request = client(timeout_ms)?.post(url).json(&json!({
         "event": resolved.event,
         "session_id": resolved.session_id,
         "prompt": resolved.prompt,
         "source": resolved.source,
-    })))
-    .send()
-    .await?;
+    }));
+    let response = authorized(request, base_url)?.send().await?;
     if !response.status().is_success() {
         return Err(anyhow!("service returned {}", response.status()));
     }
@@ -235,7 +253,7 @@ async fn fetch_context(
             "max_facts": 0,
             "adapter": "memnest-hook",
         }));
-    let response = authorized(request).send().await?;
+    let response = authorized(request, base_url)?.send().await?;
     if !response.status().is_success() {
         return Err(anyhow!("service returned {}", response.status()));
     }
@@ -309,6 +327,27 @@ pub async fn run(url: Option<&str>, format: HookFormat, timeout_ms: u64, recall:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn token_goes_only_to_loopback_or_https() {
+        for url in [
+            "http://127.0.0.1:3111",
+            "http://localhost:3111/",
+            "http://[::1]:3111",
+            "https://memnest.example.com",
+        ] {
+            assert!(token_may_be_sent(url), "{url}");
+        }
+        for url in [
+            "http://192.168.0.10:3111",
+            "http://100.74.125.103:3111",
+            "http://memnest.example.com",
+            "http://localhost.evil.example:3111",
+            "not a url",
+        ] {
+            assert!(!token_may_be_sent(url), "{url}");
+        }
+    }
 
     #[test]
     fn claude_code_payload_is_detected_and_read() {

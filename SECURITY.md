@@ -66,6 +66,24 @@ Some consequences worth stating directly:
   written, or from `MEMNEST_MASTER_KEY`. New ciphertext is bound to its secret
   key or server name. Model-facing vault tools are hidden unless
   `MEMNEST_EXPOSE_SECRET_TOOLS=1` is set.
+- **Vault access over HTTP always needs a bearer token.** With `MEMNEST_TOKEN`
+  or an access policy it is that credential. With neither, `/secrets` routes and
+  secret tools over `POST /mcp` require the per-install token in
+  `<data-dir>/api-token` (mode 0600), so reaching the port is not enough to read
+  a credential; reading the data directory is. Stdio MCP stays trusted.
+- **Without a credential, browsers are kept out by origin checks.** The `Host`
+  must be an IP literal, `localhost`, or a name in `MEMNEST_ALLOWED_HOSTS`; an
+  `Origin` must name the same host and port the request was sent to; requests
+  marked `Sec-Fetch-Site: cross-site` are refused; and `POST /mcp` accepts only
+  `application/json`. Other local processes can still call the memory API.
+- **The data directory is owner-only on Unix.** The process sets umask 077 and
+  makes the directory mode 0700 on every start.
+- **Task cards are written only by the task-card path.** The `task-cards` and
+  `task-cards-done` collections are reserved, so `memory_remember`,
+  `memory_update`, `/add` and `/update` cannot create or edit a card or its
+  user's-own-words section. Card titles are shortened and lose angle brackets
+  before they are shown to a model. A process that can call the local HTTP API
+  directly can still record messages through the hook endpoint.
 - **The vault fails closed. There is no plaintext fallback anywhere.** An empty
   or unreadable `master.key` aborts startup. A key that cannot decrypt the vault
   values already in the store aborts startup with `vault key validation failed`,

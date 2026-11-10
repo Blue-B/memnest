@@ -1,7 +1,10 @@
 import { installAutocontext } from "./autocontext.js";
 import { installTaskCards } from "./task-card.js";
 import { memoryReadAllowed, MODEL_POLICY_ERROR } from "./model-policy.js";
+import { BEARER_REFUSED, bearerAllowed, isLoopback } from "./auth.js";
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import { Type } from "typebox";
 
@@ -22,13 +25,15 @@ async function call(
 	path: string,
 	body?: unknown,
 	method: "GET" | "POST" | "DELETE" = "POST",
+	bearer = TOKEN,
 ) {
+	if (bearer && !bearerAllowed(URL)) return { text: BEARER_REFUSED, error: true };
 	try {
 		const response = await fetch(`${URL}${path}`, {
 			method,
 			headers: {
 				"content-type": "application/json",
-				...(TOKEN ? { authorization: `Bearer ${TOKEN}` } : {}),
+				...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
 			},
 			...(body !== undefined && method !== "GET"
 				? { body: JSON.stringify(body) }
@@ -45,6 +50,31 @@ async function call(
 			error: true,
 		};
 	}
+}
+// Without MEMNEST_TOKEN the core asks vault calls for its per-install token, kept
+// in <data_dir>/api-token and readable only by the user who runs the core. It is
+// read from the directory /health reports and sent to a loopback core only.
+const VAULT_TOKEN_ERROR =
+	"The vault needs the core's API token. pi reads it from <data_dir>/api-token and sends it only to a loopback MEMNEST_URL, and it could not be read here. Run pi as the user that runs the core on this machine, or set MEMNEST_TOKEN for a core that uses one.";
+let vaultToken: string | undefined;
+async function readVaultToken(): Promise<string | undefined> {
+	if (TOKEN || !isLoopback(URL)) return undefined;
+	if (vaultToken) return vaultToken;
+	try {
+		const dataDir = JSON.parse((await call("/health", undefined, "GET")).text).data_dir;
+		vaultToken = (await readFile(join(dataDir, "api-token"), "utf8")).trim() || undefined;
+	} catch {
+		// An older core has no token file and asks for none; a newer one answers 401 below.
+	}
+	return vaultToken;
+}
+async function vaultCall(path: string, body?: unknown, method: "GET" | "POST" | "DELETE" = "POST") {
+	const token = await readVaultToken();
+	const r = await call(path, body, method, token ?? TOKEN);
+	if (!r.error || TOKEN || !r.text.startsWith("memnest error 401")) return r;
+	// A stale token (the core moved to another data directory) is read again next time.
+	vaultToken = undefined;
+	return token ? r : { text: VAULT_TOKEN_ERROR, error: true };
 }
 async function codeEvidence(args: string[], cwd: string, baseline?: unknown): Promise<any> {
 	return new Promise((resolve, reject) => {
@@ -402,7 +432,7 @@ export default function register(pi: ExtensionAPI): void {
 				note: Type.Optional(Type.String()),
 			}),
 			async (_id: string, p: any) => {
-				const r = await call("/secrets", p);
+				const r = await vaultCall("/secrets", p);
 				return result(r.text, r.error);
 			},
 		);
@@ -414,7 +444,7 @@ export default function register(pi: ExtensionAPI): void {
 			Type.Object({ key: Type.String() }),
 			async (_id: string, p: any, _s: unknown, _u: unknown, ctx?: Context) => {
 				if (!memoryReadAllowed(ctx)) return result(MODEL_POLICY_ERROR, true);
-				const r = await call(
+				const r = await vaultCall(
 					`/secrets/${encodeURIComponent(p.key)}`,
 					undefined,
 					"GET",
@@ -430,7 +460,7 @@ export default function register(pi: ExtensionAPI): void {
 			Empty,
 			async (_id: string, _p: unknown, _s: unknown, _u: unknown, ctx?: Context) => {
 				if (!memoryReadAllowed(ctx)) return result(MODEL_POLICY_ERROR, true);
-				const r = await call("/secrets", undefined, "GET");
+				const r = await vaultCall("/secrets", undefined, "GET");
 				return result(r.text, r.error);
 			},
 		);
@@ -441,7 +471,7 @@ export default function register(pi: ExtensionAPI): void {
 			"Permanently delete a credential.",
 			Type.Object({ key: Type.String() }),
 			async (_id: string, p: any) => {
-				const r = await call(
+				const r = await vaultCall(
 					`/secrets/${encodeURIComponent(p.key)}`,
 					undefined,
 					"DELETE",

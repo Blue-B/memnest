@@ -36,6 +36,8 @@ pub struct MemorySystem {
     pub lifecycle_status: Arc<RwLock<lifecycle::LifecycleStatus>>,
     pub vault_enabled: bool,
     pub secret_tools_enabled: bool,
+    /// Bearer token from `<data_dir>/api-token`; see `access::middleware`.
+    pub api_token: String,
     index_sync: tokio::sync::Mutex<()>,
     _writer_lock: std::fs::File,
 }
@@ -43,7 +45,7 @@ pub struct MemorySystem {
 impl MemorySystem {
     pub async fn new(config: config::Config) -> Result<Self> {
         let access = Arc::new(access::AccessControl::load()?);
-        std::fs::create_dir_all(&config.data_dir)?;
+        secure_data_dir(&config.data_dir)?;
         #[cfg(unix)]
         if access.enabled() {
             use std::os::unix::fs::PermissionsExt;
@@ -58,6 +60,7 @@ impl MemorySystem {
         // This means PAT/API key storage works out of the box.
         let master_key = crypto::resolve_master_key(&config.data_dir)?;
         crypto::init_crypto(Some(&master_key))?;
+        let api_token = crypto::resolve_api_token(&config.data_dir)?;
         let database = storage::Database::new(&config.data_dir).await?;
         database.ensure_access_mode(access.enabled())?;
         let encrypted_values = database.encrypted_vault_values()?;
@@ -140,6 +143,7 @@ impl MemorySystem {
             vault_enabled: true,
             secret_tools_enabled: std::env::var("MEMNEST_EXPOSE_SECRET_TOOLS")
                 .is_ok_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES")),
+            api_token,
             index_sync: tokio::sync::Mutex::new(()),
             _writer_lock: writer_lock,
         })
@@ -239,6 +243,25 @@ impl MemorySystem {
     }
 }
 
+/// Creates the data directory and makes it owner-only. Runs on every start, so a
+/// directory created by an older version with the default umask is corrected too.
+pub fn secure_data_dir(data_dir: &Path) -> Result<()> {
+    std::fs::create_dir_all(data_dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(error) =
+            std::fs::set_permissions(data_dir, std::fs::Permissions::from_mode(0o700))
+        {
+            tracing::warn!(
+                "could not make {} owner-only (mode 0700): {error}",
+                data_dir.display()
+            );
+        }
+    }
+    Ok(())
+}
+
 pub fn acquire_writer_lock(data_dir: &Path) -> Result<std::fs::File> {
     let parent = data_dir
         .parent()
@@ -278,6 +301,19 @@ mod tests {
     use super::*;
     use crate::models::{ChunkType, Importance, MemoryChunk, Metadata};
     use chrono::Utc;
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_data_directory_becomes_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let data = temp.path().join("data");
+        std::fs::create_dir(&data).unwrap();
+        std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o755)).unwrap();
+        secure_data_dir(&data).unwrap();
+        let mode = std::fs::metadata(&data).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
+    }
 
     #[test]
     fn data_directory_has_one_writer() {

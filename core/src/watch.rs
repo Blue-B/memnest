@@ -702,7 +702,7 @@ async fn post_event(client: &reqwest::Client, base_url: &str, event: &Event) -> 
             truncated: false,
             ..Default::default()
         };
-        let mut request = client
+        let request = client
             .post(format!("{}/add", base_url.trim_end_matches('/')))
             .json(&json!({
                 "text": document,
@@ -710,11 +710,7 @@ async fn post_event(client: &reqwest::Client, base_url: &str, event: &Event) -> 
                 "cwd": event.cwd,
                 "metadata": metadata,
             }));
-        if let Ok(token) = std::env::var("MEMNEST_TOKEN")
-            && !token.trim().is_empty()
-        {
-            request = request.bearer_auth(token.trim());
-        }
+        let request = crate::hook::authorized(request, base_url)?;
 
         let response = request.send().await.context("service unreachable")?;
         let http_status = response.status();
@@ -922,6 +918,7 @@ pub async fn run(
         ));
     }
 
+    crate::secure_data_dir(state_dir)?;
     let state_path = state_dir.join(STATE_FILE);
     let mut state = load_state(&state_path)?;
 

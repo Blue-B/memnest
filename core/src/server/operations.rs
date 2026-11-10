@@ -1,5 +1,5 @@
 use crate::MemorySystem;
-use crate::models::{Metadata, is_internal_project};
+use crate::models::{Metadata, is_internal_project, is_task_card_project};
 use crate::redaction::redact_text;
 use crate::workspace::{SearchScope, identity as workspace_identity};
 use serde::{Deserialize, Serialize};
@@ -75,8 +75,16 @@ impl std::fmt::Display for OperationError {
 }
 impl std::error::Error for OperationError {}
 
+// Set only by `task_cards` around its own writes. Request fields cannot set it,
+// so memory_remember, memory_update, /add and /update cannot write a card.
+tokio::task_local! { pub(super) static CARD_WRITE: (); }
+
 pub fn validate_write_project(project: &str) -> Result<(), OperationError> {
-    if is_internal_project(project) || project.trim() == "all" {
+    let card_write = CARD_WRITE.try_with(|_| ()).is_ok();
+    if is_internal_project(project)
+        || project.trim() == "all"
+        || (is_task_card_project(project) && !card_write)
+    {
         return Err(OperationError::bad(format!(
             "project '{}' is reserved; write rejected",
             project.trim()
@@ -544,6 +552,10 @@ pub async fn update(
             .map_err(|e| OperationError::internal(e.to_string()))?
             .ok_or_else(|| OperationError::not_found("memory not found"))?;
         crate::access::require_write_chunk(&current)?;
+        // An existing card is as protected as a new one, whatever the target project.
+        if is_task_card_project(&current.project) {
+            validate_write_project(&current.project)?;
+        }
     }
     if let Some(project) = req.project.as_deref() {
         validate_write_project(project)?;
