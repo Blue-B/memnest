@@ -251,6 +251,12 @@ def hardware():
     }
 
 
+def load_average():
+    """1-minute load average of the whole machine (other jobs distort timings)."""
+    with open("/proc/loadavg", encoding="utf-8") as handle:
+        return float(handle.read().split()[0])
+
+
 def sha256_of(path):
     return datasets.sha256_file(path)
 
@@ -312,6 +318,8 @@ def main():
         # Load the embedding model before timing anything.
         client.post("/search", {"query": "warm up", "project": "warmup"})
         run_started = time.time()
+        load_start = load_average()
+        load_samples = [load_start]
         for number, group in enumerate(groups, start=1):
             if group["project"] in done:
                 rows = done[group["project"]]
@@ -326,6 +334,7 @@ def main():
                     for row in [group_row, *records]:
                         handle.write(json.dumps({**row, "project": group["project"]}) + "\n")
             elapsed = time.time() - run_started
+            load_samples.append(load_average())
             rate = group_row["memories"] / group_row["ingest_seconds"]
             log(
                 f"[{number}/{len(groups)}] {group['project']}: {group_row['memories']} memories "
@@ -376,7 +385,13 @@ def main():
             "questions_scored": scored_n,
         },
         "hardware": hardware(),
-        "performance": performance(group_rows, all_records, shard_count),
+        "performance": {
+            **performance(group_rows, all_records, shard_count),
+            "machine_load_1min_at_start": load_start,
+            "machine_load_1min_max_after_groups": max(load_samples),
+            "machine_load_1min_mean_after_groups": round(sum(load_samples) / len(load_samples), 2),
+            "logical_cpus": os.cpu_count(),
+        },
         "metrics": summary,
         "unknown_evidence_dropped": sum(
             g.get("unknown_evidence_dropped", 0) for g in groups
