@@ -65,7 +65,7 @@ Environment variables:
 | `MEMNEST_URL` | `http://127.0.0.1:3111` | Base URL of the Memnest HTTP API |
 | `MEMNEST_TOKEN` | unset | Sent as a bearer token upstream when set |
 
-With `MEMNEST_GATEWAY_TOOLS=memory_search,memory_get`, a remote model can read memories and cannot write, update or delete them, and the write tools do not appear in `tools/list` at all.
+With `MEMNEST_GATEWAY_TOOLS=memory_search,memory_get`, a remote model can read memories and cannot write, update or delete them, and the write tools do not appear in `tools/list` at all. The gateway refuses `memory_remember`, `memory_update`, `memory_delete`, `task_card`, and every `secret_*` tool even when the list names them, and it removes the `evidence_only` argument before forwarding a call.
 
 ## Option B: bearer token directly
 

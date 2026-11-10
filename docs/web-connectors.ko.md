@@ -65,7 +65,7 @@ ngrok http 3113
 | `MEMNEST_URL` | `http://127.0.0.1:3111` | Memnest HTTP API 기본 주소 |
 | `MEMNEST_TOKEN` | 없음 | 설정하면 뒤쪽 서비스에 bearer 토큰으로 보냅니다 |
 
-`MEMNEST_GATEWAY_TOOLS=memory_search,memory_get`이면 원격 모델은 기억을 읽을 수만 있고 쓰거나 고치거나 지울 수 없으며, 쓰기 도구는 `tools/list`에 아예 나오지 않습니다.
+`MEMNEST_GATEWAY_TOOLS=memory_search,memory_get`이면 원격 모델은 기억을 읽을 수만 있고 쓰거나 고치거나 지울 수 없으며, 쓰기 도구는 `tools/list`에 아예 나오지 않습니다. 목록에 넣더라도 게이트웨이는 `memory_remember`, `memory_update`, `memory_delete`, `task_card`와 모든 `secret_*` 도구를 거절하고, 호출을 넘기기 전에 `evidence_only` 인자를 지웁니다.
 
 ## 방법 B: bearer 토큰 직접 쓰기
 
