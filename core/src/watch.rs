@@ -591,7 +591,12 @@ fn default_roots() -> Vec<PathBuf> {
     let Some(home) = dirs::home_dir() else {
         return Vec::new();
     };
-    DEFAULT_ROOTS.iter().map(|dir| home.join(dir)).collect()
+    // Windows gets `C:\Users\me\.claude\projects`, the same spelling an explicit
+    // `--path` has; file identities hash the path.
+    DEFAULT_ROOTS
+        .iter()
+        .map(|dir| home.join(dir.replace('/', std::path::MAIN_SEPARATOR_STR)))
+        .collect()
 }
 
 fn load_state(path: &Path) -> Result<WatchState> {
@@ -1668,6 +1673,18 @@ mod tests {
             import_history(None, &[dir.path().to_string_lossy().to_string()], true)
                 .await
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn default_roots_use_the_platform_separator() {
+        let foreign = if cfg!(windows) { '/' } else { '\\' };
+        let roots = default_roots();
+        assert_eq!(roots.len(), DEFAULT_ROOTS.len());
+        assert!(
+            roots
+                .iter()
+                .all(|root| !root.to_string_lossy().contains(foreign))
         );
     }
 
