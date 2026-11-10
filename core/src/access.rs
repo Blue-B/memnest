@@ -246,19 +246,29 @@ pub fn restrict_scope(scope: SearchScope) -> Result<SearchScope, OperationError>
     }
 }
 
-/// Hosts a browser can only reach on purpose: IP literals, localhost, and names in
-/// MEMNEST_ALLOWED_HOSTS (comma-separated). A rebinding attacker controls a DNS name.
-fn host_allowed(host: &str) -> bool {
-    let name = match host.rsplit_once(':') {
+/// Splits `name[:port]`. The loopback spellings share one name, so a page served
+/// from localhost matches a request sent to 127.0.0.1 on the same port.
+fn split_authority(authority: &str) -> (String, Option<u16>) {
+    let (name, port) = match authority.rsplit_once(':') {
         Some((name, port)) if port.bytes().all(|b| b.is_ascii_digit()) && !name.ends_with(':') => {
-            name
+            (name, port.parse().ok())
         }
-        _ => host,
+        _ => (authority, None),
     };
     let name = name
         .trim_start_matches('[')
         .trim_end_matches(']')
         .to_ascii_lowercase();
+    if matches!(name.as_str(), "127.0.0.1" | "::1") {
+        return ("localhost".into(), port);
+    }
+    (name, port)
+}
+
+/// Hosts a browser can only reach on purpose: IP literals, localhost, and names in
+/// MEMNEST_ALLOWED_HOSTS (comma-separated). A rebinding attacker controls a DNS name.
+fn host_allowed(host: &str) -> bool {
+    let (name, _) = split_authority(host);
     name == "localhost"
         || name.parse::<std::net::IpAddr>().is_ok()
         || std::env::var("MEMNEST_ALLOWED_HOSTS").is_ok_and(|list| {
@@ -267,20 +277,35 @@ fn host_allowed(host: &str) -> bool {
         })
 }
 
+/// An Origin is the service's own only when it names the host and port the request
+/// was sent to. Any other page, including one on another local port, is cross-site.
+fn origin_matches_host(origin: &str, host: Option<&str>) -> bool {
+    let (Some((scheme, authority)), Some(host)) = (origin.split_once("://"), host) else {
+        return false;
+    };
+    let default_port = if scheme.eq_ignore_ascii_case("https") {
+        443
+    } else {
+        80
+    };
+    let (origin_name, origin_port) = split_authority(authority.trim_end_matches('/'));
+    let (host_name, host_port) = split_authority(host);
+    origin_name == host_name
+        && origin_port.unwrap_or(default_port) == host_port.unwrap_or(default_port)
+}
+
 fn browser_safe_without_auth(headers: &axum::http::HeaderMap) -> bool {
-    let host_ok = headers
-        .get("host")
-        .and_then(|v| v.to_str().ok())
-        .is_none_or(host_allowed);
+    let host = headers.get("host").and_then(|v| v.to_str().ok());
     // Browsers send Origin on cross-site POSTs; local CLI and MCP clients send none.
     let origin_ok = match headers.get("origin").map(|v| v.to_str()) {
         None => true,
-        Some(Ok(origin)) => origin
-            .split_once("://")
-            .is_some_and(|(_, rest)| host_allowed(rest.trim_end_matches('/'))),
+        Some(Ok(origin)) => origin_matches_host(origin, host),
         Some(Err(_)) => false,
     };
-    host_ok && origin_ok
+    let cross_site = headers
+        .get("sec-fetch-site")
+        .is_some_and(|v| v.as_bytes().eq_ignore_ascii_case(b"cross-site"));
+    host.is_none_or(host_allowed) && origin_ok && !cross_site
 }
 
 fn operation(request: &Request) -> String {
@@ -495,6 +520,37 @@ mod tests {
         assert!(browser_safe_without_auth(&headers(&[
             ("host", "127.0.0.1:3111"),
             ("origin", "http://localhost:3111")
+        ])));
+        // An IP literal or another local port is still another site.
+        for origin in [
+            "http://203.0.113.7",
+            "http://localhost:8080",
+            "http://127.0.0.1",
+            "https://127.0.0.1:3111.evil.example",
+        ] {
+            assert!(
+                !browser_safe_without_auth(&headers(&[
+                    ("host", "127.0.0.1:3111"),
+                    ("origin", origin)
+                ])),
+                "{origin}"
+            );
+        }
+        assert!(!browser_safe_without_auth(&headers(&[(
+            "origin",
+            "http://127.0.0.1:3111"
+        )])));
+        assert!(browser_safe_without_auth(&headers(&[
+            ("host", "100.74.125.103:3111"),
+            ("origin", "http://100.74.125.103:3111")
+        ])));
+        assert!(!browser_safe_without_auth(&headers(&[
+            ("host", "127.0.0.1:3111"),
+            ("sec-fetch-site", "cross-site")
+        ])));
+        assert!(browser_safe_without_auth(&headers(&[
+            ("host", "127.0.0.1:3111"),
+            ("sec-fetch-site", "same-origin")
         ])));
     }
 }

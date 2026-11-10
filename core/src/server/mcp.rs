@@ -101,8 +101,23 @@ pub async fn run_stdio(system: Arc<RwLock<MemorySystem>>) -> Result<()> {
 /// No SSE upgrade is offered, which the spec allows for a stateless server.
 pub async fn http_endpoint(
     State(system): State<Arc<RwLock<MemorySystem>>>,
+    headers: axum::http::HeaderMap,
     body: Bytes,
 ) -> Response {
+    // A web page can post text/plain to another origin without a preflight; JSON
+    // needs one, which this service never grants. MCP clients always send JSON.
+    let is_json = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(';').next())
+        .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"));
+    if !is_json {
+        return json_rpc_error(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            -32600,
+            "Content-Type must be application/json".to_string(),
+        );
+    }
     let parsed: Value = match serde_json::from_slice(&body) {
         Ok(value) => value,
         Err(e) => return json_rpc_error(StatusCode::BAD_REQUEST, -32700, e.to_string()),
