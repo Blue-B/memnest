@@ -392,7 +392,8 @@ export function installTaskCards(pi: any, call: Call): () => Promise<string[]> {
 					let rules = "";
 					try {
 						const text = String(JSON.parse(r.text).text ?? "");
-						if (text.includes("\n\n")) rules = text.slice(text.indexOf("\n\n"));
+						// Stored memory text: only for a model the user allows to read memory.
+						if (memoryReadAllowed(ctx) && text.includes("\n\n")) rules = text.slice(text.indexOf("\n\n"));
 					} catch {}
 					return result(`saved task card "${title}"${previous ? ` (replaces ${previous.id})` : ""}; it stays pinned for this session${rules}`);
 				}

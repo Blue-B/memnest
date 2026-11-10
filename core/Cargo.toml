@@ -2,6 +2,7 @@
 name = "memnest"
 version = "0.5.1"
 edition = "2024"
+rust-version = "1.89"
 authors = ["Blue-B"]
 description = "Layered persistent memory for AI agents — Rust core"
 license = "MIT"

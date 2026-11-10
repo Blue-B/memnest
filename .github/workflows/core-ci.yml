@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "core/**"
+      - "scripts/verify-contract.sh"
+      - "pi-extension/dist/**"
       - ".github/workflows/core-ci.yml"
       - ".github/workflows/core-release.yml"
   push:
@@ -12,6 +14,8 @@ on:
       - master
     paths:
       - "core/**"
+      - "scripts/verify-contract.sh"
+      - "pi-extension/dist/**"
       - ".github/workflows/core-ci.yml"
       - ".github/workflows/core-release.yml"
 

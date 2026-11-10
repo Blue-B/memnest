@@ -499,6 +499,26 @@ impl Database {
         Ok(chunks)
     }
 
+    /// Saved memories of one project marked as the user's rule or preference,
+    /// newest first. Filtered in SQL so transcript rows cannot crowd them out.
+    pub fn get_rule_chunks(&self, project: &str, limit: usize) -> Result<Vec<MemoryChunk>> {
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, project, document, embedding, metadata, created_at, updated_at
+             FROM chunks WHERE project = ?1
+               AND json_extract(metadata, '$.chunk_type') = 'manual'
+               AND (json_extract(metadata, '$.importance') = 'preference'
+                    OR json_extract(metadata, '$.memory_kind') = 'rule')
+             ORDER BY created_at DESC LIMIT ?2",
+        )?;
+        let mut rows = stmt.query(params![project, limit as i64])?;
+        let mut chunks = Vec::new();
+        while let Some(row) = rows.next()? {
+            chunks.push(self.row_to_chunk(row)?);
+        }
+        Ok(chunks)
+    }
+
     pub fn get_chunks_by_projects(&self, projects: &[String]) -> Result<Vec<MemoryChunk>> {
         if projects.is_empty() {
             return Ok(Vec::new());

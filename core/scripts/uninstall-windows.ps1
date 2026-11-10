@@ -38,9 +38,16 @@ try {
 }
 finally { $key.Close() }
 
-# This script normally runs from $InstallDir\scripts; PowerShell has already
-# read it, so the directory can go.
-if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
+# Only what the installer put there: -InstallDir may be a folder that holds
+# other things. This script normally runs from $InstallDir\scripts; PowerShell
+# has already read it, so that directory can go.
+foreach ($own in "bin\memnest.exe", "logs", "scripts", "memnest-server.cmd", "memnest-watch.cmd") {
+  $path = Join-Path $InstallDir $own
+  if (Test-Path $path) { Remove-Item -Recurse -Force $path }
+}
+foreach ($dir in $BinDir, $InstallDir) {
+  if ((Test-Path $dir) -and -not (Get-ChildItem -Force $dir)) { Remove-Item -Force $dir }
+}
 if ($RemoveData) {
   if (Test-Path $DataDir) { Remove-Item -Recurse -Force $DataDir }
   $lock = Join-Path (Split-Path -Parent $DataDir) ".$(Split-Path -Leaf $DataDir).writer.lock"

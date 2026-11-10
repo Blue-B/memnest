@@ -4735,7 +4735,7 @@ ${notes.join("\n\n")}
           let rules = "";
           try {
             const text2 = String(JSON.parse(r2.text).text ?? "");
-            if (text2.includes("\n\n")) rules = text2.slice(text2.indexOf("\n\n"));
+            if (memoryReadAllowed(ctx) && text2.includes("\n\n")) rules = text2.slice(text2.indexOf("\n\n"));
           } catch {
           }
           return result(`saved task card "${title}"${previous ? ` (replaces ${previous.id})` : ""}; it stays pinned for this session${rules}`);

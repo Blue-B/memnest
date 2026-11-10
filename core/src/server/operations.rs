@@ -340,8 +340,13 @@ pub(crate) async fn scope_hint(
     category: Option<String>,
 ) -> Option<String> {
     let in_scope = scope.projects()?;
-    // Policy mode narrows "all" to the caller's read grants; no grants, no hint.
+    // A caller limited to some projects gets no hint: the pass would load every
+    // memory of every granted project on each search. Newest-first results are
+    // not ranked by relevance, so they give no bar to compare against either.
     let readable = crate::access::restrict_scope(SearchScope::All).ok()?;
+    if readable != SearchScope::All || options.recent_first {
+        return None;
+    }
     let outside = api::hybrid_search_embedded(
         system,
         query,
@@ -392,7 +397,8 @@ pub(crate) async fn scope_hint(
 /// when it is a plain name or path: letters or digits of any script plus
 /// `-`, `_`, `.`, `/`.
 fn hint_can_name(project: &str) -> bool {
-    project.chars().count() <= 64
+    // A workspace id is up to 66 characters: ws_, a 30-character slug, _, 32 hex.
+    project.chars().count() <= 80
         && project
             .chars()
             .all(|ch| ch.is_alphanumeric() || matches!(ch, '-' | '_' | '.' | '/'))
@@ -1118,11 +1124,9 @@ mod tests {
                 search_in(&system, ""),
             )
             .await;
-        assert!(
-            granted
-                .scope_hint
-                .is_some_and(|hint| hint.contains("private (2)"))
-        );
+        // A caller limited to some projects gets no hint, even for one it may read:
+        // the pass would load every granted project on each search.
+        assert_eq!(granted.scope_hint, None);
     }
 
     #[test]

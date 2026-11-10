@@ -1545,9 +1545,10 @@ pub(crate) async fn build_context_scope(
         // search AND hard-required literal keyword overlap, so a Korean query
         // ("바이오스") never matched an English-stored memory ("BIOS") and the
         // pack came back empty. Use false so cross-language / paraphrased recall
-        // actually surfaces. Nobody asked for this text, so unlike /search it
-        // keeps only memories that pass `on_topic`; a prompt with no topic
-        // injects nothing.
+        // can surface. Nobody asked for this text, so unlike /search it keeps
+        // only memories that pass `on_topic`; a prompt with no topic injects
+        // nothing, and a memory in the other language needs two topic words in
+        // the prompt (one-word prompts such as "그럼 바이오스는?" get none).
         let options = SearchOptions {
             exclude_reserved: project == "all",
             durable_only: true,

@@ -16,6 +16,10 @@ param(
 # watcher can read that user's transcripts. Keep this file ASCII: Windows
 # PowerShell 5.1 reads a script without a BOM in the system code page.
 $ErrorActionPreference = "Stop"
+# A trailing backslash would escape the closing quote of a quoted argument.
+$InstallDir = $InstallDir.TrimEnd("\")
+$DataDir = $DataDir.TrimEnd("\")
+$WatchPath = @($WatchPath | ForEach-Object { $_.TrimEnd("\") })
 # install.ps1 runs this file as a script block from the unpacked archive root,
 # where there is no script path to read.
 $ScriptDir = $PSScriptRoot
@@ -76,10 +80,12 @@ function Register-MemnestTask {
   param([string]$Name, [string]$Arguments, [string]$Launcher, [string]$LogName, [string]$Description)
   # A launcher file keeps every path quoted however the task runs it, and lets
   # cmd append the output to a log. NO_COLOR keeps escape codes out of the log.
-  # cmd reads batch files in the OEM code page and expands %, hence both steps.
+  # The file is UTF-8 without a BOM and switches cmd to that code page first, so
+  # a path outside the system code page (a Korean user name on an English
+  # Windows) survives. cmd expands %, hence the doubling.
   $launcherPath = Join-Path $InstallDir $Launcher
-  $lines = "@echo off", "set NO_COLOR=1", "`"$Exe`" $Arguments >> `"$LogDir\$LogName`" 2>&1"
-  Set-Content -Path $launcherPath -Value ($lines | ForEach-Object { $_.Replace("%", "%%") }) -Encoding Oem
+  $lines = "@echo off", "chcp 65001 >nul", "set NO_COLOR=1", "`"$Exe`" $Arguments >> `"$LogDir\$LogName`" 2>&1"
+  [System.IO.File]::WriteAllLines($launcherPath, [string[]]($lines | ForEach-Object { $_.Replace("%", "%%") }), (New-Object System.Text.UTF8Encoding $false))
   # conhost --headless runs the console program without a window.
   $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
   $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\conhost.exe" `

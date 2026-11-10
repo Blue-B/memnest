@@ -10,7 +10,7 @@ For what memnest is and how to connect an agent, start at the [README](../README
 
 ## Requirements
 
-Core v0.5.1 provides Linux x86_64 and Arm64 binaries and an Apple Silicon macOS binary, which need neither Git nor Rust. Its integrated setup requires Python 3; on Python 3.10 it leaves an existing Codex `config.toml` unchanged because validating it needs Python 3.11. Building from source also needs Git and a Rust toolchain with Rust 2024 edition support. The first embedding operation needs internet access to download the configured model. Intel Macs have no prebuilt onnxruntime and need a source build.
+Core v0.5.1 provides Linux x86_64 and Arm64 binaries and an Apple Silicon macOS binary, which need neither Git nor Rust. Its integrated setup requires Python 3; on Python 3.10 it leaves an existing Codex `config.toml` unchanged because validating it needs Python 3.11. Building from source also needs Git and a Rust toolchain with Rust 1.89 or newer. The first embedding operation needs internet access to download the configured model. Intel Macs have no prebuilt onnxruntime and need a source build.
 
 Linux setup requires `systemctl` and `systemd-analyze` from systemd. The latter is used read-only to inspect user or system unit search paths before an upgrade. The optional package under `pi-extension/` lists its own runtime requirements in its package README.
 
