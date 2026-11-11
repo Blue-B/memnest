@@ -51,6 +51,7 @@ class Client:
                 )
                 if attempt:
                     raise
+        raise ConnectionError("request failed")  # not reached: the second attempt returns or raises
 
     def get(self, path):
         return self.request("GET", path)
