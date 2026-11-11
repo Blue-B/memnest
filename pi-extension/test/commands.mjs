@@ -229,6 +229,19 @@ process.stdout.write = realWrite;
 assert.match(printed.join(""), /2 results for "port" in project all:\n {2}1\. demo · [\s\S]*\n {2}2\. playbook[\s\S]*Stronger matches/);
 assert.match(printed.join(""), /No results for "nothing" in this folder\.\nTry project:all/);
 
+// In the terminal UI long text opens in pi's scrolling editor view, not as a notification; edits are discarded.
+{
+	const editors = [];
+	const c = makeCtx({ answers: [pick("deploy"), pick("Back"), undefined] });
+	c.mode = "tui";
+	c.ui.editor = async (title, text) => (editors.push({ title, text }), undefined);
+	await run("memnest-cards", "", c);
+	assert.equal(editors.length, 1);
+	assert.match(editors[0].title, /^deploy \(read only: Esc closes, edits are discarded\)$/);
+	assert.match(editors[0].text, /Goal: ship[\s\S]*staging only$/);
+	assert.deepEqual(c.shown, [], "nothing is shown as a notification");
+}
+
 // --- /memnest-recent: the newest saved memories, same rows and full-text view as search.
 ctx = makeCtx({ answers: [pick("Newest saved"), undefined] });
 await run("memnest-recent", "", ctx);

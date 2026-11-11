@@ -4888,12 +4888,16 @@ function installCommands(pi, { call: call2, url, cards }) {
     if (/^memnest error (404|405)/.test(reply.text)) return "This Memnest core is too old for that command; update the core";
     return oneLine(reply.text, 200);
   };
+  const readText = async (ctx, title, text) => {
+    if (ctx.mode === "tui") await ctx.ui.editor(`${oneLine(title, 80)} (read only: Esc closes, edits are discarded)`, text);
+    else say(ctx, text);
+  };
   const fail = (ctx, reply) => say(ctx, typeof reply === "string" ? reply : problem(reply), "error");
   const cardLine = (n, c, finished) => oneLine(`${n}. ${!finished && cards.isOpen(c.title) ? "[open] " : ""}${c.title}  (saved ${localTime(c.updated)})`);
   async function cardMenu(ctx, card, finished) {
     const text = await cards.read(card);
     if (text === null) return fail(ctx, "Could not read the task card"), false;
-    say(ctx, `${oneLine(card.title, 200)}
+    await readText(ctx, card.title, `${oneLine(card.title, 200)}
 saved ${localTime(card.updated)}${finished ? " (finished)" : ""}
 
 ${plain(text)}`);
@@ -4923,7 +4927,7 @@ ${plain(text)}`);
     return false;
   }
   pi.registerCommand?.("memnest-cards", {
-    description: "List task cards; open, close or finish one (no model involved)",
+    description: "List task cards; open, close or finish one",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) {
         for (const finished2 of [false, true]) {
@@ -4984,14 +4988,14 @@ ${plain(text)}`);
   async function showMemory(ctx, item) {
     const got = await fullText(item.id);
     if ("error" in got) return fail(ctx, got);
-    say(ctx, `${shortProject(String(item.project))} \xB7 ${localTime(String(item.timestamp)).slice(0, 10)} \xB7 ${oneLine(item.chunk_type, 40).toLowerCase()} \xB7 id ${oneLine(item.id, 80)}
+    await readText(ctx, "Memory", `${shortProject(String(item.project))} \xB7 ${localTime(String(item.timestamp)).slice(0, 10)} \xB7 ${oneLine(item.chunk_type, 40).toLowerCase()} \xB7 id ${oneLine(item.id, 80)}
 
 ${got.text}${got.clipped ? `
 
 (first ${FULL_TEXT_CHARS} characters)` : ""}`);
   }
   pi.registerCommand?.("memnest-search", {
-    description: "Search memory yourself: /memnest-search [project:<name>|project:all] <question> (no model involved)",
+    description: "Search memory (project:<name> or project:all first)",
     getArgumentCompletions: completeProject,
     handler: async (args, ctx) => {
       let { project, query } = parseSearch(args ?? "");
@@ -5039,7 +5043,7 @@ ${hint}` : ""}`, labels);
   }
   const day = (iso) => localTime(String(iso)).slice(0, 10);
   pi.registerCommand?.("memnest-recent", {
-    description: "Newest saved memories: /memnest-recent [project:<name>|project:all] (no model involved)",
+    description: "Newest saved memories (project:<name> or project:all)",
     getArgumentCompletions: completeProject,
     handler: async (args, ctx) => {
       const got = await savedMemories(ctx, args, false);
@@ -5057,7 +5061,7 @@ ${hint}` : ""}`, labels);
     }
   });
   pi.registerCommand?.("memnest-review", {
-    description: "Go through saved rules and preferences, oldest first: keep, delete or skip each (no model involved)",
+    description: "Review saved rules: keep, delete or skip each",
     getArgumentCompletions: completeProject,
     handler: async (args, ctx) => {
       const got = await savedMemories(ctx, args, true);
@@ -5079,7 +5083,7 @@ ${hint}` : ""}`, labels);
           fail(ctx, text);
           break;
         }
-        say(ctx, `${seen + 1} of ${got.items.length}: ${header(item)}
+        await readText(ctx, `Rule ${seen + 1} of ${got.items.length}`, `${seen + 1} of ${got.items.length}: ${header(item)}
 
 ${text.text}`);
         const choice = await ctx.ui.select(`Rule ${seen + 1} of ${got.items.length}: does it still hold?`, [KEEP, DELETE, SKIP, STOP]);
