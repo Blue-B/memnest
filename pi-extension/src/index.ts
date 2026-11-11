@@ -1,5 +1,6 @@
 import { installAutocontext } from "./autocontext.js";
 import { installTaskCards } from "./task-card.js";
+import { installCommands } from "./commands.js";
 import { memoryReadAllowed, MODEL_POLICY_ERROR } from "./model-policy.js";
 import { BEARER_REFUSED, bearerAllowed, isLoopback } from "./auth.js";
 import { execFile } from "node:child_process";
@@ -115,7 +116,8 @@ function registerTool(
 
 export default function register(pi: ExtensionAPI): void {
 	const autocontextEnabled = installAutocontext(pi);
-	const taskCardStatus = installTaskCards(pi, call);
+	const { status: taskCardStatus, control: cardControl } = installTaskCards(pi, call);
+	installCommands(pi, { call, url: URL, cards: cardControl });
 	pi.registerCommand?.("memnest", {
 		description: "Show Memnest status, stored memory count, task cards, and search latency",
 		handler: async (_args: string, ctx: any) => {

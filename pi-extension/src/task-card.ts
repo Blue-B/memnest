@@ -22,7 +22,7 @@ type Call = (
 	body?: unknown,
 	method?: "GET" | "POST" | "DELETE",
 ) => Promise<{ text: string; error: boolean }>;
-type Card = { id: string; title: string; updated: string };
+export type Card = { id: string; title: string; updated: string };
 
 // The core scans a whole collection on scoped search, so finished cards stay out of the active one.
 const PROJECT = "task-cards";
@@ -80,7 +80,8 @@ const defuse = (text: string) => text.replace(/<(\/?\s*system[-_ ]?reminder)/gi,
 const line = (c: Card) => `- ${c.title} (updated ${c.updated || "unknown"})`;
 
 // With a request, cards are ranked by relevance to it; without one, newest first.
-async function findCards(call: Call, request = "", project = PROJECT): Promise<Card[]> {
+// A failed search is reported with the core's reply, so a command can tell it from "no cards".
+async function searchCards(call: Call, request = "", project = PROJECT): Promise<{ cards: Card[] } | { error: string }> {
 	// shortcut: search returns at most 50 cards per query and its cost grows with the active collection; add a core list endpoint if active cards reach the thousands.
 	const r = await call("/search", {
 		// The core drops bracketed queries, so search the bare marker word.
@@ -90,7 +91,7 @@ async function findCards(call: Call, request = "", project = PROJECT): Promise<C
 		recent_first: !request,
 		adapter: "pi",
 	});
-	if (r.error) return [];
+	if (r.error) return { error: r.text };
 	try {
 		const seen = new Set<string>();
 		const cards: Card[] = [];
@@ -102,10 +103,14 @@ async function findCards(call: Call, request = "", project = PROJECT): Promise<C
 			seen.add(title);
 			cards.push({ id: item.id, title, updated: String(item.timestamp ?? "").slice(0, 16) });
 		}
-		return cards;
+		return { cards };
 	} catch {
-		return [];
+		return { error: "memnest returned an unreadable reply" };
 	}
+}
+async function findCards(call: Call, request = "", project = PROJECT): Promise<Card[]> {
+	const found = await searchCards(call, request, project);
+	return "cards" in found ? found.cards : [];
 }
 
 // Exact title lookup: newest-first page, then a title search for cards past the first page.
@@ -149,6 +154,11 @@ function stamp(d = new Date()): string {
 	const p = (n: number) => String(n).padStart(2, "0");
 	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
+// Stored times are UTC; the user reads local time, as in the card's own log.
+export function localTime(utc: string): string {
+	const d = new Date(utc.length === 16 ? `${utc}:00Z` : utc);
+	return Number.isNaN(d.getTime()) ? "unknown" : stamp(d);
+}
 
 // pinned: the text last put into the system prompt; kept until a compaction so the prompt cache keeps hitting.
 // since: user messages since this session last opened or saved the card; staleNoted: the reminder below went out.
@@ -162,8 +172,19 @@ const staleNote = (titles: string[]) => {
 	return `[memnest task cards] ${titles.map((t) => `"${t}"`).join(", ")} ${many ? "are" : "is"} open but not saved in the last ${STALE_AFTER} user messages, and each message is still being recorded into ${many ? "them" : "it"}. If the conversation has moved to other work, close ${many ? "each card it left" : "it"} now with task_card action=close, then open or save the card for the current work if it spans sessions. If it is still this task, save it with the current state.`;
 };
 
-/** Installs task cards; returns a status reader for the /memnest command. */
-export function installTaskCards(pi: any, call: Call): () => Promise<string[]> {
+/** What the /memnest-cards command may do with cards: the same steps the task_card tool takes, without the model. */
+export type CardControl = {
+	list: (finished: boolean) => Promise<{ cards: Card[] } | { error: string }>;
+	isOpen: (title: string) => boolean;
+	read: (card: Card) => Promise<string | null>;
+	/** Returns an error text, or the title of the card pushed out of the open set (if any). */
+	open: (card: Card) => Promise<{ error: string } | { dropped?: string }>;
+	close: (title: string) => string | undefined;
+	done: (card: Card) => Promise<string | undefined>;
+};
+
+/** Installs task cards; returns a status reader for the /memnest command and the controls for /memnest-cards. */
+export function installTaskCards(pi: any, call: Call): { status: () => Promise<string[]>; control: CardControl } {
 	// Opened cards, oldest first; body and log are fetched lazily after a resume.
 	let open: Open[] = [];
 	// User messages of this session not yet attached to a card.
@@ -243,6 +264,36 @@ export function installTaskCards(pi: any, call: Call): () => Promise<string[]> {
 			if (!missing.length) return;
 			await call("/update", { id: latest.id, text: `${MARK} ${card.title}\n${compose(fresh.body, card.log!)}` });
 		}
+	};
+
+	// Steps shared by the task_card tool and the /memnest-cards command.
+	const closeCard = (title: string): string | undefined => {
+		if (!open.some((c) => c.title === title)) return `task card "${title}" is not open`;
+		close(title);
+		// Keep the request that led to closing it; it may belong to the card saved next.
+		pending = pending.slice(-1);
+		return undefined;
+	};
+	const finishCard = async (title: string, previous: Card): Promise<string | undefined> => {
+		// Moving the record keeps its id and text; only the active collection stays small.
+		const moved = (await hasDoor()) ? await call("/task-card", { action: "done", title }) : await call("/update", { id: previous.id, project: DONE_PROJECT });
+		if (moved.error) return moved.text;
+		close(title);
+		return undefined;
+	};
+	// kept: how many of the unattached user messages go into the card (the tool keeps the request that picked the task up).
+	const openCard = async (title: string, kept: number): Promise<{ error: "missing" | "unreadable" } | { active: boolean; opened: Open; dropped?: string }> => {
+		const active = await byTitle(call, title);
+		const card = active ?? (await byTitle(call, title, DONE_PROJECT));
+		if (!card) return { error: "missing" };
+		const text = await readCard(call, card.id);
+		if (!text) return { error: "unreadable" };
+		const opened: Open = { title, id: card.id, ...split(text) };
+		// Only the request that picked the task up is recorded; earlier messages may be other work.
+		pending = kept ? pending.slice(-kept) : [];
+		const dropped = !open.some((c) => c.title === title) && open.length >= MAX_OPEN ? open[0].title : undefined;
+		setOpen(opened);
+		return { active: !!active, opened, dropped };
 	};
 
 	pi.on("session_start", (_event: unknown, ctx: any) => {
@@ -357,10 +408,8 @@ export function installTaskCards(pi: any, call: Call): () => Promise<string[]> {
 		async execute(_id: string, p: any, _s: unknown, _u: unknown, ctx: any) {
 			const title = titleOf(p.title);
 			if (p.action === "close") {
-				if (!open.some((c) => c.title === title)) return result(`task card "${title}" is not open`, true);
-				close(title);
-				// Keep the request that led to closing it; it may belong to the card saved next.
-				pending = pending.slice(-1);
+				const failed = closeCard(title);
+				if (failed) return result(failed, true);
 				return result(`closed task card "${title}"; it is no longer pinned or recorded into`);
 			}
 			if (p.action === "save" || p.action === "done") {
@@ -368,10 +417,8 @@ export function installTaskCards(pi: any, call: Call): () => Promise<string[]> {
 				let previous = await byTitle(call, title);
 				if (p.action === "done") {
 					if (!previous) return result(`no active task card titled "${title}"`, true);
-					// Moving the record keeps its id and text; only the active collection stays small.
-					const moved = (await hasDoor()) ? await call("/task-card", { action: "done", title }) : await call("/update", { id: previous.id, project: DONE_PROJECT });
-					if (moved.error) return result(moved.text, true);
-					close(title);
+					const failed = await finishCard(title, previous);
+					if (failed) return result(failed, true);
 					return result(`marked task card "${title}" done; it no longer appears in the list`);
 				}
 				// The model may echo the pinned card; the log section is never taken from it.
@@ -394,7 +441,9 @@ export function installTaskCards(pi: any, call: Call): () => Promise<string[]> {
 						const text = String(JSON.parse(r.text).text ?? "");
 						// Stored memory text: only for a model the user allows to read memory.
 						if (memoryReadAllowed(ctx) && text.includes("\n\n")) rules = text.slice(text.indexOf("\n\n"));
-					} catch {}
+					} catch {
+						// An unreadable reply only means no rules are listed.
+					}
 					return result(`saved task card "${title}"${previous ? ` (replaces ${previous.id})` : ""}; it stays pinned for this session${rules}`);
 				}
 				if (!previous) {
@@ -440,36 +489,38 @@ export function installTaskCards(pi: any, call: Call): () => Promise<string[]> {
 				const cards = await findCards(call, topic);
 				return result(cards.length ? cards.map(line).join("\n") : "no task cards are saved, so do not search again. If this work continues from an earlier session or will go on in a later one, save a card for it now with action=save.");
 			}
-			const active = await byTitle(call, title);
-			const card = active ?? (await byTitle(call, title, DONE_PROJECT));
-			if (!card) {
+			const got = await openCard(title, 1);
+			if ("error" in got) {
+				if (got.error === "unreadable") return result("could not read the task card", true);
 				const near = (await findCards(call, title)).slice(0, 5);
 				return result(`no task card titled "${title}"${near.length ? `; closest titles:\n${near.map(line).join("\n")}` : ""}`, true);
 			}
-			const text = await readCard(call, card.id);
-			if (!text) return result("could not read the task card", true);
-			const opened: Open = { title, id: card.id, ...split(text) };
-			// Only the request that picked the task up is recorded; earlier messages may be other work.
-			pending = pending.slice(-1);
-			setOpen(opened);
-			return result(`${active ? "" : "(this task was marked done; save it again to reopen)\n\n"}${RULE}\n\n${defuse(compose(opened.body!, opened.log ?? []))}`);
+			return result(`${got.active ? "" : "(this task was marked done; save it again to reopen)\n\n"}${RULE}\n\n${defuse(compose(got.opened.body!, got.opened.log ?? []))}`);
 		},
 	});
 
+	const control: CardControl = {
+		list: (finished) => searchCards(call, "", finished ? DONE_PROJECT : PROJECT),
+		isOpen: (title) => open.some((c) => c.title === title),
+		read: (card) => readCard(call, card.id),
+		open: async (card) => {
+			const got = await openCard(card.title, 0);
+			return "error" in got ? { error: got.error === "missing" ? `no task card titled "${card.title}"` : "could not read the task card" } : { dropped: got.dropped };
+		},
+		close: closeCard,
+		done: (card) => finishCard(card.title, card),
+	};
+
 	// What /memnest shows: the active cards and which ones this session records into.
-	return async () => {
+	const status = async () => {
 		const cards = await within<Card[] | null>(findCards(call), null);
 		if (cards === null) return ["Task cards: unavailable"];
 		const lines = [`Task cards: ${cards.length >= PAGE ? `${PAGE}+` : cards.length} active${cards.length ? ", newest first" : ""}`];
-		// Stored times are UTC; the user reads local time, as in the card's own log.
-		const local = (utc: string) => {
-			const d = new Date(`${utc}:00Z`);
-			return Number.isNaN(d.getTime()) ? "unknown" : stamp(d);
-		};
-		for (const c of cards.slice(0, 10)) lines.push(`  ${c.title} (saved ${local(c.updated)})`);
+		for (const c of cards.slice(0, 10)) lines.push(`  ${c.title} (saved ${localTime(c.updated)})`);
 		if (cards.length > 10) lines.push(`  ... and ${cards.length - 10} more`);
 		lines.push(open.length ? `Open in this session (your messages are recorded here): ${open.map((c) => c.title).join(", ")}` : "Open in this session: none");
-		lines.push('To change: ask the assistant, e.g. "close the task card" or "mark the task card done".');
+		lines.push('To change: ask the assistant, e.g. "close the task card" or "mark the task card done", or use /memnest-cards.');
 		return lines;
 	};
+	return { status, control };
 }

@@ -4464,7 +4464,7 @@ function result(text, error = false) {
 var titleOf = (value) => Array.from(String(value ?? "").replace(/\s+/g, " ").trim().replace(/</g, "\u2039").replace(/>/g, "\u203A")).slice(0, TITLE_MAX).join("").trimEnd();
 var defuse = (text) => text.replace(/<(\/?\s*system[-_ ]?reminder)/gi, "\u2039$1");
 var line = (c) => `- ${c.title} (updated ${c.updated || "unknown"})`;
-async function findCards(call2, request = "", project = PROJECT) {
+async function searchCards(call2, request = "", project = PROJECT) {
   const r = await call2("/search", {
     // The core drops bracketed queries, so search the bare marker word.
     query: request ? `${ENTRY} ${request.slice(0, 300)}` : ENTRY,
@@ -4473,7 +4473,7 @@ async function findCards(call2, request = "", project = PROJECT) {
     recent_first: !request,
     adapter: "pi"
   });
-  if (r.error) return [];
+  if (r.error) return { error: r.text };
   try {
     const seen = /* @__PURE__ */ new Set();
     const cards = [];
@@ -4485,10 +4485,14 @@ async function findCards(call2, request = "", project = PROJECT) {
       seen.add(title);
       cards.push({ id: item.id, title, updated: String(item.timestamp ?? "").slice(0, 16) });
     }
-    return cards;
+    return { cards };
   } catch {
-    return [];
+    return { error: "memnest returned an unreadable reply" };
   }
+}
+async function findCards(call2, request = "", project = PROJECT) {
+  const found = await searchCards(call2, request, project);
+  return "cards" in found ? found.cards : [];
 }
 async function byTitle(call2, title, project = PROJECT) {
   return (await findCards(call2, "", project)).find((c) => c.title === title) ?? (await findCards(call2, title, project)).find((c) => c.title === title);
@@ -4527,6 +4531,10 @@ ${dropped ? `${TRIMMED}
 function stamp(d = /* @__PURE__ */ new Date()) {
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function localTime(utc) {
+  const d = new Date(utc.length === 16 ? `${utc}:00Z` : utc);
+  return Number.isNaN(d.getTime()) ? "unknown" : stamp(d);
 }
 var STALE_AFTER = 8;
 var staleNote = (titles) => {
@@ -4597,6 +4605,30 @@ function installTaskCards(pi, call2) {
       await call2("/update", { id: latest.id, text: `${MARK} ${card.title}
 ${compose(fresh.body, card.log)}` });
     }
+  };
+  const closeCard = (title) => {
+    if (!open.some((c) => c.title === title)) return `task card "${title}" is not open`;
+    close(title);
+    pending = pending.slice(-1);
+    return void 0;
+  };
+  const finishCard = async (title, previous) => {
+    const moved = await hasDoor() ? await call2("/task-card", { action: "done", title }) : await call2("/update", { id: previous.id, project: DONE_PROJECT });
+    if (moved.error) return moved.text;
+    close(title);
+    return void 0;
+  };
+  const openCard = async (title, kept) => {
+    const active = await byTitle(call2, title);
+    const card = active ?? await byTitle(call2, title, DONE_PROJECT);
+    if (!card) return { error: "missing" };
+    const text = await readCard(call2, card.id);
+    if (!text) return { error: "unreadable" };
+    const opened = { title, id: card.id, ...split(text) };
+    pending = kept ? pending.slice(-kept) : [];
+    const dropped = !open.some((c) => c.title === title) && open.length >= MAX_OPEN ? open[0].title : void 0;
+    setOpen(opened);
+    return { active: !!active, opened, dropped };
   };
   pi.on("session_start", (_event, ctx) => {
     listed = false;
@@ -4706,9 +4738,8 @@ ${notes.join("\n\n")}
     async execute(_id, p, _s, _u, ctx) {
       const title = titleOf(p.title);
       if (p.action === "close") {
-        if (!open.some((c) => c.title === title)) return result(`task card "${title}" is not open`, true);
-        close(title);
-        pending = pending.slice(-1);
+        const failed = closeCard(title);
+        if (failed) return result(failed, true);
         return result(`closed task card "${title}"; it is no longer pinned or recorded into`);
       }
       if (p.action === "save" || p.action === "done") {
@@ -4716,9 +4747,8 @@ ${notes.join("\n\n")}
         let previous = await byTitle(call2, title);
         if (p.action === "done") {
           if (!previous) return result(`no active task card titled "${title}"`, true);
-          const moved = await hasDoor() ? await call2("/task-card", { action: "done", title }) : await call2("/update", { id: previous.id, project: DONE_PROJECT });
-          if (moved.error) return result(moved.text, true);
-          close(title);
+          const failed = await finishCard(title, previous);
+          if (failed) return result(failed, true);
           return result(`marked task card "${title}" done; it no longer appears in the list`);
         }
         const body = split(String(p.text ?? "")).body.split(/^[ \t]*#{0,6}[ \t]*user.{0,3}s[ \t]+own[ \t]+words/im)[0].trim();
@@ -4734,8 +4764,8 @@ ${notes.join("\n\n")}
           setOpen({ title, id: now?.id, body, log: now?.log ?? said, pinned: open.find((c) => c.title === title)?.pinned });
           let rules = "";
           try {
-            const text2 = String(JSON.parse(r2.text).text ?? "");
-            if (memoryReadAllowed(ctx) && text2.includes("\n\n")) rules = text2.slice(text2.indexOf("\n\n"));
+            const text = String(JSON.parse(r2.text).text ?? "");
+            if (memoryReadAllowed(ctx) && text.includes("\n\n")) rules = text.slice(text.indexOf("\n\n"));
           } catch {
           }
           return result(`saved task card "${title}"${previous ? ` (replaces ${previous.id})` : ""}; it stays pinned for this session${rules}`);
@@ -4744,9 +4774,9 @@ ${notes.join("\n\n")}
           const finished = await byTitle(call2, title, DONE_PROJECT);
           if (finished && !(await call2("/update", { id: finished.id, project: PROJECT })).error) previous = finished;
         }
-        const opened2 = open.find((c) => c.title === title);
+        const opened = open.find((c) => c.title === title);
         const stored = previous ? split(await readCard(call2, previous.id) ?? "").log : [];
-        const log = [...stored, ...[...opened2?.log ?? [], ...pending].filter((e) => !stored.includes(e))];
+        const log = [...stored, ...[...opened?.log ?? [], ...pending].filter((e) => !stored.includes(e))];
         const r = await call2("/add", {
           text: `${MARK} ${title}
 ${compose(body, log)}`,
@@ -4780,37 +4810,215 @@ ${compose(body, log)}`,
         const cards = await findCards(call2, topic);
         return result(cards.length ? cards.map(line).join("\n") : "no task cards are saved, so do not search again. If this work continues from an earlier session or will go on in a later one, save a card for it now with action=save.");
       }
-      const active = await byTitle(call2, title);
-      const card = active ?? await byTitle(call2, title, DONE_PROJECT);
-      if (!card) {
+      const got = await openCard(title, 1);
+      if ("error" in got) {
+        if (got.error === "unreadable") return result("could not read the task card", true);
         const near = (await findCards(call2, title)).slice(0, 5);
         return result(`no task card titled "${title}"${near.length ? `; closest titles:
 ${near.map(line).join("\n")}` : ""}`, true);
       }
-      const text = await readCard(call2, card.id);
-      if (!text) return result("could not read the task card", true);
-      const opened = { title, id: card.id, ...split(text) };
-      pending = pending.slice(-1);
-      setOpen(opened);
-      return result(`${active ? "" : "(this task was marked done; save it again to reopen)\n\n"}${RULE}
+      return result(`${got.active ? "" : "(this task was marked done; save it again to reopen)\n\n"}${RULE}
 
-${defuse(compose(opened.body, opened.log ?? []))}`);
+${defuse(compose(got.opened.body, got.opened.log ?? []))}`);
     }
   });
-  return async () => {
+  const control = {
+    list: (finished) => searchCards(call2, "", finished ? DONE_PROJECT : PROJECT),
+    isOpen: (title) => open.some((c) => c.title === title),
+    read: (card) => readCard(call2, card.id),
+    open: async (card) => {
+      const got = await openCard(card.title, 0);
+      return "error" in got ? { error: got.error === "missing" ? `no task card titled "${card.title}"` : "could not read the task card" } : { dropped: got.dropped };
+    },
+    close: closeCard,
+    done: (card) => finishCard(card.title, card)
+  };
+  const status = async () => {
     const cards = await within(findCards(call2), null);
     if (cards === null) return ["Task cards: unavailable"];
     const lines = [`Task cards: ${cards.length >= PAGE ? `${PAGE}+` : cards.length} active${cards.length ? ", newest first" : ""}`];
-    const local = (utc) => {
-      const d = /* @__PURE__ */ new Date(`${utc}:00Z`);
-      return Number.isNaN(d.getTime()) ? "unknown" : stamp(d);
-    };
-    for (const c of cards.slice(0, 10)) lines.push(`  ${c.title} (saved ${local(c.updated)})`);
+    for (const c of cards.slice(0, 10)) lines.push(`  ${c.title} (saved ${localTime(c.updated)})`);
     if (cards.length > 10) lines.push(`  ... and ${cards.length - 10} more`);
     lines.push(open.length ? `Open in this session (your messages are recorded here): ${open.map((c) => c.title).join(", ")}` : "Open in this session: none");
-    lines.push('To change: ask the assistant, e.g. "close the task card" or "mark the task card done".');
+    lines.push('To change: ask the assistant, e.g. "close the task card" or "mark the task card done", or use /memnest-cards.');
     return lines;
   };
+  return { status, control };
+}
+
+// src/commands.ts
+var RESULTS = 10;
+var FULL_TEXT_CHARS = 3e4;
+var HIDDEN_PROJECTS = /* @__PURE__ */ new Set(["task-cards", "task-cards-done", "_superseded"]);
+var COMPLETION_CACHE_MS = 3e4;
+var cells = (ch) => {
+  const c = ch.codePointAt(0);
+  const wide = c >= 4352 && c <= 4447 || c >= 11904 && c <= 42191 || c >= 44032 && c <= 55203 || c >= 63744 && c <= 64255 || c >= 65072 && c <= 65135 || c >= 65280 && c <= 65376 || c >= 65504 && c <= 65510 || c >= 127744 && c <= 129791 || c >= 131072 && c <= 262141;
+  return wide ? 2 : 1;
+};
+var columns = () => Math.max(40, Math.min(Number(globalThis.process?.stdout?.columns) || 100, 200));
+function oneLine(value, max = columns() - 6) {
+  const chars = Array.from(String(value ?? "").replace(/[\s\u0000-\u001f\u007f-\u009f]+/g, " ").trim());
+  if (chars.reduce((sum, ch) => sum + cells(ch), 0) <= max) return chars.join("");
+  let used = 0;
+  let kept = "";
+  for (const ch of chars) {
+    if (used + cells(ch) > max - 1) break;
+    used += cells(ch);
+    kept += ch;
+  }
+  return `${kept.trimEnd()}\u2026`;
+}
+var plain = (value) => String(value ?? "").replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, " ");
+var shortProject = (project) => project.replace(/^ws_(.+)_[0-9a-f]{16,}$/, "$1");
+function parseSearch(args) {
+  const m = /^\s*project:(\S+)(?:\s+([\s\S]*))?$/i.exec(args);
+  return m ? { project: m[1], query: (m[2] ?? "").trim() } : { query: args.trim() };
+}
+function say(ctx, text, level = "info") {
+  if (ctx.hasUI) return ctx.ui.notify(text, level);
+  const out = ctx.mode === "json" ? process.stderr : process.stdout;
+  out.write(`${text}
+`);
+}
+function installCommands(pi, { call: call2, url, cards }) {
+  const problem = (reply) => {
+    if (reply.text.startsWith("memnest unreachable")) return `Memnest is not reachable at ${url}`;
+    if (/^memnest error (404|405)/.test(reply.text)) return "This Memnest core is too old for that command; update the core";
+    return oneLine(reply.text, 200);
+  };
+  const fail = (ctx, reply) => say(ctx, typeof reply === "string" ? reply : problem(reply), "error");
+  const cardLine = (n, c, finished) => oneLine(`${n}. ${!finished && cards.isOpen(c.title) ? "[open] " : ""}${c.title}  (saved ${localTime(c.updated)})`);
+  async function cardMenu(ctx, card, finished) {
+    const text = await cards.read(card);
+    if (text === null) return fail(ctx, "Could not read the task card"), false;
+    say(ctx, `${oneLine(card.title, 200)}
+saved ${localTime(card.updated)}${finished ? " (finished)" : ""}
+
+${plain(text)}`);
+    if (finished) return false;
+    const open = cards.isOpen(card.title);
+    const OPEN = "Open in this session (pin it, record your messages into it)";
+    const CLOSE = "Close in this session (stop recording into it)";
+    const DONE = "Mark done";
+    const choice = await ctx.ui.select(oneLine(card.title), [open ? CLOSE : OPEN, DONE, "Back"]);
+    if (choice === OPEN) {
+      const got = await cards.open(card);
+      if ("error" in got) return fail(ctx, got.error), false;
+      say(ctx, `Opened "${oneLine(card.title, 100)}": it is pinned for this session and your messages are recorded into it.${got.dropped ? ` Only 3 cards stay open, so "${oneLine(got.dropped, 100)}" was closed.` : ""}`);
+      return true;
+    }
+    if (choice === CLOSE) {
+      const failed = cards.close(card.title);
+      say(ctx, failed ?? `Closed "${oneLine(card.title, 100)}": it is no longer pinned or recorded into.`, failed ? "error" : "info");
+      return true;
+    }
+    if (choice === DONE) {
+      if (!await ctx.ui.confirm("Mark done?", `"${oneLine(card.title, 100)}" leaves the active list. Saving it again reopens it.`)) return false;
+      const failed = await cards.done(card);
+      say(ctx, failed ?? `Marked "${oneLine(card.title, 100)}" done.`, failed ? "error" : "info");
+      return true;
+    }
+    return false;
+  }
+  pi.registerCommand?.("memnest-cards", {
+    description: "List task cards; open, close or finish one (no model involved)",
+    handler: async (_args, ctx) => {
+      if (!ctx.hasUI) {
+        for (const finished2 of [false, true]) {
+          const got = await cards.list(finished2);
+          if ("error" in got) return fail(ctx, { text: got.error, error: true });
+          say(ctx, [`${finished2 ? "Finished" : "Active"} task cards (${got.cards.length}${got.cards.length >= 50 ? "+" : ""}), newest first:`, ...got.cards.map((c, i) => `  ${cardLine(i + 1, c, finished2)}`)].join("\n"));
+        }
+        return;
+      }
+      let finished = false;
+      for (; ; ) {
+        const got = await cards.list(finished);
+        if ("error" in got) return fail(ctx, { text: got.error, error: true });
+        const FINISHED = "Finished cards...";
+        const ACTIVE = "Active cards...";
+        const labels = got.cards.map((c, i) => cardLine(i + 1, c, finished));
+        const title = `${finished ? "Finished" : "Active"} task cards: ${got.cards.length}${got.cards.length >= 50 ? "+" : ""}, newest first${finished ? "" : "; [open] = recorded into by this session"}`;
+        const choice = await ctx.ui.select(title, [...labels, finished ? ACTIVE : FINISHED]);
+        if (choice === void 0) return;
+        if (choice === FINISHED || choice === ACTIVE) {
+          finished = !finished;
+          continue;
+        }
+        const index = labels.indexOf(choice);
+        if (index >= 0) await cardMenu(ctx, got.cards[index], finished);
+      }
+    }
+  });
+  let names;
+  async function projectNames() {
+    if (names && Date.now() - names.at < COMPLETION_CACHE_MS) return names.list;
+    const reply = await call2("/stats", void 0, "GET");
+    let list = [];
+    try {
+      if (!reply.error) list = (JSON.parse(reply.text).collections ?? []).map((c) => String(c?.name ?? "")).filter((n) => n && !HIDDEN_PROJECTS.has(n) && !/\s/.test(n));
+    } catch {
+    }
+    names = { at: Date.now(), list };
+    return list;
+  }
+  async function showMemory(ctx, item) {
+    const reply = await call2(`/chunk/${encodeURIComponent(item.id)}?max_chars=${FULL_TEXT_CHARS}`, void 0, "GET");
+    if (reply.error) return fail(ctx, reply);
+    let chunk;
+    try {
+      chunk = JSON.parse(reply.text);
+    } catch {
+      return fail(ctx, "Memnest returned an unreadable reply");
+    }
+    if (typeof chunk?.document !== "string") return fail(ctx, "Memnest returned an unreadable reply");
+    const clipped = chunk.document.length >= FULL_TEXT_CHARS && chunk.next_offset !== void 0 && chunk.next_offset !== null;
+    say(ctx, `${shortProject(String(item.project))} \xB7 ${localTime(String(item.timestamp)).slice(0, 10)} \xB7 ${oneLine(item.chunk_type, 40).toLowerCase()} \xB7 id ${oneLine(item.id, 80)}
+
+${plain(chunk.document)}${clipped ? `
+
+(first ${FULL_TEXT_CHARS} characters)` : ""}`);
+  }
+  pi.registerCommand?.("memnest-search", {
+    description: "Search memory yourself: /memnest-search [project:<name>|project:all] <question> (no model involved)",
+    getArgumentCompletions: async (prefix) => {
+      if (!prefix || /\s/.test(prefix) || !(prefix.toLowerCase().startsWith("project:") || "project:".startsWith(prefix.toLowerCase()))) return null;
+      const items = ["all", ...await projectNames()].map((n) => ({ value: `project:${n}`, label: `project:${n}` }));
+      const matching = items.filter((i) => i.value.toLowerCase().startsWith(prefix.toLowerCase()));
+      return matching.length ? matching : null;
+    },
+    handler: async (args, ctx) => {
+      let { project, query } = parseSearch(args ?? "");
+      if (!query && ctx.hasUI) query = (await ctx.ui.input("Search memory for:", "a question or keywords") ?? "").trim();
+      if (!query) return say(ctx, "Usage: /memnest-search [project:<name>|project:all] <question>", "warning");
+      const cwd = ctx.cwd?.trim();
+      if (!project && !cwd) return fail(ctx, "The current folder is unknown; use project:<name> or project:all");
+      const reply = await call2("/search", { query, project: project ?? "", cwd: project ? void 0 : cwd, n_results: RESULTS, adapter: "pi" });
+      if (reply.error) return fail(ctx, reply);
+      let data;
+      try {
+        data = JSON.parse(reply.text);
+      } catch {
+        return fail(ctx, "Memnest returned an unreadable reply");
+      }
+      const items = Array.isArray(data?.results) ? data.results.slice(0, RESULTS) : [];
+      const hint = typeof data?.scope_hint === "string" ? oneLine(data.scope_hint, 400) : "";
+      const scope = project ? `project ${oneLine(project, 60)}` : "this folder";
+      const row = (item, n) => oneLine(`${n}. ${shortProject(String(item.project))} \xB7 ${localTime(String(item.timestamp)).slice(0, 10)} \xB7 ${oneLine(item.chunk_type, 20).toLowerCase()} \xB7 ${Number(item.score).toFixed(2)} \xB7 ${item.document}`);
+      if (!items.length) return say(ctx, `No results for "${oneLine(query, 80)}" in ${scope}.${hint ? `
+${hint}` : ""}`);
+      if (!ctx.hasUI) return say(ctx, [`${items.length} results for "${oneLine(query, 80)}" in ${scope}:`, ...items.map((item, i) => `  ${row(item, i + 1)}`), ...hint ? [hint] : []].join("\n"));
+      const labels = items.map((item, i) => row(item, i + 1));
+      for (; ; ) {
+        const choice = await ctx.ui.select(`${items.length} results for "${oneLine(query, 60)}" in ${scope}${hint ? `
+${hint}` : ""}`, labels);
+        if (choice === void 0) return;
+        const index = labels.indexOf(choice);
+        if (index >= 0) await showMemory(ctx, items[index]);
+      }
+    }
+  });
 }
 
 // src/index.ts
@@ -4897,7 +5105,8 @@ function registerTool(pi, name, label, description, parameters, execute) {
 }
 function register(pi) {
   const autocontextEnabled = installAutocontext(pi);
-  const taskCardStatus = installTaskCards(pi, call);
+  const { status: taskCardStatus, control: cardControl } = installTaskCards(pi, call);
+  installCommands(pi, { call, url: URL2, cards: cardControl });
   pi.registerCommand?.("memnest", {
     description: "Show Memnest status, stored memory count, task cards, and search latency",
     handler: async (_args, ctx) => {
