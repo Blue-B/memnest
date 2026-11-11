@@ -37,15 +37,20 @@ def main():
 
     memories = sum(p["performance"]["ingest_memories"] for p in loaded)
     seconds = [p["performance"]["ingest_seconds_sum"] for p in loaded]
+    # Parts that only re-asked questions against kept data dirs (run.py --kept-only)
+    # ingested nothing and were run one after another.
+    kept = memories == 0
     performance = {
-        "parallel_instances": len(loaded),
+        "parallel_instances": 1 if kept else len(loaded),
         "ingest_memories": memories,
         "ingest_seconds_per_instance": seconds,
         "ingest_memories_per_second_per_instance": [
             p["performance"]["ingest_memories_per_second"] for p in loaded
         ],
         "ingest_memories_per_second_all_instances": round(memories / max(seconds), 2) if max(seconds) else None,
-        "ingest_note": "instances ran in parallel on the same 10-thread CPU while other "
+        "ingest_note": "no ingest: every part asked its questions against a kept data directory"
+        if kept
+        else "instances ran in parallel on the same 10-thread CPU while other "
         "processes were also using the machine; per-instance rate is the figure to compare",
     }
     if args.latency_from:
@@ -65,7 +70,11 @@ def main():
             "wall time of POST /search n_results=10 including query embedding"
         )
     else:
-        performance["latency_note"] = "not reported: shards ran in parallel"
+        performance["latency_note"] = (
+            "not reported: the parts were timed separately"
+            if kept
+            else "not reported: shards ran in parallel"
+        )
 
     config = dict(first["config"])
     config["shard"] = f"merged {len(loaded)} shards"
