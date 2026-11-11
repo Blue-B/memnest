@@ -581,7 +581,8 @@ pub async fn mark_reviewed(
     let reviewed_at = chrono::Utc::now().to_rfc3339();
     let stored_id = {
         let sys = system.read().await;
-        let db = sys.db.read().await;
+        // The write lock keeps a concurrent update from writing back older metadata.
+        let db = sys.db.write().await;
         let current = db
             .get_chunk(id.trim())
             .map_err(|e| OperationError::internal(e.to_string()))?
