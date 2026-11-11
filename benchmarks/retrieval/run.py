@@ -164,6 +164,11 @@ def locomo_metrics(records):
             out[f"all_recall@{k}"] = metrics.mean(
                 metrics.all_hit_at_k(r["ranked"], r["relevant"], k) for r in rows
             )
+            # Mean share of a question's evidence turns in the top k: the metric
+            # third-party LoCoMo baseline tables use.
+            out[f"evidence_fraction@{k}"] = metrics.mean(
+                metrics.fraction_at_k(r["ranked"], r["relevant"], k) for r in rows
+            )
         out["mrr@10"] = metrics.mean(
             metrics.reciprocal_rank(r["ranked"], r["relevant"]) for r in rows
         )
