@@ -20,6 +20,11 @@ pub struct Config {
     pub rrf_text_weight: f32,
     /// Score of a memory that both the vector and the keyword search rank first.
     pub fusion_max_score: f32,
+    /// Most the rank can add for a memory that contains none of the question's
+    /// keywords. Clients treat 0.05 above a saved memory's base score as "this
+    /// is about the question" (the pi extension injects at 0.25, a fresh manual
+    /// knowledge memory starts at 0.20), so rank alone has to stay below it.
+    pub no_keyword_score_cap: f32,
     pub mmr_lambda: f32,
     pub enable_lifecycle: bool,
 }
@@ -45,14 +50,16 @@ impl Default for Config {
             recency_penalty_rate: 0.008,
             recency_penalty_cap: 0.30,
             // The fusion constants and the keyword bonus were measured together on
-            // LoCoMo and LongMemEval-S (benchmarks/retrieval/ANALYSIS.md section 8).
-            // The two maxima add up to 0.18, what the former fusion (at most 0.033)
-            // and keyword bonus (0.15) added up to, so importance, type and age
-            // keep their weight against relevance.
+            // LoCoMo and LongMemEval-S, where only their ratio matters, and on a
+            // copy of a real store, where their size against importance, type and
+            // age matters too (benchmarks/retrieval/ANALYSIS.md section 8). The two
+            // maxima add up to 0.18, what the former fusion (at most 0.033) and
+            // keyword bonus (0.15) added up to.
             keyword_max_bonus: 0.08,
             rrf_k: 10.0,
             rrf_text_weight: 0.5,
             fusion_max_score: 0.10,
+            no_keyword_score_cap: 0.049,
             mmr_lambda: 0.5,
             enable_lifecycle: true,
         }

@@ -649,7 +649,11 @@ pub(crate) async fn hybrid_search_embedded(
             {
                 identifier_matches.insert(id);
             }
-            let final_score = sys.config.fusion_max_score * score
+            let mut rank_score = sys.config.fusion_max_score * score;
+            if keyword_ratio == 0.0 {
+                rank_score = rank_score.min(sys.config.no_keyword_score_cap);
+            }
+            let final_score = rank_score
                 + keyword_bonus_from_ratio(keyword_ratio, sys.config.keyword_max_bonus)
                 + importance_bonus(&c.metadata.importance)
                 + type_bonus(&c.metadata.chunk_type)
@@ -2451,6 +2455,65 @@ mod ranking_sanity_tests {
             results.iter().any(|text| text == MEMORIES[5]),
             "{results:?}"
         );
+    }
+
+    /// Clients read the score as an absolute value: the pi extension injects a
+    /// saved memory at 0.25 or more, and a fresh saved memory starts at 0.20
+    /// (manual + knowledge). So the rank alone must stay below 0.05: a memory
+    /// that contains none of the question's keywords is never injected, however
+    /// high the two searches rank it.
+    #[tokio::test]
+    async fn a_memory_without_any_question_keyword_stays_below_the_injection_score() {
+        let (_tmp, system) = build_system().await;
+        remember_all(&system, "sanity", MEMORIES).await;
+        let mut without_keyword = 0;
+        for query in [
+            "오늘 점심 뭐 먹지",
+            "주말에 볼 영화 추천해줘",
+            "how do I center a div in css",
+            "kubernetes ingress annotations",
+            "배포 포트가 뭐였지",
+            "what does the watcher store per turn",
+        ] {
+            let keywords = crate::search::extract_keywords(query, 2);
+            let results = run_hybrid_search(
+                system.clone(),
+                query,
+                "sanity",
+                3,
+                SearchOptions::default(),
+                None,
+            )
+            .await;
+            for item in results {
+                if keyword_match_ratio(&item.document, &keywords) == 0.0 {
+                    without_keyword += 1;
+                    assert!(
+                        item.score < 0.25,
+                        "{query}: {} {}",
+                        item.score,
+                        item.document
+                    );
+                }
+            }
+        }
+        // The unrelated questions do return their nearest memories, so the
+        // limit above was exercised.
+        assert!(without_keyword >= 6, "{without_keyword}");
+
+        // With the question's words in it, the right memory still passes.
+        for query in ["배포 포트가 뭐였지", "what does the watcher store per turn"] {
+            let results = run_hybrid_search(
+                system.clone(),
+                query,
+                "sanity",
+                3,
+                SearchOptions::default(),
+                None,
+            )
+            .await;
+            assert!(results[0].score >= 0.25, "{query}: {}", results[0].score);
+        }
     }
 
     #[tokio::test]
