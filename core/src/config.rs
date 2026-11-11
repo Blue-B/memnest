@@ -13,6 +13,13 @@ pub struct Config {
     pub recency_penalty_rate: f32,
     pub recency_penalty_cap: f32,
     pub keyword_max_bonus: f32,
+    /// Rank constant of the reciprocal-rank fusion: a list's entry at rank r
+    /// (0 first) contributes k / (k + r).
+    pub rrf_k: f32,
+    /// Weight of the keyword list in the fusion; the vector list has weight 1.
+    pub rrf_text_weight: f32,
+    /// Score of a memory that both the vector and the keyword search rank first.
+    pub fusion_max_score: f32,
     pub mmr_lambda: f32,
     pub enable_lifecycle: bool,
 }
@@ -37,7 +44,15 @@ impl Default for Config {
             low_relevance_fallback: 3,
             recency_penalty_rate: 0.008,
             recency_penalty_cap: 0.30,
-            keyword_max_bonus: 0.15,
+            // The fusion constants and the keyword bonus were measured together on
+            // LoCoMo and LongMemEval-S (benchmarks/retrieval/ANALYSIS.md section 8).
+            // The two maxima add up to 0.18, what the former fusion (at most 0.033)
+            // and keyword bonus (0.15) added up to, so importance, type and age
+            // keep their weight against relevance.
+            keyword_max_bonus: 0.08,
+            rrf_k: 10.0,
+            rrf_text_weight: 0.5,
+            fusion_max_score: 0.10,
             mmr_lambda: 0.5,
             enable_lifecycle: true,
         }

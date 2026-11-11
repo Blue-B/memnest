@@ -553,8 +553,13 @@ pub(crate) async fn hybrid_search_embedded(
         .map(|chunk| (chunk.id.clone(), chunk))
         .collect();
     let vector_distance_by_id: HashMap<String, f32> = vector_results.iter().cloned().collect();
-    let fused =
-        crate::index::hybrid::rrf_fusion(&vector_results, &text_results, 60.0).unwrap_or_default();
+    let fused = crate::index::hybrid::rrf_fusion(
+        &vector_results,
+        &text_results,
+        sys.config.rrf_k,
+        sys.config.rrf_text_weight,
+    )
+    .unwrap_or_default();
 
     let keywords = crate::search::extract_keywords(query, 2);
     let topic_keywords = crate::search::topic_keywords(query);
@@ -644,7 +649,7 @@ pub(crate) async fn hybrid_search_embedded(
             {
                 identifier_matches.insert(id);
             }
-            let final_score = score
+            let final_score = sys.config.fusion_max_score * score
                 + keyword_bonus_from_ratio(keyword_ratio, sys.config.keyword_max_bonus)
                 + importance_bonus(&c.metadata.importance)
                 + type_bonus(&c.metadata.chunk_type)
@@ -3246,6 +3251,73 @@ pub(crate) mod test_support {
             after.iter().any(|item| item.id == "semantic-target"),
             "a lexical distractor must not discard a strong semantic candidate when capacity remains"
         );
+    }
+
+    /// The LongMemEval failure of the keyword-query fix, with controlled
+    /// embeddings: a long memory that repeats more of the question's words but is
+    /// far from it in meaning must not outrank the memory the vector search puts
+    /// first. With the former weights (keyword bonus up to 0.15 against a fusion
+    /// score of at most 0.033) the wordy memory won.
+    #[tokio::test]
+    async fn a_wordy_distant_memory_does_not_outrank_the_closest_one() {
+        let (_tmp, system) = build_system().await;
+        let query = "kestrel migration rollback checklist owner";
+        let embedding = system.read().await.embedder.encode_query(query).unwrap();
+        let now = chrono::Utc::now();
+        // `share` of the query direction plus a unit step along one axis.
+        let near = |share: f32, axis: usize| {
+            let mut vector: Vec<f32> = embedding.iter().map(|value| value * share).collect();
+            vector[axis] += (1.0 - share * share).sqrt();
+            vector
+        };
+        let chunk = |id: &str, document: String, embedding: Vec<f32>| MemoryChunk {
+            id: id.into(),
+            project: "wordy".into(),
+            document,
+            embedding: Some(embedding),
+            metadata: Metadata::default(),
+            created_at: now,
+            updated_at: now,
+        };
+        let mut chunks = vec![
+            // Two of the five question words, and exactly the question's meaning.
+            chunk(
+                "closest",
+                "Dana is the owner of the rollback.".into(),
+                embedding.clone(),
+            ),
+            // Three of the five words, repeated, in a long text about something else.
+            chunk(
+                "wordy",
+                format!(
+                    "The kestrel nest box needs a spring checklist. {} After the autumn \
+                     migration the kestrel pair left, so the checklist moves to March.",
+                    "Clean the box, check the hinge, write the date on the lid. ".repeat(20)
+                ),
+                near(0.5, 700),
+            ),
+        ];
+        // Unrelated notes that are still nearer to the question than the wordy one.
+        for index in 0..25 {
+            chunks.push(chunk(
+                &format!("filler-{index}"),
+                format!("Lunch order number {index} was a sandwich."),
+                near(0.9, index),
+            ));
+        }
+        {
+            let sys = system.read().await;
+            for chunk in &chunks {
+                sys.db.write().await.insert_chunk(chunk).unwrap();
+                sys.add_text_doc(&chunk.id, &chunk.project, &chunk.document)
+                    .await
+                    .unwrap();
+            }
+        }
+        let results =
+            run_hybrid_search(system, query, "wordy", 3, SearchOptions::default(), None).await;
+        let ids: Vec<&str> = results.iter().map(|item| item.id.as_str()).collect();
+        assert_eq!(ids[..2], ["closest", "wordy"], "{ids:?}");
     }
 
     #[tokio::test]
