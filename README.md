@@ -57,7 +57,7 @@ Conversation capture (`memnest watch`), [history import](docs/history-import.md)
 
 ## Limits
 
-- Search can miss a record, and it cannot tell whether an old decision still holds. Measured without any language model: on LoCoMo the evidence is in the first 10 results for 69% of questions, and on a 100-question LongMemEval-S sample the right session is in the first 10 for 94% ([retrieval benchmarks](docs/benchmarks.md); these are not answer-accuracy scores).
+- Search can miss a record, and it cannot tell whether an old decision still holds. Measured without any language model, on questions that were not used to tune the ranking: on LoCoMo the evidence is in the first 10 results for 77% of questions, and on a 100-question LongMemEval-S sample the right session is in the first 5 for 98% (94% on the sample that was used for tuning). The released 0.5.1 has 70% and 96% on the same questions ([retrieval benchmarks](docs/benchmarks.md); these are not answer-accuracy scores).
 - Capture keeps visible conversation text only: no reasoning, tool output, or images.
 - Memories your AI reads are sent to its provider. Regular memories are not encrypted, so do not expose port 3111 to the internet; a web connector URL works like a password.
 - Deleted records stay in trash for 30 days, and backups may keep copies. See [security](SECURITY.md).

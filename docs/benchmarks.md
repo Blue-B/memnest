@@ -6,6 +6,9 @@ Numbers were measured on one machine on 2026-11-10 with the released 0.5.1 binar
 reproduced with the commands at the end. Per-question hits are in
 [`benchmarks/retrieval/results/`](../benchmarks/retrieval/results/) so anyone can audit them.
 Why questions are missed, and which small changes would help: [`benchmarks/retrieval/ANALYSIS.md`](../benchmarks/retrieval/ANALYSIS.md).
+The first tables describe the released 0.5.1. Two later sections show unreleased builds measured with the same harness:
+the keyword-query fix, and the ranking change that followed from the analysis
+([After the ranking change](#after-the-ranking-change-unreleased-build-1f20127-same-harness), measured 2026-11-11).
 
 ## What is measured, and what is not
 
@@ -124,6 +127,177 @@ results and lose exact-term matching depending on punctuation, but the first-ran
 problem that this measurement exposes. Result files:
 `2026-11-10-unreleased-7937264-locomo.json` and `2026-11-10-unreleased-7937264-longmemeval-affected17.json`.
 
+## After the ranking change (unreleased build `1f20127`, same harness)
+
+The miss analysis led to an ablation of the ranking itself ([ANALYSIS.md section 8](../benchmarks/retrieval/ANALYSIS.md)).
+Its main finding: the bonus for the share of question words found in a memory (up to 0.15) was several times larger than
+the score from the two retrievers' rank lists (at most 0.033), so a long text that repeated more of the question's words
+outranked the memory both retrievers put first. Commits `42e7a66` and `1f20127` change the fusion (RRF k 60 to 10, the
+keyword list counts half as much as the vector list) and the balance (0.10 for rank, 0.08 for the keyword share). Candidate
+pools, distance cutoff, fallback slots, MMR and the embedding model are unchanged, and nothing is stored differently.
+
+How it was measured:
+
+* **Same stored data for every build.** The turns were ingested once with the released 0.5.1 binary into scratch data
+  directories that were kept (`run.py --data-dir`), and each build, 0.5.1 included, was started on a copy and answered
+  the questions (`--kept-only`). That is why the 0.5.1 rows here differ a little from the tables above: there the
+  questions were asked in the process that had just stored the turns, here after a restart. The same build then orders
+  the results differently for 869 of 1,986 LoCoMo questions, and its figures move by up to 0.3 points (the cause was not
+  isolated). Every row in this section was measured after a restart, so the comparison is like for like.
+* **Tuned and held-out data are reported separately.** The constants were chosen on LoCoMo conversations 0-4 and on the
+  LongMemEval-S sample above (seed 1110). LoCoMo conversations 5-9 and a second LongMemEval-S sample of 100 (seed 1111,
+  no question in common with the first) were kept aside. The second LongMemEval sample was asked once, after the final
+  commit. LoCoMo's held-out half was measured twice, because a problem outside the benchmark was found after the first run
+  and fixed (a score limit, below); both results are in ANALYSIS.md section 8.7 and differ only in one column by 0.2.
+* "wins/losses" are paired on the same questions: questions that gained a hit at that k / questions that lost one.
+
+### LoCoMo
+
+Categories 1-4, any-evidence recall in percent:
+
+| Data | Build | R@1 | R@3 | R@5 | R@10 | all-evidence R@10 | R@50 (probe) | MRR@10 |
+|---|---|---|---|---|---|---|---|---|
+| all 10 conversations (n = 1,536) | 0.5.1 | 39.5 | 55.5 | 61.0 | 69.1 | 56.5 | 82.2 | 0.489 |
+| | develop `8c41b79` (keyword-query fix) | 39.6 | 54.8 | 61.1 | 70.6 | 58.1 | 86.9 | 0.490 |
+| | **`1f20127`** | **43.6** | **62.8** | **69.4** | **77.9** | 64.8 | 91.1 | 0.548 |
+| tuned: conversations 0-4 (n = 760) | 0.5.1 | 39.2 | 56.6 | 61.8 | 68.8 | 57.9 | 81.8 | 0.489 |
+| | develop `8c41b79` | 39.1 | 56.2 | 62.2 | 70.7 | 59.5 | 86.4 | 0.489 |
+| | `1f20127` | 44.3 | 63.7 | 70.1 | 79.1 | 67.0 | 90.7 | 0.556 |
+| **held-out: conversations 5-9 (n = 776)** | 0.5.1 | 39.8 | 54.5 | 60.2 | 69.5 | 55.2 | 82.5 | 0.489 |
+| | develop `8c41b79` | 40.2 | 53.5 | 60.1 | 70.6 | 56.7 | 87.4 | 0.491 |
+| | **`1f20127`** | **42.9** | **62.0** | **68.7** | **76.8** | 62.6 | 91.6 | 0.541 |
+
+| `1f20127` wins/losses | R@1 | R@3 | R@5 | R@10 |
+|---|---|---|---|---|
+| against 0.5.1, all 10 conversations | 111/48 | 168/56 | 178/49 | 166/31 |
+| against 0.5.1, held-out half | 55/31 | 86/28 | 93/27 | 76/19 |
+| against develop, held-out half | 52/31 | 86/20 | 88/21 | 66/18 |
+
+The held-out gain is smaller than the tuned one: against 0.5.1, R@1 +3.1 (tuned half +5.1) and R@10 +7.3 (+10.3).
+
+Per category with `1f20127`, all 10 conversations:
+
+| Category | n | R@1 | R@3 | R@5 | R@10 | all-evidence R@10 | MRR@10 |
+|---|---|---|---|---|---|---|---|
+| **Categories 1-4** | 1536 | 43.6 | 62.8 | 69.4 | 77.9 | 64.8 | 0.548 |
+| single-hop | 841 | 45.8 | 66.0 | 73.6 | 82.4 | 79.7 | 0.577 |
+| multi-hop | 282 | 32.3 | 55.3 | 61.3 | 70.9 | 20.9 | 0.448 |
+| temporal | 321 | 54.2 | 68.8 | 73.5 | 79.8 | 73.5 | 0.630 |
+| open-domain | 92 | 21.7 | 35.9 | 41.3 | 52.2 | 32.6 | 0.305 |
+| adversarial (cat. 5) | 446 | 26.9 | 46.4 | 55.4 | 66.6 | 65.2 | 0.390 |
+| all 5 categories | 1982 | 39.9 | 59.1 | 66.2 | 75.4 | 64.9 | 0.513 |
+
+**One thing got worse:** the adversarial category (not part of the scored set) lost first-rank hits: R@1 30.9 (0.5.1) and
+32.5 (develop) to 26.9, while its R@10 rose from 58.1 and 63.0 to 66.6. The cause was not investigated.
+
+### LongMemEval-S (two samples of 100, not the full set)
+
+Session recall in percent:
+
+| Sample | Build | R@1 | R@3 | R@5 | R@10 | turn R@10 (any) |
+|---|---|---|---|---|---|---|
+| tuned: seed 1110 (the sample above) | 0.5.1 | 83 | 89 | 91 | 94 | 79 |
+| | develop `8c41b79` | 78 | 89 | 91 | 94 | 79 |
+| | `1f20127` | 89 | 93 | 94 | 95 | 92 |
+| **held-out: seed 1111** | 0.5.1 | 83 | 93 | 96 | 98 | 84 |
+| | develop `8c41b79` | 83 | 93 | 96 | 98 | 83 |
+| | **`1f20127`** | **94** | **98** | **98** | **99** | 93 |
+
+| `1f20127` wins/losses against 0.5.1 | R@1 | R@3 | R@5 | R@10 |
+|---|---|---|---|---|
+| tuned sample | 7/1 | 4/0 | 3/0 | 1/0 |
+| held-out sample | 11/0 | 5/0 | 2/0 | 1/0 |
+
+The five questions that had dropped from rank 1 with the keyword-query fix are first again. The second sample is easier
+than the first for every build, which is the spread to expect from samples of 100 (approximate 95% interval of 98 of 100:
+93.0 to 99.4; of 94 of 100: 87.5 to 97.2). Over both samples (200 questions) session R@5 is 96.0 with `1f20127` and 93.5
+with 0.5.1; R@1 is 91.5 and 83.0. Requiring every answer session in the first 5: 80 and 88 of 100 with `1f20127` (tuned,
+held-out).
+
+Per question type with `1f20127`, held-out sample:
+
+| Question type | n | session R@1 | R@3 | R@5 | R@10 | NDCG@10 | turn R@10 (any) | turn R@10 (all) |
+|---|---|---|---|---|---|---|---|---|
+| **All (non-abstention)** | 100 | 94.0 | 98.0 | 98.0 | 99.0 | 0.936 | 93.0 | 82.0 |
+| knowledge-update | 15 | 100.0 | 100.0 | 100.0 | 100.0 | 0.985 | 93.3 | 93.3 |
+| multi-session | 26 | 96.2 | 96.2 | 96.2 | 96.2 | 0.891 | 92.3 | 53.8 |
+| single-session-assistant | 12 | 100.0 | 100.0 | 100.0 | 100.0 | 1.000 | 100.0 | 100.0 |
+| single-session-preference | 6 | 50.0 | 83.3 | 83.3 | 100.0 | 0.770 | 66.7 | 50.0 |
+| single-session-user | 14 | 100.0 | 100.0 | 100.0 | 100.0 | 1.000 | 92.9 | 92.9 |
+| temporal-reasoning | 27 | 92.6 | 100.0 | 100.0 | 100.0 | 0.928 | 96.3 | 96.3 |
+
+On the tuned sample the questions still missed at R@5 are four temporal-reasoning questions with a relative date and two
+preference questions (ANALYSIS.md section 8.8).
+
+### Checks outside the two datasets
+
+The datasets only see the order of results, and all their memories have the same type, importance and age. Two things
+they cannot show were checked separately (details and numbers in ANALYSIS.md section 8.6):
+
+* **The score as an absolute value.** The pi extension injects a saved memory when its score is 0.25 or more. The first
+  version of the change let unrelated saved memories pass that limit (9 of 9 results for three unrelated questions; 0 of 9
+  before). `1f20127` caps the rank part of a memory that contains none of the question's words, which restores 0 of 9, and a
+  core test holds it. That cap costs one LongMemEval question at R@3 and R@5 on the tuned sample (95 to 94) and 0.2 points
+  LoCoMo R@5.
+* **A real store.** On a read-only copy of a store in daily use (55,251 memories, Korean and English), 40 saved memories
+  were picked at random across ages and a question was written for each before any build was run. The memory came back
+  first / in the first 3 / in the first 10 for 13 / 24 / 30 of 40 questions with 0.5.1 and with develop, and for 16 / 26 / 31
+  with `1f20127`; for memories older than 30 days, 6 / 12 / 15 of 20 before and 8 / 13 / 16 after. 40 questions and one
+  store are a small check: it shows no sign that older memories are buried, not a measured gain.
+* Korean and mixed-language sanity set in `core/src/server/api.rs` (`ranking_sanity_tests`) and the Korean retrieval fixture
+  (`benchmarks/memorybench/run-korean-retrieval.ts`, 3 questions): every expected memory is still first.
+
+### What others publish for these datasets
+
+For orientation only. **These figures are self-reported by each project, were not re-run by us, and were measured under
+different conditions:** a different embedding model (most use all-MiniLM-L6-v2; memnest uses multilingual-e5-base), most
+on the full 500 or 470 questions where ours are two samples of 100, and most index whole sessions where memnest indexes
+every turn. Pages retrieved 2026-11-11.
+
+LongMemEval-S, retrieval only, session Recall@5 unless noted:
+
+| Source | Figure |
+|---|---|
+| [taOSmd benchmarks](https://github.com/jaylfc/taosmd/blob/25b35afb/docs/benchmarks.md) | taOSmd 97.0 (hybrid with query expansion); its "all-turns hybrid (harder test)" 93.2. The same page lists MemPalace 96.6, agentmemory 95.2 and SuperMemory 81.6 as other published systems |
+| [mempal summary](https://github.com/ZhangHanDong/mempal/blob/main/benchmarks/longmemeval_s_summary.md) | sessions indexed: R@1 80.6, R@5 96.6, R@10 98.2; every turn indexed: R@1 83.6, R@5 94.6, R@10 96.4 |
+| [Uteke results](https://github.com/codecoradev/uteke/blob/develop/benchmarks/longmemeval/RESULTS.md) | any answer session in the first 5: 98.2 on the full 500 (v0.20.0); all answer sessions in the first 5: 88.0 |
+| memnest `1f20127` (this page; every turn indexed) | tuned sample: R@1 89, R@5 94, R@10 95; held-out sample: R@1 94, R@5 98, R@10 99; all answer sessions in the first 5: 80 and 88 |
+
+LoCoMo, retrieval only, in the metric of [mnema's BENCHMARKS.md](https://docs.rs/crate/mnema/latest/source/BENCHMARKS.md):
+the mean share of a question's evidence turns found in the first k results, over the 1,981 answerable questions of all five
+categories, every turn stored as `{speaker}: {text}`. memnest's figure is computed the same way from the per-question
+files (`evidence_fraction@k`, 1,982 questions with evidence); memnest's stored text also carries the session date, so the
+ingestion is not identical.
+
+| Source | R@5 | R@10 |
+|---|---|---|
+| mnema page: BM25 | 45.9 | 53.8 |
+| mnema page: TF-IDF | 43.7 | 52.9 |
+| mnema page: mnema default | 40.1 | 46.7 |
+| mnema page: its best tuned dense + BM25 presets | 49.0 (keyword-favoured) | 59.9 (balanced) |
+| memnest 0.5.1 (the published run above) | 54.0 | 61.2 |
+| memnest `1f20127` (half of the conversations were used for tuning) | 60.6 | 69.9 |
+| memnest `1f20127`, held-out conversations 5-9 only (985 questions) | 59.7 | 68.8 |
+
+### Speed with the change
+
+The change adds no search work: the same two candidate lists are fetched and only the arithmetic on them differs.
+LoCoMo, serial requests, `n_results=10`, 1,986 requests per build, each build started on a copy of the kept data, one
+after the other on a quiet machine (1-minute load 1.4 on average in every run):
+
+| Build | client p50 | client p95 | server-reported p50 / p95 |
+|---|---|---|---|
+| 0.5.1 | 37.8 ms | 44.2 ms | 37 / 43 ms |
+| develop `8c41b79` | 38.3 ms | 44.0 ms | 37 / 43 ms |
+| `1f20127` | 37.3 ms | 43.0 ms | 36 / 42 ms |
+
+Differences of one millisecond are within run-to-run noise. Ingest is not affected by the change and was not timed again.
+
+
+Result files, all asked against the kept data: `2026-11-11-unreleased-1f20127-kept-locomo.json`,
+`...-kept-longmemeval-sample100.json` (seed 1110) and `...-kept-longmemeval-heldout100.json` (seed 1111); the same three
+for develop (`2026-11-11-unreleased-8c41b79-kept-*`) and for 0.5.1 (`2026-11-11-v0.5.1-kept-*`).
+
 ## Speed (single-machine measurement)
 
 | Measure | Value |
@@ -157,6 +331,9 @@ Datasets are downloaded to `~/.cache/memnest-bench` and are never committed; the
   (all metrics within 0.1 point), so tiny differences between builds are not meaningful.
 * 330 of the 1,986 LoCoMo questions (17%; they contain an apostrophe, such as "Caroline's", or a colon) lose the keyword (BM25) half of the search in 0.5.1 and return only 3 results;
   see ANALYSIS.md section 4.1. The 0.5.1 tables include that effect: they are what the released 0.5.1 does. The section "After the keyword-query fix" shows the build that fixes it.
+* The ranking constants of the unreleased build were chosen on half of LoCoMo and on the first LongMemEval sample. Its figures on that data
+  are tuned figures; the held-out rows are the ones to quote. Its two LongMemEval samples differ by 4 points at R@5 (94 and 98), which is the
+  size of the sampling error.
 
 ## Reproduce
 
@@ -164,6 +341,13 @@ Datasets are downloaded to `~/.cache/memnest-bench` and are never committed; the
 python3 benchmarks/retrieval/test_metrics.py                                   # metric self-test
 python3 benchmarks/retrieval/run.py --binary ~/.local/bin/memnest --dataset locomo                          # ~25 min
 python3 benchmarks/retrieval/run.py --binary ~/.local/bin/memnest --dataset longmemeval --sample 100 --seed 1110   # the sample on this page; ~3.5 h
+# the second (held-out) sample: same size, other seed, none of the first sample's questions
+python3 benchmarks/retrieval/run.py --binary BIN --dataset longmemeval --sample 100 --seed 1111 \
+    --exclude-ids-from benchmarks/retrieval/results/2026-11-10-v0.5.1-longmemeval-sample100.json
+# compare builds on the same stored data: ingest once into a kept directory, then ask again with another binary on a copy
+python3 benchmarks/retrieval/run.py --binary BIN --dataset locomo --data-dir /tmp/bench-kept/locomo
+cp -a /tmp/bench-kept/locomo /tmp/bench-kept/locomo-new
+python3 benchmarks/retrieval/run.py --binary NEW_BIN --dataset locomo --data-dir /tmp/bench-kept/locomo-new --kept-only
 # full LongMemEval-S (about 246,600 memories; ~17 h extrapolated from the sample, not measured), can be sharded over instances:
 python3 benchmarks/retrieval/run.py --binary BIN --dataset longmemeval --shard 0/2 --port 3981 --checkpoint /tmp/lme0.jsonl --out-dir /tmp/lme-shards --tag shard0 &
 python3 benchmarks/retrieval/run.py --binary BIN --dataset longmemeval --shard 1/2 --port 3982 --checkpoint /tmp/lme1.jsonl --out-dir /tmp/lme-shards --tag shard1 &
