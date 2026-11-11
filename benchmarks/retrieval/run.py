@@ -10,7 +10,7 @@ results/<date>-v<version>-<dataset>[-tag].json, and deletes the scratch instance
 
 Ingest is the slow part. With --data-dir DIR the ingested data stays in DIR, and a
 later run with the same DIR (another binary, same dataset options) only asks the
-questions:
+questions (--kept-only: of the projects that are in DIR, when it holds a part of the set):
 
     python3 benchmarks/retrieval/run.py --binary OLD --dataset locomo --data-dir /tmp/locomo-data
     cp -a /tmp/locomo-data /tmp/locomo-data-new    # a newer binary may migrate the directory
@@ -325,6 +325,8 @@ def main():
                         help="LongMemEval only: result file whose sample_question_ids are removed before sampling (held-out sample)")
     parser.add_argument("--data-dir", default="",
                         help="keep the ingested data here; projects already ingested into it are only searched")
+    parser.add_argument("--kept-only", action="store_true",
+                        help="with --data-dir: ask only the projects already in it and ingest nothing")
     args = parser.parse_args()
 
     shard_index, shard_count = (int(x) for x in args.shard.split("/"))
@@ -360,6 +362,8 @@ def main():
 
     all_records, group_rows = [], []
     ingested = load_ingested(args.data_dir)
+    if args.kept_only:
+        groups = [g for g in groups if g["project"] in ingested]
     with instance.Instance(args.binary, args.port or None, args.data_dir or None) as scratch:
         health = scratch.health()
         client = scratch.client

@@ -44,7 +44,7 @@ def main():
         "ingest_memories_per_second_per_instance": [
             p["performance"]["ingest_memories_per_second"] for p in loaded
         ],
-        "ingest_memories_per_second_all_instances": round(memories / max(seconds), 2),
+        "ingest_memories_per_second_all_instances": round(memories / max(seconds), 2) if max(seconds) else None,
         "ingest_note": "instances ran in parallel on the same 10-thread CPU while other "
         "processes were also using the machine; per-instance rate is the figure to compare",
     }
