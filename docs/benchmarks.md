@@ -10,6 +10,35 @@ The first tables describe the released 0.5.1. Two later sections show unreleased
 the keyword-query fix, and the ranking change that followed from the analysis
 ([After the ranking change](#after-the-ranking-change-unreleased-build-1f20127-same-harness), measured 2026-11-11).
 
+## At a glance, and how to read this page
+
+The test works like this. A public conversation dataset is stored in memnest one dialog turn per memory. The dataset's
+authors marked, for each question, which turn or conversation holds the answer. Each question is sent to search unchanged,
+and it counts as found when the marked item is in the results. Only ids are compared, so no person or model judges anything.
+
+- **LoCoMo**: 10 conversations between two people over several months and about 2,000 questions. The exact turn that
+  holds the answer has to be found.
+- **LongMemEval-S**: about 50 conversations between a user and an assistant and 500 questions. The conversation (session)
+  that holds the answer has to be found. Only two samples of 100 questions (200 in total) were run here.
+- **R@1, R@5, R@10**: out of 100 questions, in how many the answer was the first result, among the first 5, among the
+  first 10. 69 means 69 found and 31 missed.
+
+| Test | What is counted | Released 0.5.1 | Build with the ranking change |
+|---|---|---|---|
+| LongMemEval-S (200 questions) | right conversation is first | 83% | 91.5% |
+| | right conversation in the first 5 | 93.5% | 96% |
+| LoCoMo (the 5 conversations not used to tune the ranking, 776 questions) | the turn with the answer is first | 39.8% | 42.9% |
+| | in the first 5 | 60.2% | 68.7% |
+| | in the first 10 | 69.5% | 76.8% |
+
+For the same LongMemEval-S "first 5" figure, other tools report 93 to 95% when they store every turn, as memnest does, and
+95 to 98% when they store whole conversations. Those figures are self-reported under different conditions, so no ranking
+follows ([sources and conditions](#what-others-publish-for-these-datasets)).
+
+What these numbers do not say: the datasets are English everyday conversations, so they say nothing about Korean or about
+coding-work records. They count whether the memory was found, not whether a model then answered correctly. The build with
+the ranking change is not released yet.
+
 ## What is measured, and what is not
 
 Measured: Recall@k (is at least one evidence turn / evidence session among the first k results),
