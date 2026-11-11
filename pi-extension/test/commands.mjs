@@ -21,6 +21,16 @@ const docs = [
 	{ id: "c2", project: "task-cards", timestamp: "2026-11-10T01:05:00+00:00", document: `${MARK} 블로그 이전\nbody two\x1b[31m red` },
 	{ id: "c3", project: "task-cards-done", timestamp: "2026-11-01T00:00:00+00:00", document: `${MARK} old job\nfinished body` },
 ];
+const recents = [
+	{ id: "n1", project: "ws_demo_0123456789abcdef0123456789abcdef", score: 0, timestamp: "2026-11-11T17:11:32.892263876+00:00", created_at: "2026-11-10T01:00:00+00:00", chunk_type: "Manual", document: "Newest saved note" },
+	{ id: "n2", project: "playbook", score: 0, timestamp: "2026-11-02T00:00:00+00:00", created_at: "2026-11-02T00:00:00+00:00", chunk_type: "Manual", document: "Older saved note" },
+];
+const rules = [
+	{ id: "r1", project: "playbook", timestamp: "2026-09-01T00:00:00+00:00", created_at: "2026-09-01T00:00:00+00:00", chunk_type: "Manual", document: "Never deploy on Fridays" },
+	{ id: "r2", project: "ws_demo_0123456789abcdef0123456789abcdef", timestamp: "2026-09-05T00:00:00+00:00", created_at: "2026-09-05T00:00:00+00:00", reviewed_at: "2026-10-20T03:00:00+00:00", chunk_type: "Manual", document: "Use tabs" },
+	{ id: "r3", project: "playbook", timestamp: "2026-10-01T00:00:00+00:00", created_at: "2026-10-01T00:00:00+00:00", chunk_type: "Manual", document: "Answer in short sentences" },
+];
+let reviewDenied = false;
 let searchReply = { results: [], project: "ws_x_0123456789abcdef0123456789abcdef" };
 const mockFetch = async (url, init) => {
 	const path = new URL(url).pathname;
@@ -29,6 +39,9 @@ const mockFetch = async (url, init) => {
 	if (down) throw new Error("connect ECONNREFUSED");
 	const json = (value, status = 200) => new Response(JSON.stringify(value), { status });
 	if (path === "/health") return json({ status: "ok", data_dir: "/tmp/x", capabilities: { task_card_log: door } });
+	if (path === "/recent") return json({ project: "p", results: body.rules_only ? rules : recents });
+	if (path === "/reviewed") return reviewDenied ? json({ status: "error", error: "project write access denied" }, 403) : json({ status: "ok", id: body.id });
+	if (path === "/delete") return json({ status: "ok" });
 	if (path === "/stats") return json({ collections: [{ name: "playbook" }, { name: "task-cards" }, { name: "ws_a_0123456789abcdef0123456789abcdef" }, { name: "my proj" }] });
 	if (path === "/search" && ["task-cards", "task-cards-done"].includes(body.project))
 		return json({ results: docs.filter((d) => d.project === body.project) });
@@ -59,7 +72,7 @@ const commands = new Map();
 	on() {},
 	appendEntry() {},
 });
-for (const name of ["memnest", "memnest-cards", "memnest-search"]) assert.ok(commands.has(name), `${name} registered`);
+for (const name of ["memnest", "memnest-cards", "memnest-search", "memnest-recent", "memnest-review"]) assert.ok(commands.has(name), `${name} registered`);
 
 // A scripted UI: each select/confirm/input takes the next answer; a missing answer cancels.
 function makeCtx({ hasUI = true, answers = [], cwd = "/work/demo" } = {}) {
@@ -145,7 +158,7 @@ assert.match(text, /Usage: \/memnest-search \[project:<name>\|project:all\] <que
 
 // Unreachable core: one line, for both commands.
 down = true;
-for (const [name, args] of [["memnest-cards", ""], ["memnest-search", "anything"]]) {
+for (const [name, args] of [["memnest-cards", ""], ["memnest-search", "anything"], ["memnest-recent", ""], ["memnest-review", ""]]) {
 	ctx = makeCtx({ answers: [] });
 	await run(name, args, ctx);
 	assert.deepEqual(ctx.shown, [{ text: "Memnest is not reachable at http://127.0.0.1:3999", level: "error" }]);
@@ -216,11 +229,84 @@ process.stdout.write = realWrite;
 assert.match(printed.join(""), /2 results for "port" in project all:\n {2}1\. demo · [\s\S]*\n {2}2\. playbook[\s\S]*Stronger matches/);
 assert.match(printed.join(""), /No results for "nothing" in this folder\.\nTry project:all/);
 
+// --- /memnest-recent: the newest saved memories, same rows and full-text view as search.
+ctx = makeCtx({ answers: [pick("Newest saved"), undefined] });
+await run("memnest-recent", "", ctx);
+assert.deepEqual(calls("/recent").at(-1).body, { project: "", cwd: "/work/demo", rules_only: false, oldest_first: false, limit: 20 });
+assert.equal(ctx.asked[0].args[0], "2 newest saved memories in this folder");
+assert.deepEqual(ctx.asked[0].args[1], ["1. demo · 2026-11-12 · manual · Newest saved note", "2. playbook · 2026-11-02 · manual · Older saved note"]);
+assert.match(ctx.shown[0].text, /^demo · 2026-11-12 · manual · id n1\n\nfull memory text/);
+assert.equal(ctx.asked.length, 2, "list is shown again");
+await run("memnest-recent", "project:all", makeCtx({ answers: [] }));
+assert.deepEqual([calls("/recent").at(-1).body.project, calls("/recent").at(-1).body.cwd], ["all", undefined]);
+// No UI: printed, nothing asked.
+printed.length = 0;
+process.stdout.write = (chunk) => (printed.push(String(chunk)), true);
+ctx = makeCtx({ hasUI: false });
+await run("memnest-recent", "", ctx);
+process.stdout.write = realWrite;
+assert.equal(ctx.asked.length, 0);
+assert.match(printed.join(""), /2 newest saved memories in this folder:\n {2}1\. demo · 2026-11-12 · manual · Newest saved note\n {2}2\. playbook/);
+
+// --- /memnest-review: rules oldest first; keep, delete, skip, stop; delete only on its own choice.
+const KEEP = (_t, options) => options.find((o) => o.startsWith("Keep"));
+const DELETE = (_t, options) => options.find((o) => o.startsWith("Delete"));
+const SKIP = (_t, options) => options.find((o) => o.startsWith("Skip"));
+const STOP = (_t, options) => options.find((o) => o === "Stop");
+const reviewed = () => calls("/reviewed").map((r) => r.body.id);
+const deleted = () => calls("/delete").flatMap((r) => r.body.ids);
+const start = { reviewed: reviewed().length, deleted: deleted().length };
+ctx = makeCtx({ answers: [KEEP, DELETE, SKIP] });
+await run("memnest-review", "", ctx);
+assert.deepEqual(calls("/recent").at(-1).body, { project: "", cwd: "/work/demo", rules_only: true, oldest_first: true, limit: 50 });
+assert.deepEqual(reviewed().slice(start.reviewed), ["r1"]);
+assert.deepEqual(deleted().slice(start.deleted), ["r2"]);
+assert.match(ctx.shown[0].text, /^1 of 3: playbook · saved 2026-09-01 · never reviewed · id r1\n\nfull memory text/);
+assert.match(ctx.shown[1].text, /^2 of 3: demo · saved 2026-09-05 · reviewed 2026-10-20 · id r2/);
+assert.match(ctx.asked[0].args[0], /^Rule 1 of 3: does it still hold\?/);
+assert.deepEqual(ctx.asked[0].args[1].map((o) => o.split(" (")[0]), ["Keep", "Delete", "Skip", "Stop"]);
+assert.match(ctx.asked[0].args[1][1], /restorable for 30 days/, "the prompt says the trash is restorable");
+assert.equal(ctx.shown.at(-1).text, "Review done: 1 kept, 1 deleted, 1 skipped. Deleted memories stay in the trash for 30 days.");
+// Stop and Escape leave the rest untouched; Escape never deletes.
+const mark = { r: reviewed().length, d: deleted().length };
+ctx = makeCtx({ answers: [KEEP, STOP] });
+await run("memnest-review", "project:playbook", ctx);
+assert.equal(calls("/recent").at(-1).body.project, "playbook");
+assert.equal(ctx.shown.at(-1).text, "Review done: 1 kept, 0 deleted, 0 skipped, 2 not looked at.");
+ctx = makeCtx({ answers: [undefined] });
+await run("memnest-review", "", ctx);
+assert.equal(ctx.shown.at(-1).text, "Review done: 0 kept, 0 deleted, 0 skipped, 3 not looked at.");
+assert.equal(reviewed().length - mark.r, 1);
+assert.equal(deleted().length - mark.d, 0, "nothing deleted without choosing Delete");
+// A refused write is shown and counted as skipped, not as kept.
+reviewDenied = true;
+ctx = makeCtx({ answers: [KEEP, STOP] });
+await run("memnest-review", "", ctx);
+assert.deepEqual(ctx.shown.find((s) => s.level === "error"), { text: 'memnest error 403: {"status":"error","error":"project write access denied"}', level: "error" });
+assert.match(ctx.shown.at(-1).text, /^Review done: 0 kept, 0 deleted, 1 skipped, 2 not looked at\./);
+reviewDenied = false;
+// No UI: only the list; nothing is written.
+const writes = reviewed().length + deleted().length;
+printed.length = 0;
+process.stdout.write = (chunk) => (printed.push(String(chunk)), true);
+ctx = makeCtx({ hasUI: false });
+await run("memnest-review", "", ctx);
+process.stdout.write = realWrite;
+assert.equal(ctx.asked.length, 0);
+assert.equal(reviewed().length + deleted().length, writes);
+assert.match(printed.join(""), /3 rules and preferences in this folder, longest unconfirmed first:\n {2}1\. playbook · saved 2026-09-01 · never reviewed · id r1 · Never deploy on Fridays\n {2}2\. demo · saved 2026-09-05 · reviewed 2026-10-20/);
+
 // An error from the core (too old for the route) is one line.
 globalThis.fetch = async () => new Response("not found", { status: 404 });
 ctx = makeCtx();
 await run("memnest-search", "port", ctx);
 assert.deepEqual(ctx.shown, [{ text: "This Memnest core is too old for that command; update the core", level: "error" }]);
+for (const name of ["memnest-recent", "memnest-review"]) {
+	ctx = makeCtx({ answers: [] });
+	await run(name, "", ctx);
+	assert.deepEqual(ctx.shown, [{ text: "This Memnest core is too old for that command; update the core", level: "error" }], name);
+	assert.equal(ctx.asked.length, 0);
+}
 
 // An older core without /task-card (its own extension instance, since /health is asked once): done goes through /update, as the tool does.
 {
@@ -247,4 +333,6 @@ assert.equal(await complete("port 5544"), null);
 assert.equal(await complete("where"), null);
 assert.equal(await complete(""), null);
 
-console.log("commands: cards list/open/close/done, finished cards, search scope words, results and full text, no UI, unreachable and older core, completion");
+for (const name of ["memnest-recent", "memnest-review"]) assert.deepEqual((await commands.get(name).getArgumentCompletions("project:p")).map((i) => i.value), ["project:playbook"]);
+
+console.log("commands: cards, search, recent and review (keep/delete/skip/stop), no UI, unreachable and older core, completion");

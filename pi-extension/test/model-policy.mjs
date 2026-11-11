@@ -1,4 +1,11 @@
 import assert from "node:assert/strict";
+// The vault token is read from MEMNEST_DATA_DIR; keep the user's own data directory out of the test.
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join as joinPath } from "node:path";
+const emptyDataDir = mkdtempSync(joinPath(tmpdir(), "pi-memnest-test-"));
+process.env.MEMNEST_DATA_DIR = emptyDataDir;
+process.on("exit", () => rmSync(emptyDataDir, { recursive: true, force: true }));
 process.env.MEMNEST_ALLOWED_MODEL_PROVIDERS = "approved-local";
 process.env.MEMNEST_EXPOSE_SECRET_TOOLS = "1";
 process.env.MEMNEST_AUTOCONTEXT_MODE = "balanced";

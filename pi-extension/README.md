@@ -60,6 +60,11 @@ These run in the pi terminal UI without the model, and nothing they show is sent
 - `/memnest-cards`: list active task cards (newest first, `[open]` marks the ones this session records into) and finished ones; pick a card to read it, open or close it in this session, or mark it done (asks first).
 - `/memnest-search [project:<name>|project:all] <question>`: the same search as `memory_search`, up to 10 results with project, date, type, score and an excerpt; pick one to read it in full. Without `project:` it searches the current folder's workspace; `project:` completes project names. With no question it asks for one.
 
+- `/memnest-recent [project:<name>|project:all]`: the 20 newest memories saved by hand or by the model (not transcript turns), with project, date and an excerpt; pick one to read it in full.
+- `/memnest-review [project:<name>|project:all]`: goes through saved rules and preferences, longest unconfirmed first. For each one you see the full text, its project, when it was saved and last reviewed, and choose Keep (records today as the review date, so it comes back last next time), Delete (moves it to the trash; restorable for 30 days), Skip, or Stop. Nothing is deleted unless you choose Delete for that memory; a summary is printed at the end.
+
+The last two need a core with `POST /recent` and `POST /reviewed` (newer than 0.5.1); an older core answers with a one-line "too old" message.
+
 Without a UI (`pi -p`) the commands print text and do not ask anything. If the core is not running they say so in one line.
 
 ## Autocontext

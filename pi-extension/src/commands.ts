@@ -1,5 +1,5 @@
 /**
- * pi-memnest slash commands: /memnest-cards and /memnest-search.
+ * pi-memnest slash commands: /memnest-cards, /memnest-search, /memnest-recent and /memnest-review.
  *
  * They are user-initiated reads on the user's own machine. They run without the model, and
  * nothing they show is put into the model's context or sent to a model, so the provider
@@ -16,6 +16,7 @@ type Level = "info" | "warning" | "error";
 type Deps = { call: Call; url: string; cards: CardControl };
 
 const RESULTS = 10;
+const RECENT = 20;
 const FULL_TEXT_CHARS = 30000;
 const HIDDEN_PROJECTS = new Set(["task-cards", "task-cards-done", "_superseded"]);
 const COMPLETION_CACHE_MS = 30000;
@@ -153,28 +154,35 @@ export function installCommands(pi: any, { call, url, cards }: Deps): void {
 		return list;
 	}
 
-	async function showMemory(ctx: any, item: any) {
-		const reply = await call(`/chunk/${encodeURIComponent(item.id)}?max_chars=${FULL_TEXT_CHARS}`, undefined, "GET");
-		if (reply.error) return fail(ctx, reply);
-		let chunk: any;
+	const completeProject = async (prefix: string) => {
+		if (!prefix || /\s/.test(prefix) || !(prefix.toLowerCase().startsWith("project:") || "project:".startsWith(prefix.toLowerCase()))) return null;
+		const items = ["all", ...(await projectNames())].map((n) => ({ value: `project:${n}`, label: `project:${n}` }));
+		const matching = items.filter((i) => i.value.toLowerCase().startsWith(prefix.toLowerCase()));
+		return matching.length ? matching : null;
+	};
+
+	// The full text of a memory, or the reply that explains why it could not be read.
+	async function fullText(id: string): Promise<{ text: string; clipped: boolean } | Reply> {
+		const reply = await call(`/chunk/${encodeURIComponent(id)}?max_chars=${FULL_TEXT_CHARS}`, undefined, "GET");
+		if (reply.error) return reply;
 		try {
-			chunk = JSON.parse(reply.text);
+			const chunk = JSON.parse(reply.text);
+			if (typeof chunk?.document === "string")
+				return { text: plain(chunk.document), clipped: chunk.document.length >= FULL_TEXT_CHARS && chunk.next_offset !== undefined && chunk.next_offset !== null };
 		} catch {
-			return fail(ctx, "Memnest returned an unreadable reply");
+			// Reported below.
 		}
-		if (typeof chunk?.document !== "string") return fail(ctx, "Memnest returned an unreadable reply");
-		const clipped = chunk.document.length >= FULL_TEXT_CHARS && chunk.next_offset !== undefined && chunk.next_offset !== null;
-		say(ctx, `${shortProject(String(item.project))} · ${localTime(String(item.timestamp)).slice(0, 10)} · ${oneLine(item.chunk_type, 40).toLowerCase()} · id ${oneLine(item.id, 80)}\n\n${plain(chunk.document)}${clipped ? `\n\n(first ${FULL_TEXT_CHARS} characters)` : ""}`);
+		return { text: "Memnest returned an unreadable reply", error: true };
+	}
+	async function showMemory(ctx: any, item: any) {
+		const got = await fullText(item.id);
+		if ("error" in got) return fail(ctx, got);
+		say(ctx, `${shortProject(String(item.project))} · ${localTime(String(item.timestamp)).slice(0, 10)} · ${oneLine(item.chunk_type, 40).toLowerCase()} · id ${oneLine(item.id, 80)}\n\n${got.text}${got.clipped ? `\n\n(first ${FULL_TEXT_CHARS} characters)` : ""}`);
 	}
 
 	pi.registerCommand?.("memnest-search", {
 		description: "Search memory yourself: /memnest-search [project:<name>|project:all] <question> (no model involved)",
-		getArgumentCompletions: async (prefix: string) => {
-			if (!prefix || /\s/.test(prefix) || !(prefix.toLowerCase().startsWith("project:") || "project:".startsWith(prefix.toLowerCase()))) return null;
-			const items = ["all", ...(await projectNames())].map((n) => ({ value: `project:${n}`, label: `project:${n}` }));
-			const matching = items.filter((i) => i.value.toLowerCase().startsWith(prefix.toLowerCase()));
-			return matching.length ? matching : null;
-		},
+		getArgumentCompletions: completeProject,
 		handler: async (args: string, ctx: any) => {
 			let { project, query } = parseSearch(args ?? "");
 			if (!query && ctx.hasUI) query = ((await ctx.ui.input("Search memory for:", "a question or keywords")) ?? "").trim();
@@ -204,6 +212,88 @@ export function installCommands(pi: any, { call, url, cards }: Deps): void {
 				const index = labels.indexOf(choice);
 				if (index >= 0) await showMemory(ctx, items[index]);
 			}
+		},
+	});
+
+	// The saved memories /recent lists for a scope, or undefined after the problem was shown.
+	async function savedMemories(ctx: any, args: string, rulesOnly: boolean): Promise<{ items: any[]; scope: string } | undefined> {
+		const { project } = parseSearch(args ?? "");
+		const cwd = ctx.cwd?.trim();
+		if (!project && !cwd) return void fail(ctx, "The current folder is unknown; use project:<name> or project:all");
+		const reply = await call("/recent", { project: project ?? "", cwd: project ? undefined : cwd, rules_only: rulesOnly, oldest_first: rulesOnly, limit: rulesOnly ? 50 : RECENT });
+		if (reply.error) return void fail(ctx, reply);
+		try {
+			const data = JSON.parse(reply.text);
+			return { items: Array.isArray(data?.results) ? data.results : [], scope: project ? `project ${oneLine(project, 60)}` : "this folder" };
+		} catch {
+			return void fail(ctx, "Memnest returned an unreadable reply");
+		}
+	}
+	const day = (iso: unknown) => localTime(String(iso)).slice(0, 10);
+
+	pi.registerCommand?.("memnest-recent", {
+		description: "Newest saved memories: /memnest-recent [project:<name>|project:all] (no model involved)",
+		getArgumentCompletions: completeProject,
+		handler: async (args: string, ctx: any) => {
+			const got = await savedMemories(ctx, args, false);
+			if (!got) return;
+			if (!got.items.length) return say(ctx, `No saved memories in ${got.scope}.`);
+			const row = (item: any, n: number) => oneLine(`${n}. ${shortProject(String(item.project))} · ${day(item.timestamp)} · ${oneLine(item.chunk_type, 20).toLowerCase()} · ${item.document}`);
+			if (!ctx.hasUI) return say(ctx, [`${got.items.length} newest saved memories in ${got.scope}:`, ...got.items.map((item, i) => `  ${row(item, i + 1)}`)].join("\n"));
+			const labels = got.items.map((item, i) => row(item, i + 1));
+			for (;;) {
+				const choice: string | undefined = await ctx.ui.select(`${got.items.length} newest saved memories in ${got.scope}`, labels);
+				if (choice === undefined) return;
+				const index = labels.indexOf(choice);
+				if (index >= 0) await showMemory(ctx, got.items[index]);
+			}
+		},
+	});
+
+	pi.registerCommand?.("memnest-review", {
+		description: "Go through saved rules and preferences, oldest first: keep, delete or skip each (no model involved)",
+		getArgumentCompletions: completeProject,
+		handler: async (args: string, ctx: any) => {
+			const got = await savedMemories(ctx, args, true);
+			if (!got) return;
+			if (!got.items.length) return say(ctx, `No saved rules or preferences in ${got.scope}.`);
+			const reviewed = (item: any) => (item.reviewed_at ? `reviewed ${day(item.reviewed_at)}` : "never reviewed");
+			const header = (item: any) => `${shortProject(String(item.project))} · saved ${day(item.created_at)} · ${reviewed(item)} · id ${oneLine(item.id, 80)}`;
+			if (!ctx.hasUI)
+				return say(ctx, [`${got.items.length} rules and preferences in ${got.scope}, longest unconfirmed first:`, ...got.items.map((item, i) => `  ${oneLine(`${i + 1}. ${header(item)} · ${item.document}`)}`)].join("\n"));
+			const KEEP = "Keep (record today as the review date)";
+			const DELETE = "Delete (moves it to the trash; restorable for 30 days)";
+			const SKIP = "Skip (no change)";
+			const STOP = "Stop";
+			const done = { kept: 0, deleted: 0, skipped: 0 };
+			let seen = 0;
+			for (const item of got.items) {
+				const text = await fullText(item.id);
+				if ("error" in text) {
+					fail(ctx, text);
+					break;
+				}
+				say(ctx, `${seen + 1} of ${got.items.length}: ${header(item)}\n\n${text.text}`);
+				const choice: string | undefined = await ctx.ui.select(`Rule ${seen + 1} of ${got.items.length}: does it still hold?`, [KEEP, DELETE, SKIP, STOP]);
+				// Escape stops; nothing is deleted without choosing Delete for this memory.
+				if (choice === undefined || choice === STOP) break;
+				seen++;
+				if (choice === KEEP) {
+					const reply = await call("/reviewed", { id: item.id });
+					if (reply.error) {
+						fail(ctx, reply);
+						done.skipped++;
+					} else done.kept++;
+				} else if (choice === DELETE) {
+					const reply = await call("/delete", { ids: [item.id] });
+					if (reply.error) {
+						fail(ctx, reply);
+						done.skipped++;
+					} else done.deleted++;
+				} else done.skipped++;
+			}
+			const left = got.items.length - seen;
+			say(ctx, `Review done: ${done.kept} kept, ${done.deleted} deleted, ${done.skipped} skipped${left ? `, ${left} not looked at` : ""}.${done.deleted ? " Deleted memories stay in the trash for 30 days." : ""}`);
 		},
 	});
 }
