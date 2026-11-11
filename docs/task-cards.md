@@ -338,7 +338,7 @@ Open in this session: none
 To change: ask the assistant, e.g. "close the task card" or "mark the task card done", or use /memnest-cards.
 ```
 
-`/memnest-cards` does the same without the model: it lists active and finished cards, shows a card's text with the user's own words, and opens, closes or marks done the card you choose (done asks first).
+`/memnest-cards` does the same without the model: it lists active and finished cards, shows a card's text with the user's own words, and opens, closes or marks done the card you choose (done asks first). The same extension adds `/memnest-search`, `/memnest-recent` and `/memnest-review` for memories (see the pi extension README).
 
 ## Rules stored before the card existed (2026-11-10)
 

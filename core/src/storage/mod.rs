@@ -519,6 +519,84 @@ impl Database {
         Ok(chunks)
     }
 
+    /// Memories saved by hand or by the model (chunk type manual), in one SQL
+    /// pass with a LIMIT, so transcript rows never have to be loaded. Never
+    /// returns sensitive rows, the trash, superseded versions or task cards.
+    /// `projects` of `None` means every project. Newest first by last save, or
+    /// with `oldest_first` by the later of creation and last review, so a
+    /// memory a person just confirmed goes to the back.
+    pub fn list_saved_memories(
+        &self,
+        projects: Option<&[String]>,
+        rules_only: bool,
+        oldest_first: bool,
+        limit: usize,
+    ) -> Result<Vec<MemoryChunk>> {
+        let hidden: Vec<&str> = INTERNAL_PROJECTS
+            .iter()
+            .chain(TASK_CARD_PROJECTS)
+            .copied()
+            .collect();
+        let mut values: Vec<rusqlite::types::Value> = hidden
+            .iter()
+            .map(|p| rusqlite::types::Value::Text((*p).to_string()))
+            .collect();
+        let mut sql = format!(
+            "SELECT id, project, document, embedding, metadata, created_at, updated_at
+             FROM chunks
+             WHERE json_extract(metadata, '$.chunk_type') = 'manual'
+               AND COALESCE(json_extract(metadata, '$.sensitive'), 0) = 0
+               AND project NOT IN ({})",
+            vec!["?"; hidden.len()].join(",")
+        );
+        if let Some(projects) = projects {
+            if projects.is_empty() {
+                return Ok(Vec::new());
+            }
+            sql.push_str(&format!(
+                " AND project IN ({})",
+                vec!["?"; projects.len()].join(",")
+            ));
+            values.extend(
+                projects
+                    .iter()
+                    .map(|p| rusqlite::types::Value::Text(p.clone())),
+            );
+        }
+        if rules_only {
+            sql.push_str(
+                " AND (json_extract(metadata, '$.importance') = 'preference'
+                       OR json_extract(metadata, '$.memory_kind') = 'rule')",
+            );
+        }
+        sql.push_str(if oldest_first {
+            " ORDER BY MAX(created_at, COALESCE(json_extract(metadata, '$.reviewed_at'), created_at)) ASC, id ASC LIMIT ?"
+        } else {
+            " ORDER BY updated_at DESC, id DESC LIMIT ?"
+        });
+        values.push((limit as i64).into());
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare(&sql)?;
+        let mut rows = stmt.query(params_from_iter(values.iter()))?;
+        let mut chunks = Vec::new();
+        while let Some(row) = rows.next()? {
+            chunks.push(self.row_to_chunk(row)?);
+        }
+        Ok(chunks)
+    }
+
+    /// Records that a person confirmed the memory still holds. Touches only
+    /// this metadata key: not the text, the embedding, `updated_at` or the
+    /// index queue.
+    pub fn set_reviewed_at(&self, id: &str, reviewed_at: &str) -> Result<bool> {
+        let conn = self.pool.get()?;
+        let changed = conn.execute(
+            "UPDATE chunks SET metadata = json_set(metadata, '$.reviewed_at', ?2) WHERE id = ?1",
+            params![id, reviewed_at],
+        )?;
+        Ok(changed > 0)
+    }
+
     pub fn get_chunks_by_projects(&self, projects: &[String]) -> Result<Vec<MemoryChunk>> {
         if projects.is_empty() {
             return Ok(Vec::new());

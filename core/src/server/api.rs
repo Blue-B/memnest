@@ -97,6 +97,33 @@ pub struct AddRequest {
     pub sensitive: Option<bool>,
 }
 
+/// Body of `POST /recent`: the user's own view of saved memories. Scope fields
+/// mean what they mean in `/search`.
+#[derive(Deserialize)]
+pub struct RecentRequest {
+    #[serde(default)]
+    pub project: String,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    /// Only memories marked as the user's rule or preference.
+    #[serde(default)]
+    pub rules_only: bool,
+    /// Longest without a person's confirmation first, instead of newest first.
+    #[serde(default)]
+    pub oldest_first: bool,
+    #[serde(default = "default_recent_limit")]
+    pub limit: usize,
+}
+
+fn default_recent_limit() -> usize {
+    20
+}
+
+#[derive(Deserialize)]
+pub struct ReviewedRequest {
+    pub id: String,
+}
+
 #[derive(Deserialize)]
 pub struct DeleteRequest {
     pub ids: Vec<String>,
@@ -699,7 +726,7 @@ pub(crate) async fn hybrid_search_embedded(
     results
 }
 
-fn search_result_item(c: MemoryChunk, score: f32) -> SearchResultItem {
+pub(crate) fn search_result_item(c: MemoryChunk, score: f32) -> SearchResultItem {
     let redacted = redact_text(&c.document);
     SearchResultItem {
         id: c.id,
@@ -910,6 +937,8 @@ pub(crate) async fn add_impl(
     // `raw_chunk` is a legacy storage field, not a public write path. Keeping
     // client-supplied text there would bypass document redaction.
     metadata.raw_chunk = None;
+    // A review is recorded by `POST /reviewed` only, never claimed by the writer.
+    metadata.reviewed_at = None;
     let adapter = metadata
         .adapter
         .clone()
@@ -1141,6 +1170,26 @@ pub(crate) async fn persist_chunk_async(
     Ok(deduplicated.then_some(id))
 }
 
+pub async fn recent(
+    State(system): State<Arc<RwLock<MemorySystem>>>,
+    Json(req): Json<RecentRequest>,
+) -> Response {
+    match super::operations::recent(system, req).await {
+        Ok(out) => Json(out).into_response(),
+        Err(error) => operation_error_response(error),
+    }
+}
+
+pub async fn reviewed(
+    State(system): State<Arc<RwLock<MemorySystem>>>,
+    Json(req): Json<ReviewedRequest>,
+) -> Response {
+    match super::operations::mark_reviewed(system, &req.id).await {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => operation_error_response(error),
+    }
+}
+
 pub async fn delete(
     State(system): State<Arc<RwLock<MemorySystem>>>,
     Json(req): Json<DeleteRequest>,
@@ -1305,6 +1354,10 @@ pub(crate) async fn update_impl(
             return out;
         }
         chunk.document = redacted;
+        // A person confirmed the earlier wording, not this one.
+        if text_changed {
+            chunk.metadata.reviewed_at = None;
+        }
     }
     if let Some(project) = req.project {
         let project = project.trim();
@@ -2911,6 +2964,444 @@ mod transcript_tests {
                 .iter()
                 .any(|(result_id, _)| result_id == &id)
         );
+    }
+}
+
+#[cfg(test)]
+mod saved_memory_tests {
+    //! `/recent` and `/reviewed`: the user's own listing of saved memories and the
+    //! review date. Rows are inserted directly, so the text index and the
+    //! embedding model are not involved.
+    use super::super::operations::{mark_reviewed, recent};
+    use super::test_support::build_system;
+    use super::*;
+    use crate::workspace::identity as workspace_identity;
+    use serde_json::json;
+
+    const CWD: &str = "/work/storefront";
+
+    #[derive(Clone)]
+    struct Row {
+        id: &'static str,
+        project: String,
+        text: &'static str,
+        importance: Importance,
+        kind: MemoryKind,
+        chunk_type: ChunkType,
+        sensitive: bool,
+        days_old: i64,
+    }
+
+    fn row(id: &'static str, project: &str, days_old: i64) -> Row {
+        Row {
+            id,
+            project: project.to_string(),
+            text: "text",
+            importance: Importance::Knowledge,
+            kind: MemoryKind::Record,
+            chunk_type: ChunkType::Manual,
+            sensitive: false,
+            days_old,
+        }
+    }
+
+    fn rule(id: &'static str, project: &str, days_old: i64) -> Row {
+        Row {
+            importance: Importance::Preference,
+            kind: MemoryKind::Rule,
+            ..row(id, project, days_old)
+        }
+    }
+
+    async fn insert(system: &Arc<RwLock<MemorySystem>>, rows: &[Row]) {
+        let sys = system.read().await;
+        for r in rows {
+            let at = chrono::Utc::now() - chrono::Duration::days(r.days_old);
+            sys.db
+                .write()
+                .await
+                .insert_chunk(&MemoryChunk {
+                    id: r.id.to_string(),
+                    project: r.project.clone(),
+                    document: r.text.to_string(),
+                    embedding: None,
+                    metadata: Metadata {
+                        chunk_type: r.chunk_type.clone(),
+                        importance: r.importance.clone(),
+                        memory_kind: r.kind.clone(),
+                        sensitive: r.sensitive,
+                        ..Metadata::default()
+                    },
+                    created_at: at,
+                    updated_at: at,
+                })
+                .unwrap();
+        }
+    }
+
+    fn request(
+        project: &str,
+        cwd: Option<&str>,
+        rules_only: bool,
+        oldest_first: bool,
+        limit: usize,
+    ) -> RecentRequest {
+        RecentRequest {
+            project: project.to_string(),
+            cwd: cwd.map(str::to_string),
+            rules_only,
+            oldest_first,
+            limit,
+        }
+    }
+
+    async fn ids(system: &Arc<RwLock<MemorySystem>>, req: RecentRequest) -> Vec<String> {
+        recent(system.clone(), req)
+            .await
+            .unwrap()
+            .results
+            .into_iter()
+            .map(|r| r.item.id)
+            .collect()
+    }
+
+    fn principal(read: &[&str], write: &[&str]) -> crate::access::Principal {
+        serde_json::from_value(
+            json!({"id": "tester", "token_sha256": "", "read_projects": read, "write_projects": write}),
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn newest_first_with_a_clamped_limit_and_transcripts_never_listed() {
+        let (_tmp, system) = build_system().await;
+        let mut transcript = row("transcript-turn", "p", 0);
+        transcript.chunk_type = ChunkType::AutoLog;
+        let mut consolidated = row("consolidated", "p", 0);
+        consolidated.chunk_type = ChunkType::Consolidated;
+        insert(
+            &system,
+            &[
+                row("old", "p", 30),
+                row("mid", "p", 10),
+                row("new", "p", 1),
+                transcript,
+                consolidated,
+            ],
+        )
+        .await;
+        assert_eq!(
+            ids(&system, request("p", None, false, false, 20)).await,
+            ["new", "mid", "old"]
+        );
+        assert_eq!(
+            ids(&system, request("p", None, false, false, 2)).await,
+            ["new", "mid"]
+        );
+        // 0 is raised to 1; a limit past 50 is cut to 50.
+        assert_eq!(
+            ids(&system, request("p", None, false, false, 0)).await,
+            ["new"]
+        );
+        let many: Vec<Row> = (0..60)
+            .map(|i| {
+                row(
+                    Box::leak(format!("bulk-{i}").into_boxed_str()),
+                    "bulk",
+                    40 + i,
+                )
+            })
+            .collect();
+        insert(&system, &many).await;
+        assert_eq!(
+            ids(&system, request("bulk", None, false, false, 500))
+                .await
+                .len(),
+            50
+        );
+        let first = recent(system.clone(), request("p", None, false, false, 20))
+            .await
+            .unwrap();
+        assert_eq!(first.project, "p");
+        assert_eq!(first.results[0].item.chunk_type, "Manual");
+        assert!(first.results[0].created_at.starts_with("20"));
+        assert!(first.results[0].reviewed_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn rules_only_keeps_preferences_and_rules() {
+        let (_tmp, system) = build_system().await;
+        let mut preference = row("preference", "p", 5);
+        preference.importance = Importance::Preference;
+        let mut kind_rule = row("kind-rule", "p", 4);
+        kind_rule.kind = MemoryKind::Rule;
+        insert(
+            &system,
+            &[
+                row("fact", "p", 1),
+                preference,
+                kind_rule,
+                rule("both", "p", 3),
+            ],
+        )
+        .await;
+        assert_eq!(
+            ids(&system, request("p", None, true, false, 20)).await,
+            ["both", "kind-rule", "preference"]
+        );
+        assert_eq!(
+            ids(&system, request("p", None, true, true, 20)).await,
+            ["preference", "kind-rule", "both"],
+            "oldest first"
+        );
+    }
+
+    #[tokio::test]
+    async fn scope_follows_search_and_reserved_rows_are_never_listed() {
+        let (_tmp, system) = build_system().await;
+        let workspace = workspace_identity(CWD).unwrap().id;
+        let mut sensitive = row("sensitive", &workspace, 1);
+        sensitive.sensitive = true;
+        insert(
+            &system,
+            &[
+                row("mine", &workspace, 2),
+                row("shared", "playbook", 3),
+                row("other-project", "elsewhere", 4),
+                sensitive,
+                row("trashed", "_trash", 1),
+                row("superseded", "_superseded", 1),
+                row("card", "task-cards", 1),
+                row("done-card", "task-cards-done", 1),
+            ],
+        )
+        .await;
+        // The folder's workspace and the shared playbook, as /search resolves it.
+        assert_eq!(
+            ids(&system, request("", Some(CWD), false, false, 20)).await,
+            ["mine", "shared"]
+        );
+        assert_eq!(
+            ids(&system, request("elsewhere", None, false, false, 20)).await,
+            ["other-project"]
+        );
+        assert_eq!(
+            ids(&system, request("all", None, false, false, 20)).await,
+            ["mine", "shared", "other-project"]
+        );
+        for reserved in ["_trash", "_superseded", "task-cards", "task-cards-done"] {
+            assert!(
+                ids(&system, request(reserved, None, false, false, 20))
+                    .await
+                    .is_empty(),
+                "{reserved}"
+            );
+        }
+        assert!(
+            recent(system.clone(), request("", None, false, false, 20))
+                .await
+                .is_err(),
+            "a scope is required"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_caller_with_project_grants_sees_only_those_projects() {
+        let (_tmp, system) = build_system().await;
+        insert(
+            &system,
+            &[row("granted", "alpha", 1), row("ungranted", "beta", 2)],
+        )
+        .await;
+        let reader = || principal(&["alpha"], &[]);
+        let all = crate::access::CURRENT_PRINCIPAL
+            .scope(reader(), async {
+                ids(&system, request("all", None, false, false, 20)).await
+            })
+            .await;
+        assert_eq!(all, ["granted"]);
+        let denied = crate::access::CURRENT_PRINCIPAL
+            .scope(
+                reader(),
+                recent(system.clone(), request("beta", None, false, false, 20)),
+            )
+            .await;
+        assert!(denied.is_err());
+        assert_eq!(
+            ids(&system, request("all", None, false, false, 20)).await,
+            ["granted", "ungranted"],
+            "the owner sees both"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_review_changes_only_its_date_and_sends_the_memory_to_the_back() {
+        let (_tmp, system) = build_system().await;
+        insert(
+            &system,
+            &[
+                rule("oldest", "p", 30),
+                rule("middle", "p", 20),
+                rule("newest", "p", 10),
+            ],
+        )
+        .await;
+        let before = system
+            .read()
+            .await
+            .db
+            .read()
+            .await
+            .get_chunk("oldest")
+            .unwrap()
+            .unwrap();
+        let out = mark_reviewed(system.clone(), "oldest").await.unwrap();
+        assert_eq!(out["status"], "ok");
+        let after = system
+            .read()
+            .await
+            .db
+            .read()
+            .await
+            .get_chunk("oldest")
+            .unwrap()
+            .unwrap();
+        assert!(after.metadata.reviewed_at.is_some());
+        assert_eq!(after.document, before.document);
+        assert_eq!(after.updated_at, before.updated_at);
+        assert_eq!(after.created_at, before.created_at);
+        assert_eq!(after.embedding, before.embedding);
+        assert_eq!(after.project, before.project);
+        assert_eq!(after.metadata.importance, before.metadata.importance);
+        let listed = recent(system.clone(), request("p", None, true, true, 20))
+            .await
+            .unwrap();
+        assert_eq!(
+            listed
+                .results
+                .iter()
+                .map(|r| r.item.id.as_str())
+                .collect::<Vec<_>>(),
+            ["middle", "newest", "oldest"]
+        );
+        assert_eq!(listed.results[2].reviewed_at, after.metadata.reviewed_at);
+        // Newest first still goes by the last save, which a review does not move.
+        assert_eq!(
+            ids(&system, request("p", None, true, false, 20)).await,
+            ["newest", "middle", "oldest"]
+        );
+        // Other wording is a new thing to confirm: a text edit clears the date.
+        let edited = update_impl(
+            system.clone(),
+            UpdateRequest {
+                id: "oldest".into(),
+                sensitive: None,
+                text: Some("new wording".into()),
+                project: None,
+                metadata: None,
+                chunk_type: None,
+                importance: None,
+            },
+        )
+        .await;
+        assert_eq!(edited["status"], "ok");
+        let rewritten = system
+            .read()
+            .await
+            .db
+            .read()
+            .await
+            .get_chunk("oldest")
+            .unwrap()
+            .unwrap();
+        assert!(rewritten.metadata.reviewed_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_review_is_refused_where_an_update_would_be() {
+        let (_tmp, system) = build_system().await;
+        let mut transcript = row("turn", "p", 1);
+        transcript.chunk_type = ChunkType::AutoLog;
+        insert(
+            &system,
+            &[
+                row("card", "task-cards", 1),
+                row("trashed", "_trash", 1),
+                transcript,
+                row("granted", "alpha", 1),
+                row("other", "beta", 1),
+            ],
+        )
+        .await;
+        for id in ["card", "trashed", "turn"] {
+            assert!(mark_reviewed(system.clone(), id).await.is_err(), "{id}");
+        }
+        assert!(mark_reviewed(system.clone(), "missing").await.is_err());
+        assert!(mark_reviewed(system.clone(), " ").await.is_err());
+        // Read access alone does not allow a write, and an ungranted project looks absent.
+        let read_only = crate::access::CURRENT_PRINCIPAL
+            .scope(
+                principal(&["alpha"], &[]),
+                mark_reviewed(system.clone(), "granted"),
+            )
+            .await;
+        assert!(read_only.is_err());
+        let hidden = crate::access::CURRENT_PRINCIPAL
+            .scope(
+                principal(&["alpha"], &["alpha"]),
+                mark_reviewed(system.clone(), "other"),
+            )
+            .await;
+        assert!(hidden.is_err());
+        let writer = crate::access::CURRENT_PRINCIPAL
+            .scope(
+                principal(&["alpha"], &["alpha"]),
+                mark_reviewed(system.clone(), "granted"),
+            )
+            .await;
+        assert!(writer.is_ok());
+        for id in ["card", "trashed", "turn", "other"] {
+            let chunk = system
+                .read()
+                .await
+                .db
+                .read()
+                .await
+                .get_chunk(id)
+                .unwrap()
+                .unwrap();
+            assert!(chunk.metadata.reviewed_at.is_none(), "{id} untouched");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_writer_cannot_claim_a_review_through_add() {
+        let (_tmp, system) = build_system().await;
+        let out = add_impl(
+            system.clone(),
+            AddRequest {
+                text: "claims to be reviewed".into(),
+                project: "p".into(),
+                cwd: None,
+                metadata: Some(Metadata {
+                    chunk_type: ChunkType::Manual,
+                    reviewed_at: Some("2026-01-01T00:00:00+00:00".into()),
+                    ..Metadata::default()
+                }),
+                sensitive: None,
+            },
+        )
+        .await;
+        let chunk = system
+            .read()
+            .await
+            .db
+            .read()
+            .await
+            .get_chunk(&out["id"])
+            .unwrap()
+            .unwrap();
+        assert!(chunk.metadata.reviewed_at.is_none());
     }
 }
 

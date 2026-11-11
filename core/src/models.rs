@@ -87,6 +87,11 @@ pub struct Metadata {
     pub supersedes: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verified_at: Option<String>,
+    /// RFC 3339 time a person last confirmed in the memnest UI that this memory
+    /// still holds. Written only by `POST /reviewed`; `verified_at` is a caller
+    /// report that any client may set. Never read by ranking.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -338,7 +338,7 @@ Open in this session: none
 To change: ask the assistant, e.g. "close the task card" or "mark the task card done", or use /memnest-cards.
 ```
 
-`/memnest-cards`는 모델 없이 같은 일을 합니다. 진행 중인 카드와 끝낸 카드를 보여 주고, 고른 카드의 글과 사용자가 한 말을 보여 주며, 그 카드를 열거나 닫거나 끝냄으로 표시합니다(끝냄은 먼저 확인을 묻습니다).
+`/memnest-cards`는 모델 없이 같은 일을 합니다. 진행 중인 카드와 끝낸 카드를 보여 주고, 고른 카드의 글과 사용자가 한 말을 보여 주며, 그 카드를 열거나 닫거나 끝냄으로 표시합니다(끝냄은 먼저 확인을 묻습니다). 같은 확장에 기억을 보는 `/memnest-search`, `/memnest-recent`, `/memnest-review`도 있습니다(pi 확장 README 참고).
 
 ## 카드가 생기기 전에 저장된 규칙 (2026-11-10)
 

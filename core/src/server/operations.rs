@@ -507,6 +507,107 @@ pub async fn search(
     })
 }
 
+/// A saved memory as `/recent` lists it: the search result item plus the dates
+/// a review needs. `score` is not meaningful here and is always 0.
+#[derive(Serialize)]
+pub struct RecentItem {
+    #[serde(flatten)]
+    pub item: api::SearchResultItem,
+    pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reviewed_at: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct RecentOutput {
+    pub results: Vec<RecentItem>,
+    pub project: String,
+    pub total: usize,
+}
+
+/// Lists saved memories (chunk type manual) for the user's own UI. Not an MCP tool.
+pub async fn recent(
+    system: Arc<RwLock<MemorySystem>>,
+    req: api::RecentRequest,
+) -> Result<RecentOutput, OperationError> {
+    let scope = resolve_search_scope(system.clone(), &req.project, req.cwd.as_deref()).await?;
+    let limit = req.limit.clamp(1, 50);
+    let chunks = {
+        let sys = system.read().await;
+        let db = sys.db.read().await;
+        db.list_saved_memories(scope.projects(), req.rules_only, req.oldest_first, limit)
+            .map_err(|e| OperationError::internal(e.to_string()))?
+    };
+    // The scope already limits the query to readable projects; each row is checked again as search does.
+    let results: Vec<RecentItem> = chunks
+        .into_iter()
+        .filter(|c| crate::access::require_read_chunk(c).is_ok())
+        .map(|c| {
+            let created_at = c.created_at.to_rfc3339();
+            let reviewed_at = c.metadata.reviewed_at.clone();
+            RecentItem {
+                item: api::search_result_item(c, 0.0),
+                created_at,
+                reviewed_at,
+            }
+        })
+        .collect();
+    crate::access::record(
+        &system,
+        "memory_recent",
+        "read",
+        &results
+            .iter()
+            .map(|v| v.item.id.clone())
+            .collect::<Vec<_>>(),
+    )
+    .await?;
+    Ok(RecentOutput {
+        total: results.len(),
+        results,
+        project: scope.primary().to_string(),
+    })
+}
+
+/// Records that the user confirmed a saved memory still holds. Changes only
+/// `reviewed_at`; the write checks are those of `update`.
+pub async fn mark_reviewed(
+    system: Arc<RwLock<MemorySystem>>,
+    id: &str,
+) -> Result<Value, OperationError> {
+    if id.trim().is_empty() {
+        return Err(OperationError::bad("id is required"));
+    }
+    let reviewed_at = chrono::Utc::now().to_rfc3339();
+    let stored_id = {
+        let sys = system.read().await;
+        let db = sys.db.read().await;
+        let current = db
+            .get_chunk(id.trim())
+            .map_err(|e| OperationError::internal(e.to_string()))?
+            .ok_or_else(|| OperationError::not_found("memory not found"))?;
+        crate::access::require_write_chunk(&current)?;
+        // The trash, superseded versions and task cards are reserved, as for an update.
+        validate_write_project(&current.project)?;
+        if current.metadata.chunk_type != crate::models::ChunkType::Manual
+            || current.metadata.sensitive
+        {
+            return Err(OperationError::bad("only a saved memory can be reviewed"));
+        }
+        db.set_reviewed_at(&current.id, &reviewed_at)
+            .map_err(|e| OperationError::internal(e.to_string()))?;
+        current.id
+    };
+    crate::access::record(
+        &system,
+        "memory_reviewed",
+        "ok",
+        std::slice::from_ref(&stored_id),
+    )
+    .await?;
+    Ok(json!({"status": "ok", "id": stored_id, "reviewed_at": reviewed_at}))
+}
+
 pub const MAX_OUTPUT_CHARS: usize = 30_000;
 const MAX_PROVENANCE_CHARS: usize = 2048;
 const MAX_SOURCE_IDS: usize = 16;

@@ -160,6 +160,8 @@ curl -s http://127.0.0.1:3111/restore \
   -d '{"ids":["manual_..."]}'
 ```
 
+To look at saved memories without searching, `POST /recent` lists them (`{"project":"all","rules_only":true,"oldest_first":true,"limit":20}`; `project` or `cwd` picks the scope as in `/search`; manual memories only, never the trash, task cards or sensitive records), and `POST /reviewed {"id":"manual_..."}` records that you confirmed one still holds. The pi extension's `/memnest-recent` and `/memnest-review` use them.
+
 Trash defaults to a 30-day recovery window; `MEMNEST_TRASH_RETENTION_DAYS` accepts 0 to 3650. Plaintext archive copies are off by default; `MEMNEST_ARCHIVE=1` explicitly enables them. Existing archive files are not removed by changing the setting. `POST /purge` permanently removes already-trashed records from serving storage/indexes, not every external or physical copy.
 
 Optional [team access policies](team-access.md) add named project grants, access audit and project maximum-age retention, which overrides pinned/type exemptions for the configured project. Administrators can trigger lifecycle checks with `POST /retention`. Leave these opt-in during a personal-store upgrade unless you have prepared the policy and client credentials.

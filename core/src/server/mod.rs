@@ -68,6 +68,8 @@ pub fn create_router(system: Arc<RwLock<MemorySystem>>) -> Router {
         .route("/context", post(api::context_pack))
         .route("/add", post(api::add))
         .route("/update", post(api::update))
+        .route("/recent", post(api::recent))
+        .route("/reviewed", post(api::reviewed))
         .route("/delete", post(api::delete))
         .route("/restore", post(api::restore))
         .route("/purge", post(api::purge))
