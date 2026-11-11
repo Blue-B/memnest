@@ -7,6 +7,14 @@
 Starts a scratch memnest, ingests one memory per dialog turn, sends each question
 unchanged to /search, computes recall/MRR/NDCG without any LLM, writes
 results/<date>-v<version>-<dataset>[-tag].json, and deletes the scratch instance.
+
+Ingest is the slow part. With --data-dir DIR the ingested data stays in DIR, and a
+later run with the same DIR (another binary, same dataset options) only asks the
+questions:
+
+    python3 benchmarks/retrieval/run.py --binary OLD --dataset locomo --data-dir /tmp/locomo-data
+    cp -a /tmp/locomo-data /tmp/locomo-data-new    # a newer binary may migrate the directory
+    python3 benchmarks/retrieval/run.py --binary NEW --dataset locomo --data-dir /tmp/locomo-data-new
 """
 
 import argparse
@@ -79,8 +87,31 @@ def search(client, query, project, n_results):
     return body["results"], wall_ms, body.get("elapsed_ms")
 
 
-def run_group(client, group, dataset):
-    id_to_key, ingest_seconds = ingest_group(client, group)
+INGESTED_FILE = "bench-ingested.jsonl"  # in --data-dir: one line per ingested project
+
+
+def load_ingested(data_dir):
+    """project -> {memory id: turn key} for the projects already in a kept data dir."""
+    ingested = {}
+    path = os.path.join(data_dir, INGESTED_FILE) if data_dir else ""
+    if path and os.path.exists(path):
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                row = json.loads(line)
+                ingested[row["project"]] = row["ids"]
+    return ingested
+
+
+def run_group(client, group, data_dir="", ingested=None):
+    if ingested is not None and group["project"] in ingested:
+        id_to_key, ingest_seconds = ingested[group["project"]], 0.0
+        if len(id_to_key) != len(group["turns"]):
+            raise RuntimeError(f"{group['project']}: kept data does not match this dataset selection")
+    else:
+        id_to_key, ingest_seconds = ingest_group(client, group)
+        if data_dir:
+            with open(os.path.join(data_dir, INGESTED_FILE), "a", encoding="utf-8") as handle:
+                handle.write(json.dumps({"project": group["project"], "ids": id_to_key}) + "\n")
     session_of = {t["key"]: t["session"] for t in group["turns"]}
     records = []
     for question in group["questions"]:
@@ -115,7 +146,7 @@ def run_group(client, group, dataset):
     return records, {
         "type": "group",
         "project": group["project"],
-        "memories": len(group["turns"]),
+        "memories": len(group["turns"]) if ingest_seconds else 0,
         "ingest_seconds": round(ingest_seconds, 3),
     }
 
@@ -285,6 +316,10 @@ def main():
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--only-ids", default="",
                         help="comma-separated LongMemEval question ids: keep only these from the sample (paired re-runs)")
+    parser.add_argument("--exclude-ids-from", default="",
+                        help="LongMemEval only: result file whose sample_question_ids are removed before sampling (held-out sample)")
+    parser.add_argument("--data-dir", default="",
+                        help="keep the ingested data here; projects already ingested into it are only searched")
     args = parser.parse_args()
 
     shard_index, shard_count = (int(x) for x in args.shard.split("/"))
@@ -294,8 +329,12 @@ def main():
     if args.dataset == "locomo":
         groups = build.locomo_groups(data, date_in_text)
     else:
+        excluded = set()
+        if args.exclude_ids_from:
+            with open(args.exclude_ids_from, encoding="utf-8") as handle:
+                excluded = set(json.load(handle)["config"]["sample_question_ids"])
         if args.sample:
-            sample_indices = build.stratified_sample(data, args.sample, args.seed)
+            sample_indices = build.stratified_sample(data, args.sample, args.seed, excluded)
         else:
             sample_indices = list(range(len(data)))
         if args.only_ids:
@@ -315,7 +354,8 @@ def main():
                 done.setdefault(row.get("project"), []).append(row)
 
     all_records, group_rows = [], []
-    with instance.Instance(args.binary, args.port or None) as scratch:
+    ingested = load_ingested(args.data_dir)
+    with instance.Instance(args.binary, args.port or None, args.data_dir or None) as scratch:
         health = scratch.health()
         client = scratch.client
         if client is None:
@@ -332,7 +372,7 @@ def main():
                 all_records += [r for r in rows if r["type"] == "question"]
                 group_rows += [r for r in rows if r["type"] == "group"]
                 continue
-            records, group_row = run_group(client, group, args.dataset)
+            records, group_row = run_group(client, group, args.data_dir, ingested)
             all_records += records
             group_rows.append(group_row)
             if checkpoint:
@@ -341,9 +381,9 @@ def main():
                         handle.write(json.dumps({**row, "project": group["project"]}) + "\n")
             elapsed = time.time() - run_started
             load_samples.append(load_average())
-            rate = group_row["memories"] / group_row["ingest_seconds"]
+            rate = group_row["memories"] / group_row["ingest_seconds"] if group_row["ingest_seconds"] else 0.0
             log(
-                f"[{number}/{len(groups)}] {group['project']}: {group_row['memories']} memories "
+                f"[{number}/{len(groups)}] {group['project']}: {group_row['memories']} memories ingested "
                 f"@ {rate:.1f}/s; elapsed {elapsed/60:.1f} min"
             )
         binary_path = scratch.binary
@@ -387,6 +427,8 @@ def main():
             "sample_seed": args.seed if sampled else None,
             "sample_question_ids": [data[i]["question_id"] for i in sample_indices] if sampled else None,
             "only_ids": bool(args.only_ids),
+            "excluded_sample": os.path.basename(args.exclude_ids_from) or None,
+            "kept_data_dir": bool(args.data_dir),
             "shard": args.shard,
             "max_groups": args.max_groups or None,
             "questions_scored": scored_n,

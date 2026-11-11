@@ -153,13 +153,14 @@ def lme_groups(data, date_in_text, indices):
     return groups
 
 
-def stratified_sample(data, size, seed):
+def stratified_sample(data, size, seed, excluded_ids=()):
     """Fixed-seed sample of non-abstention questions, proportional to each
     question_type (largest remainder), at least one per type. Returns sorted
-    indices into `data`."""
+    indices into `data`. `excluded_ids` are question ids that must not be drawn
+    (a held-out sample excludes the sample used for tuning)."""
     by_type = {}
     for index, item in enumerate(data):
-        if not item["question_id"].endswith("_abs"):
+        if not item["question_id"].endswith("_abs") and item["question_id"] not in excluded_ids:
             by_type.setdefault(item["question_type"], []).append(index)
     total = sum(len(v) for v in by_type.values())
     types = sorted(by_type)

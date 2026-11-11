@@ -3,6 +3,10 @@
 Nothing under ~/.memnest is modified: the embedding model cache is
 hard-link-copied (`cp -al`) into the scratch data dir, so it costs no disk space
 and no download, and the scratch dir is deleted on exit.
+
+With `data_dir` the instance runs on that directory and leaves it in place, so
+data ingested once can be searched again by another binary (see run.py
+--data-dir). The live data directory is refused.
 """
 
 import http.client
@@ -72,10 +76,18 @@ def _wait_healthy(proc, client, log_path, timeout=300):
     raise TimeoutError("memnest /health did not become ready")
 
 
+def _refuse_live_data_dir(data_dir):
+    live = os.path.realpath(os.path.dirname(SOURCE_MODELS))
+    path = os.path.realpath(data_dir)
+    if os.path.commonpath([live, path]) == live:
+        raise ValueError(f"refusing to run a benchmark instance on {path}")
+
+
 class Instance:
-    def __init__(self, binary, port=None):
+    def __init__(self, binary, port=None, data_dir=None):
         self.binary = os.path.abspath(os.path.expanduser(binary))
         self.port = port
+        self.data_dir = os.path.abspath(os.path.expanduser(data_dir)) if data_dir else None
         self.root = None
         self.proc = None
         self.log_path = None
@@ -100,10 +112,12 @@ class Instance:
         if port is None:
             raise RuntimeError(f"no free port in {ports}")
         self.port = port
+        if self.data_dir:
+            _refuse_live_data_dir(self.data_dir)
         self.root = tempfile.mkdtemp(prefix="memnest-bench-")
-        data_dir = os.path.join(self.root, "data")
-        os.makedirs(data_dir)
-        if os.path.isdir(SOURCE_MODELS):
+        data_dir = self.data_dir or os.path.join(self.root, "data")
+        os.makedirs(data_dir, exist_ok=True)
+        if os.path.isdir(SOURCE_MODELS) and not os.path.exists(os.path.join(data_dir, "models")):
             subprocess.run(
                 ["cp", "-al", SOURCE_MODELS, os.path.join(data_dir, "models")],
                 check=True,
