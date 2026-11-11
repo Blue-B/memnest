@@ -2358,6 +2358,121 @@ mod on_topic_tests {
 }
 
 #[cfg(test)]
+mod ranking_sanity_tests {
+    //! Korean and mixed Korean/English searches that a ranking change must not
+    //! break. Real embedding model and text index, explicit search, saved
+    //! memories. The English retrieval benchmarks do not cover any of this.
+    use super::test_support::build_system;
+    use super::*;
+
+    const MEMORIES: &[&str] = &[
+        "스테이징 API 서버의 배포 포트는 8320이고 운영은 프록시 뒤 443을 쓴다.",
+        "데이터베이스 백업은 매일 새벽 3시에 돌고 NAS에 14일 동안 보관한다.",
+        "결제 모듈은 토스페이먼츠를 쓰고 정기결제는 아직 붙이지 않았다.",
+        "캐시는 Redis를 쓰고 TTL은 10분으로 정했다. 세션 저장소는 따로 둔다.",
+        "검색 순위 계산은 core/src/server/api.rs 의 hybrid_search_embedded 함수에 있다.",
+        "임베딩 모델은 multilingual-e5-base 이고 질문에는 query: 접두사를 붙인다.",
+        "The watcher stores one memory per transcript turn and skips tool output.",
+        "릴리스 전에는 cargo fmt, clippy, 전체 테스트를 순서대로 돌린다.",
+        "회의는 매주 화요일 오전에 하고 회의록은 노션에 올린다.",
+    ];
+
+    async fn remember_all(system: &Arc<RwLock<MemorySystem>>, project: &str, texts: &[&str]) {
+        for text in texts {
+            super::super::operations::remember(
+                system.clone(),
+                super::super::operations::RememberInput {
+                    text: text.to_string(),
+                    project: project.to_string(),
+                    cwd: None,
+                    metadata: None,
+                    sensitive: false,
+                },
+            )
+            .await
+            .unwrap();
+        }
+    }
+
+    async fn found(
+        system: &Arc<RwLock<MemorySystem>>,
+        query: &str,
+        project: &str,
+        n: usize,
+    ) -> Vec<String> {
+        run_hybrid_search(
+            system.clone(),
+            query,
+            project,
+            n,
+            SearchOptions::default(),
+            None,
+        )
+        .await
+        .into_iter()
+        .map(|item| item.document)
+        .collect()
+    }
+
+    #[tokio::test]
+    async fn korean_and_mixed_queries_rank_the_matching_memory_first() {
+        let (_tmp, system) = build_system().await;
+        remember_all(&system, "sanity", MEMORIES).await;
+        for (query, expected) in [
+            // The memory has "포트는" and "백업은"; the question uses another particle.
+            ("배포 포트가 뭐였지", 0),
+            ("백업을 언제 돌려", 1),
+            ("결제는 뭘로 붙였어", 2),
+            // An English term inside a Korean sentence.
+            ("Redis TTL 얼마로 했지", 3),
+            ("회의록 어디에 올려", 8),
+            // A code identifier and a file path as the whole query.
+            ("hybrid_search_embedded", 4),
+            ("core/src/server/api.rs", 4),
+            // English question, English memory among Korean ones.
+            ("what does the watcher store per turn", 6),
+        ] {
+            let results = found(&system, query, "sanity", 3).await;
+            assert_eq!(
+                results.first().map(String::as_str),
+                Some(MEMORIES[expected]),
+                "{query}: {results:?}"
+            );
+        }
+        // An English question about a memory written in Korean has no shared
+        // words; the vector half alone must still bring it into the first three.
+        let results = found(&system, "which embedding model is used", "sanity", 3).await;
+        assert!(
+            results.iter().any(|text| text == MEMORIES[5]),
+            "{results:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn near_duplicate_saved_memories_leave_room_for_a_distinct_one() {
+        let (_tmp, system) = build_system().await;
+        let distinct = "배포 포트 8320이 방화벽에 막혀 있으면 ufw allow 8320 을 먼저 실행한다.";
+        remember_all(
+            &system,
+            "dups",
+            &[
+                "스테이징 서버의 배포 포트는 8320이다.",
+                "스테이징 서버 배포 포트는 8320이다",
+                "스테이징 서버의 배포 포트는 8320 이다.",
+                "스테이징 서버의 배포 포트: 8320이다.",
+                distinct,
+                "회의는 매주 화요일 오전에 한다.",
+            ],
+        )
+        .await;
+        let results = found(&system, "스테이징 배포 포트", "dups", 3).await;
+        assert_eq!(results.len(), 3);
+        assert!(results[0].starts_with("스테이징 서버"), "{results:?}");
+        assert!(results.iter().any(|text| text == distinct), "{results:?}");
+    }
+}
+
+#[cfg(test)]
 mod visibility_tests {
     //! Guards that soft-deleted rows never leak back into a count or a
     //! listing, and that a context pack cannot be built without a scope.
