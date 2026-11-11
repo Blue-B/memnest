@@ -335,8 +335,10 @@ Task cards: 6 active, newest first
   Windows bluescreen (AdGuard WFP driver) (saved 2026-11-08 01:14)
   ...
 Open in this session: none
-To change: ask the assistant, e.g. "close the task card" or "mark the task card done".
+To change: ask the assistant, e.g. "close the task card" or "mark the task card done", or use /memnest-cards.
 ```
+
+`/memnest-cards` does the same without the model: it lists active and finished cards, shows a card's text with the user's own words, and opens, closes or marks done the card you choose (done asks first).
 
 ## Rules stored before the card existed (2026-11-10)
 

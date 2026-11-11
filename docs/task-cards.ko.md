@@ -335,8 +335,10 @@ Task cards: 6 active, newest first
   Windows 블루스크린(AdGuard WFP 드라이버) (saved 2026-11-08 01:14)
   ...
 Open in this session: none
-To change: ask the assistant, e.g. "close the task card" or "mark the task card done".
+To change: ask the assistant, e.g. "close the task card" or "mark the task card done", or use /memnest-cards.
 ```
+
+`/memnest-cards`는 모델 없이 같은 일을 합니다. 진행 중인 카드와 끝낸 카드를 보여 주고, 고른 카드의 글과 사용자가 한 말을 보여 주며, 그 카드를 열거나 닫거나 끝냄으로 표시합니다(끝냄은 먼저 확인을 묻습니다).
 
 ## 카드가 생기기 전에 저장된 규칙 (2026-11-10)
 

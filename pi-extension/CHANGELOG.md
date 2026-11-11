@@ -15,6 +15,7 @@ All notable changes to `pi-memnest` are recorded here.
 
 ### Added
 
+- `/memnest-cards` and `/memnest-search`, run from the pi terminal UI without the model. `/memnest-cards` lists active and finished task cards (newest first, last save in local time, `[open]` for the cards this session records into), shows a card with the user's own words, and opens, closes or marks done the chosen card (done asks first). `/memnest-search [project:<name>|project:all] <question>` runs the same search as `memory_search`, shows up to 10 results with project, date, type, score and excerpt plus the scope hint, and shows a chosen result in full; project names complete after `project:`. Without a UI they print text; with the core down or too old they say so in one line.
 - `memory_search` shows the core's scope hint. When a search of the current workspace missed clearly stronger matches in other projects, the result ends with one line that names those projects and says to search again with `project="<name>"` or `project="all"`. Needs a core that sends `scope_hint`; with an older core nothing changes.
 - Saving a new task card passes on the core's list of rules and preferences already stored for that work, so they can be copied into the card. Needs a core that reserves the card collections.
 

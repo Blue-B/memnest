@@ -52,6 +52,16 @@ task_card action=done title="blog migration"                     # finish; save 
 
 The first prompt of a session lists up to 20 active cards. An opened card is pinned into the system prompt, and every message you send is appended to it word for word, so a summary cannot drop what you said. Short one-time reminders cover the cases where models missed a card in real use: no card yet, a compaction, `memory_remember` with no card open, and an open card unsaved for 8 messages. Cards are shared with Claude Code, Codex, and other MCP clients through the core. [How it works, measurements, and limits](https://github.com/Blue-B/memnest/blob/main/docs/task-cards.md)
 
+## Commands
+
+These run in the pi terminal UI without the model, and nothing they show is sent to a model.
+
+- `/memnest`: service health, memory count, task cards, and which card this session records into.
+- `/memnest-cards`: list active task cards (newest first, `[open]` marks the ones this session records into) and finished ones; pick a card to read it, open or close it in this session, or mark it done (asks first).
+- `/memnest-search [project:<name>|project:all] <question>`: the same search as `memory_search`, up to 10 results with project, date, type, score and an excerpt; pick one to read it in full. Without `project:` it searches the current folder's workspace; `project:` completes project names. With no question it asks for one.
+
+Without a UI (`pi -p`) the commands print text and do not ask anything. If the core is not running they say so in one line.
+
 ## Autocontext
 
 Off by default. To add related memories to each prompt, set `MEMNEST_AUTOCONTEXT_MODE=balanced` before starting pi. Each card shows memory IDs so the agent can check the full text with `memory_get`; retrieved text is treated as reference data, not instructions.
