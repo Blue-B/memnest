@@ -270,6 +270,9 @@ pub struct ContextResponse {
     pub query: String,
     pub project: String,
     pub memories: Vec<SearchResultItem>,
+    /// Always true: `memories` passed [`on_topic`]. A client reads it to tell
+    /// this reply from that of a core before the gate, which did not filter.
+    pub on_topic_only: bool,
     /// Same line as `/search` `scope_hint`; also rendered inside `prompt`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scope_hint: Option<String>,
@@ -1650,6 +1653,7 @@ pub(crate) async fn build_context_scope(
         query,
         project,
         memories,
+        on_topic_only: true,
         scope_hint,
         prompt,
     }
@@ -2718,6 +2722,8 @@ mod visibility_tests {
             scoped.contains(r#""memories":[]"#),
             "expected an empty memory list: {scoped}"
         );
+        // Clients tell a gated core from an older one by this marker.
+        assert!(scoped.contains(r#""on_topic_only":true"#), "{scoped}");
     }
 }
 
