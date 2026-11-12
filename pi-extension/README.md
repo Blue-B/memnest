@@ -69,7 +69,7 @@ Without a UI (`pi -p`) the commands print text and do not ask anything. If the c
 
 ## Autocontext
 
-Off by default. To add related memories to each prompt, set `MEMNEST_AUTOCONTEXT_MODE=balanced` before starting pi. Each card shows memory IDs so the agent can check the full text with `memory_get`; retrieved text is treated as reference data, not instructions.
+Off by default. To add related memories to each prompt, set `MEMNEST_AUTOCONTEXT_MODE=balanced` before starting pi. The core decides which saved memories share the prompt's topic, so a prompt such as "ok, go on" gets nothing. Each card shows memory IDs so the agent can check the full text with `memory_get`; retrieved text is treated as reference data, not instructions.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -77,9 +77,9 @@ Off by default. To add related memories to each prompt, set `MEMNEST_AUTOCONTEXT
 | `MEMNEST_AUTOCONTEXT_DISABLE` | unset | `1` turns recall off regardless of mode. |
 | `MEMNEST_AUTOCONTEXT_TOP` | `2` | Results per card. |
 | `MEMNEST_AUTOCONTEXT_MAX_INJECTIONS` | `4` | Cards per session. |
-| `MEMNEST_AUTOCONTEXT_MIN_SCORE` | `0.25` | Minimum score to inject. |
+| `MEMNEST_AUTOCONTEXT_MIN_SCORE` | `0.25` | Minimum score to inject. Used only with a core that has no on-topic filter in `/context`. |
 | `MEMNEST_AUTOCONTEXT_EXCLUDE` | `_superseded,default,root,global` | Collections never recalled. |
-| `MEMNEST_AUTOCONTEXT_N` | `20` | Candidates fetched before ranking. |
+| `MEMNEST_AUTOCONTEXT_N` | `20` | Most memories asked for per prompt (the core returns at most 20 on-topic ones). |
 | `MEMNEST_AUTOCONTEXT_MIN_LEN` | `16` | Shorter prompts are skipped. |
 | `MEMNEST_AUTOCONTEXT_DOC_CHARS` | `240` | Characters kept per result. |
 | `MEMNEST_AUTOCONTEXT_TIMEOUT_MS` | `1500` | The prompt goes on without a card after this. |

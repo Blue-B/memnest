@@ -122,48 +122,65 @@ function isMemResult(value) {
   const r = value;
   return typeof r.id === "string" && r.id.trim().length > 0 && r.id.length <= 256 && typeof r.project === "string" && r.project.trim().length > 0 && r.project.length <= 256 && typeof r.document === "string" && r.document.trim().length > 0 && typeof r.score === "number" && Number.isFinite(r.score);
 }
-async function searchMemnest(query, cwd) {
-  if (!cwd) return [];
-  if (MEMNEST_TOKEN && !bearerAllowed(MEMNEST_URL)) return [];
+async function post(path, body) {
+  if (MEMNEST_TOKEN && !bearerAllowed(MEMNEST_URL)) return void 0;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(`${MEMNEST_URL}/search`, {
+    const res = await fetch(`${MEMNEST_URL}${path}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         ...MEMNEST_TOKEN ? { authorization: `Bearer ${MEMNEST_TOKEN}` } : {}
       },
-      // exclude_reserved: server-side drop of root/default/global/_superseded
-      // (memnest >= 0.5.1); EXCLUDE_PROJECTS below still covers custom lists.
-      body: JSON.stringify({
-        query,
-        project: "",
-        cwd,
-        adapter: "pi-autocontext",
-        n_results: N_RESULTS,
-        durable_only: true
-      }),
+      body: JSON.stringify(body),
       signal: ctrl.signal
     });
-    if (!res.ok) return [];
-    const json = await res.json();
-    if (typeof json.project !== "string" || !Array.isArray(json.results))
-      return [];
-    return json.results.filter(isMemResult).filter(
-      (result3) => result3.chunk_type === "Manual" || result3.chunk_type === "Consolidated"
-    ).filter(
-      (result3) => result3.project === json.project || result3.project === "playbook"
-    );
+    if (res.status === 404) return null;
+    return res.ok ? await res.json() : void 0;
   } catch {
-    return [];
+    return void 0;
   } finally {
     clearTimeout(timer);
   }
 }
-function formatBlock(results, reason) {
-  const threshold = MIN_SCORE;
-  const kept = results.filter((r) => !EXCLUDE_PROJECTS.has(r.project)).filter((r) => r.score >= threshold).slice(0, TOP_INJECT);
+function scoped(project, results) {
+  if (typeof project !== "string" || !Array.isArray(results)) return [];
+  return results.filter(isMemResult).filter(
+    (result3) => result3.chunk_type === "Manual" || result3.chunk_type === "Consolidated"
+  ).filter(
+    (result3) => result3.project === project || result3.project === "playbook"
+  );
+}
+var coreHasGate = true;
+async function recall(query, cwd) {
+  if (!cwd) return { results: [], gated: false };
+  if (coreHasGate) {
+    const reply2 = await post("/context", {
+      query,
+      project: "",
+      cwd,
+      n_results: N_RESULTS
+    });
+    if (reply2 === void 0) return { results: [], gated: true };
+    const pack = reply2 ?? {};
+    if (pack.on_topic_only === true)
+      return { results: scoped(pack.project, pack.memories), gated: true };
+    coreHasGate = false;
+  }
+  const reply = await post("/search", {
+    query,
+    project: "",
+    cwd,
+    adapter: "pi-autocontext",
+    n_results: N_RESULTS,
+    durable_only: true
+  }) ?? {};
+  return { results: scoped(reply.project, reply.results), gated: false };
+}
+function formatBlock(results, gated) {
+  const reason = gated ? "on-topic-gate" : "semantic-score-gate";
+  const kept = results.filter((r) => !EXCLUDE_PROJECTS.has(r.project)).filter((r) => gated || r.score >= MIN_SCORE).slice(0, TOP_INJECT);
   if (kept.length === 0) return null;
   const escape = (value) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
   const lines = kept.map((r, i) => {
@@ -202,8 +219,8 @@ function installAutocontext(pi) {
     if (q === lastSeenQuery) return;
     lastSeenQuery = q;
     if (injections >= MAX_INJECTIONS) return;
-    const results = await searchMemnest(prompt, currentCwd);
-    const block = formatBlock(results, "semantic-score-gate");
+    const { results, gated } = await recall(prompt, currentCwd);
+    const block = formatBlock(results, gated);
     if (!block) return;
     injections++;
     return {
@@ -4889,7 +4906,7 @@ function installCommands(pi, { call: call2, url, cards }) {
     return oneLine(reply.text, 200);
   };
   const readText = async (ctx, title, text) => {
-    if (ctx.mode === "tui") await ctx.ui.editor(`${oneLine(title, 80)} (read only: Esc closes, edits are discarded)`, text);
+    if (ctx.mode === "tui") await ctx.ui.editor(`${oneLine(title, 80)} (read only: \u2191\u2193 or Ctrl+PgUp/PgDn scroll, Esc closes, edits are discarded)`, text);
     else say(ctx, text);
   };
   const fail = (ctx, reply) => say(ctx, typeof reply === "string" ? reply : problem(reply), "error");
@@ -5462,11 +5479,16 @@ function register(pi) {
     pi,
     "memory_update",
     "Memory: update",
-    "Update one memory in place and refresh its indexes. Approach document changes require memory_remember with supersedes. Use this to fix wording or metadata on a memory that is still correct. When the underlying fact actually changed, prefer memory_remember with supersedes so the earlier version stays auditable.",
+    "Update one memory in place and refresh its indexes. Approach document changes require memory_remember with supersedes. Use this to fix wording or metadata on a memory that is still correct. When the underlying fact actually changed, prefer memory_remember with supersedes so the earlier version stays auditable. Pass supersedes=<id> when this memory is already saved and replaces that older one: the older one leaves search and stays readable by id.",
     typebox_exports.Object({
       id: typebox_exports.String(),
       text: typebox_exports.Optional(typebox_exports.String()),
       project: typebox_exports.Optional(typebox_exports.String()),
+      supersedes: typebox_exports.Optional(
+        typebox_exports.String({
+          description: "Id of an older memory in the same project that this one replaces."
+        })
+      ),
       importance: typebox_exports.Optional(
         typebox_exports.Union([
           typebox_exports.Literal("log"),
@@ -5488,7 +5510,12 @@ function register(pi) {
       )
     }),
     async (_id, p) => {
-      const body = p.sensitive ? { ...p, metadata: { sensitive: true } } : p;
+      const { supersedes, ...rest } = p;
+      const metadata = {
+        ...p.sensitive ? { sensitive: true } : {},
+        ...supersedes ? { supersedes } : {}
+      };
+      const body = Object.keys(metadata).length ? { ...rest, metadata } : rest;
       const r = await call("/update", body);
       return result2(r.text, r.error);
     }

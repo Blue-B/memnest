@@ -28,28 +28,47 @@ function assert(name, cond, msg = "") {
 	}
 }
 
+// `requests` holds /search bodies and `contextRequests` /context bodies.
 const requests = [];
+const contextRequests = [];
 let score = 0.5;
 let overrides = {};
-globalThis.fetch = async (_url, init) => {
-	requests.push(JSON.parse(init.body));
-	return new Response(
-		JSON.stringify({
+// What answers /context: "old" replies without the on-topic gate's marker, as
+// a core from before the gate does; "gated" replies with it; "none" has no
+// such endpoint; "down" does not answer.
+let core = "old";
+let gatedMemories = [];
+const memory = (extra = {}) => ({
+	id: "memory-123",
+	project: "playbook",
+	document: "relevant durable memory",
+	score,
+	timestamp: "2026-01-01T00:00:00Z",
+	chunk_type: "Manual",
+	...overrides,
+	...extra,
+});
+const json = (body) =>
+	new Response(JSON.stringify(body), {
+		status: 200,
+		headers: { "content-type": "application/json" },
+	});
+globalThis.fetch = async (url, init) => {
+	const body = JSON.parse(init.body);
+	if (String(url).endsWith("/context")) {
+		contextRequests.push(body);
+		if (core === "down") throw new Error("connection refused");
+		if (core === "none") return new Response("not found", { status: 404 });
+		return json({
+			query: body.query,
 			project: "ws_workspace_1234",
-			results: [
-				{
-					id: "memory-123",
-					project: "playbook",
-					document: "relevant durable memory",
-					score,
-					timestamp: "2026-01-01T00:00:00Z",
-					chunk_type: "Manual",
-					...overrides,
-				},
-			],
-		}),
-		{ status: 200, headers: { "content-type": "application/json" } },
-	);
+			memories: core === "gated" ? gatedMemories : [memory()],
+			prompt: "",
+			...(core === "gated" ? { on_topic_only: true } : {}),
+		});
+	}
+	requests.push(body);
+	return json({ project: "ws_workspace_1234", results: [memory()] });
 };
 
 const tmp = mkdtempSync(join(tmpdir(), "memnest-autocontext-"));
@@ -152,6 +171,58 @@ try {
 	const duplicate = await before({ prompt: duplicatePrompt });
 	assert("duplicate: exact repeated prompt searches once", requests.length - count === 1);
 	assert("duplicate: second invocation injects nothing", duplicate === undefined);
+
+	assert("older core: /context is asked once, then only /search", contextRequests.length === 1);
+
+	// A core with the on-topic gate decides what is related; the score is not consulted.
+	async function fresh(tag) {
+		const module = await import(`${pathToFileURL(outfile).href}?${tag}`);
+		const freshHooks = new Map();
+		module.installAutocontext({ registerTool() {}, on: (name, fn) => freshHooks.set(name, fn) });
+		return async (prompt) => {
+			freshHooks.get("session_start")({}, { cwd: "/tmp/workspace" });
+			const [searches, asks] = [requests.length, contextRequests.length];
+			const result = await freshHooks.get("before_agent_start")({ prompt });
+			return {
+				result,
+				searched: requests.length - searches,
+				asked: contextRequests.length - asks,
+				request: contextRequests[asks],
+			};
+		};
+	}
+	core = "gated";
+	const gated = await fresh("gated");
+	gatedMemories = [memory({ score: -0.12 })];
+	const onTopic = await gated("배포 포트가 어떻게 되지? staging 기준으로");
+	assert("gate: asks /context once and never /search", onTopic.asked === 1 && onTopic.searched === 0);
+	assert(
+		"gate: sends the prompt and the workspace, no project",
+		JSON.stringify(onTopic.request) ===
+			JSON.stringify({ query: "배포 포트가 어떻게 되지? staging 기준으로", project: "", cwd: "/tmp/workspace", n_results: 20 }),
+		JSON.stringify(onTopic.request),
+	);
+	assert("gate: a kept memory is injected whatever its score", onTopic.result?.message?.content.includes('id="memory-123"'));
+	assert("gate: the card says which gate chose it", onTopic.result?.message?.content.includes("(on-topic-gate)"));
+	gatedMemories = [];
+	const vague = await gated("그럼 이제 어떻게 해? 다시 해줘 일단");
+	assert("gate: a prompt the core keeps nothing for injects nothing", vague.result === undefined && vague.searched === 0);
+	gatedMemories = [memory({ project: "other" }), memory({ chunk_type: "AutoLog" }), memory({ project: "root" })];
+	const foreign = await gated("recall the current deployment port decision");
+	assert("gate: other projects, transcripts and excluded collections stay out", foreign.result === undefined);
+	core = "down";
+	const down = await gated("what did we decide about the deploy port again");
+	assert("gate: an unreachable core injects nothing and is not searched", down.result === undefined && down.searched === 0);
+	core = "gated";
+	gatedMemories = [memory({ score: 0 })];
+	const back = await gated("what did we decide about the staging deploy port");
+	assert("gate: one failure does not switch to the score path", back.asked === 1 && back.searched === 0 && !!back.result);
+
+	core = "none";
+	score = 0.5;
+	const without = await (await fresh("no-context"))("what did we decide about the deploy port");
+	assert("core without /context: falls back to /search and its score", without.searched === 1 && !!without.result?.message?.content.includes("(semantic-score-gate)"));
+	core = "old";
 
 	assert("substantive: slash command is skipped", !isSubstantive("/memnest status"));
 	assert("substantive: trivial reply is skipped", !isSubstantive("okay"));

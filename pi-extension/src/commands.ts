@@ -75,7 +75,7 @@ export function installCommands(pi: any, { call, url, cards }: Deps): void {
 	// Long text is read in pi's multi-line editor view in the terminal UI, where it scrolls; whatever is
 	// typed there is thrown away (nothing is saved or sent anywhere). Other modes get a notification.
 	const readText = async (ctx: any, title: string, text: string) => {
-		if (ctx.mode === "tui") await ctx.ui.editor(`${oneLine(title, 80)} (read only: Esc closes, edits are discarded)`, text);
+		if (ctx.mode === "tui") await ctx.ui.editor(`${oneLine(title, 80)} (read only: ↑↓ or Ctrl+PgUp/PgDn scroll, Esc closes, edits are discarded)`, text);
 		else say(ctx, text);
 	};
 	const fail = (ctx: any, reply: Reply | string) => say(ctx, typeof reply === "string" ? reply : problem(reply), "error");

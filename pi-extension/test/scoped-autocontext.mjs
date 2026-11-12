@@ -5,12 +5,13 @@ import { fileURLToPath } from "node:url";
 
 process.env.MEMNEST_AUTOCONTEXT_MODE = "aggressive";
 const requests = [];
-globalThis.fetch = async (_url, init) => {
-	requests.push(JSON.parse(init.body));
+globalThis.fetch = async (url, init) => {
+	requests.push({ path: new URL(url).pathname, ...JSON.parse(init.body) });
 	return new Response(
 		JSON.stringify({
 			project: "ws_workspace_1234",
-			results: [
+			on_topic_only: true,
+			memories: [
 				{
 					id: "same",
 					project: "ws_workspace_1234",
@@ -71,9 +72,10 @@ assert.equal(
 );
 hooks.get("session_start")({}, { cwd: "/tmp/workspace" });
 const injected = await before({ prompt: `${prompt} now` });
+assert.equal(requests.length, 1);
+assert.equal(requests[0].path, "/context");
 assert.equal(requests[0].project, "");
 assert.equal(requests[0].cwd, "/tmp/workspace");
-assert.equal(requests[0].durable_only, true);
 const text = injected?.message?.content ?? "";
 assert.match(text, /workspace memory/);
 assert.match(text, /shared rule/);

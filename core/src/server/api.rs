@@ -270,6 +270,9 @@ pub struct ContextResponse {
     pub query: String,
     pub project: String,
     pub memories: Vec<SearchResultItem>,
+    /// Always true: `memories` passed [`on_topic`]. A client reads it to tell
+    /// this reply from that of a core before the gate, which did not filter.
+    pub on_topic_only: bool,
     /// Same line as `/search` `scope_hint`; also rendered inside `prompt`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scope_hint: Option<String>,
@@ -1111,39 +1114,11 @@ pub(crate) async fn persist_chunk_async(
         .await
         .map_err(|e| anyhow::anyhow!("embed join: {e}"))??;
 
-    // Transcript chunks are event records: repeated words in distinct turns
-    // must remain distinct. Their deterministic id above provides retry-only
-    // deduplication, so content exact/semantic dedup does not apply.
-    if content_dedup_safe(&metadata) {
-        let index = sys.vector_index.read().await;
-        let neighbors = index.search(&embedding, 5)?;
-        drop(index);
-        for (existing_id, distance) in &neighbors {
-            if *distance >= 0.05 {
-                break; // neighbours are distance-ascending
-            }
-            // Verify same project before suppressing — embeddings are
-            // global but chunks are project-scoped, so a cross-project
-            // twin at rank 1 must not shadow a same-project dup at rank 2+.
-            let db = sys.db.read().await;
-            if let Ok(Some(existing)) = db.get_chunk(existing_id)
-                && existing.project == project
-                && content_dedup_safe(&existing.metadata)
-            {
-                drop(db);
-                let db = sys.db.write().await;
-                db.touch_chunk(existing_id)?;
-                db.insert_memory_alias(&id, existing_id)?;
-                tracing::debug!(
-                    "semantic dedup aliased {} to {} (distance={:.4})",
-                    id,
-                    existing_id,
-                    distance
-                );
-                return Ok(Some(existing_id.clone()));
-            }
-        }
-    }
+    // Only an exact repeat of the text is treated as a duplicate (above). A
+    // near-identical text is stored: it is how a corrected value arrives ("the
+    // port is 8443" after "the port is 8320"), and dropping it kept the old
+    // value as the only record. The save reply's same-subject list names the
+    // earlier memory so the caller can mark it as replaced.
 
     let transcript = is_transcript_chunk(&metadata);
     let chunk = MemoryChunk {
@@ -1650,6 +1625,7 @@ pub(crate) async fn build_context_scope(
         query,
         project,
         memories,
+        on_topic_only: true,
         scope_hint,
         prompt,
     }
@@ -2231,6 +2207,11 @@ fn diversify_by_project(items: Vec<SearchResultItem>, limit: usize) -> Vec<Searc
 /// most-relevant candidate, so top-1 relevance is preserved; subsequent picks
 /// trade a little relevance for diversity. `lambda` is expected in (0, 1);
 /// callers gate on that range. Candidates must be pre-sorted by score desc.
+/// Cosine similarity from which two memories count as the same statement.
+/// Saving used to drop the second one at this distance (0.05), which also
+/// dropped corrected values; both are stored now and one is shown.
+const TWIN_SIMILARITY: f32 = 0.95;
+
 fn mmr_select(
     mut candidates: Vec<(SearchResultItem, Vec<f32>)>,
     lambda: f32,
@@ -2273,7 +2254,13 @@ fn mmr_select(
                     .map(|(_, sel_emb)| crate::similarity::cosine(emb, sel_emb))
                     .fold(0.0_f32, f32::max)
             };
-            let mmr = lambda * norm(cand.score) - (1.0 - lambda) * max_sim;
+            let mut mmr = lambda * norm(cand.score) - (1.0 - lambda) * max_sim;
+            // A twin of a result already chosen (the same statement saved again
+            // with other punctuation) waits until nothing else is left: mmr
+            // stays within -1..1, so 2 puts every twin behind every other.
+            if !emb.is_empty() && max_sim >= TWIN_SIMILARITY {
+                mmr -= 2.0;
+            }
             if mmr > best_mmr {
                 best_mmr = mmr;
                 best_idx = i;
@@ -2718,6 +2705,8 @@ mod visibility_tests {
             scoped.contains(r#""memories":[]"#),
             "expected an empty memory list: {scoped}"
         );
+        // Clients tell a gated core from an older one by this marker.
+        assert!(scoped.contains(r#""on_topic_only":true"#), "{scoped}");
     }
 }
 
@@ -3932,12 +3921,13 @@ pub(crate) mod test_support {
                 (item("d", 0.80), other.clone()),
             ]
         };
-        // Pure relevance (lambda ~1): the three near-duplicates win.
-        let rel: Vec<String> = mmr_select(make(), 0.99, 3)
+        // Twins of a chosen result wait even when relevance weighs almost
+        // everything (lambda ~1), and still fill the list when nothing else is left.
+        let rel: Vec<String> = mmr_select(make(), 0.99, 4)
             .into_iter()
             .map(|i| i.id)
             .collect();
-        assert_eq!(rel, vec!["a", "b", "c"]);
+        assert_eq!(rel, vec!["a", "d", "b", "c"]);
         // Balanced MMR breaks the dup run and surfaces the distinct doc.
         let mmr: Vec<String> = mmr_select(make(), 0.5, 3)
             .into_iter()
