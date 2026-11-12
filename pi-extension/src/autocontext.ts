@@ -1,10 +1,11 @@
 /**
  * pi-memnest autocontext
  *
- * Opt-in, push-based memory recall for substantive prompts. Every eligible
- * prompt is searched semantically, regardless of language, and only results
- * above the relevance threshold are injected. No keyword list decides which languages
- * or phrasings get memory.
+ * Opt-in, push-based memory recall for substantive prompts. The core decides
+ * which saved memories share the prompt's topic (POST /context, the same gate
+ * `memnest hook` uses), regardless of language; a prompt with no topic gets
+ * nothing. A core without that gate is asked through /search as before, and
+ * only results above the score threshold are injected.
  */
 
 import { bearerAllowed } from "./auth.js";
@@ -133,62 +134,91 @@ function isMemResult(value: unknown): value is MemResult {
 	);
 }
 
-async function searchMemnest(
-	query: string,
-	cwd: string | undefined,
-): Promise<MemResult[]> {
-	if (!cwd) return [];
+/** The parsed reply, `null` when the core has no such endpoint, `undefined` on any other failure. */
+async function post(path: string, body: unknown): Promise<unknown> {
 	// Neither the token nor the prompt it protects leaves in the clear.
-	if (MEMNEST_TOKEN && !bearerAllowed(MEMNEST_URL)) return [];
+	if (MEMNEST_TOKEN && !bearerAllowed(MEMNEST_URL)) return undefined;
 	const ctrl = new AbortController();
 	const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
 	try {
-		const res = await fetch(`${MEMNEST_URL}/search`, {
+		const res = await fetch(`${MEMNEST_URL}${path}`, {
 			method: "POST",
 			headers: {
 				"content-type": "application/json",
 				...(MEMNEST_TOKEN ? { authorization: `Bearer ${MEMNEST_TOKEN}` } : {}),
 			},
-			// exclude_reserved: server-side drop of root/default/global/_superseded
-			// (memnest >= 0.5.1); EXCLUDE_PROJECTS below still covers custom lists.
-			body: JSON.stringify({
-				query,
-				project: "",
-				cwd,
-				adapter: "pi-autocontext",
-				n_results: N_RESULTS,
-				durable_only: true,
-			}),
+			body: JSON.stringify(body),
 			signal: ctrl.signal,
 		});
-		if (!res.ok) return [];
-		const json = (await res.json()) as { project?: unknown; results?: unknown };
-		if (typeof json.project !== "string" || !Array.isArray(json.results))
-			return [];
-		return json.results
-			.filter(isMemResult)
-			.filter(
-				(result) =>
-					result.chunk_type === "Manual" ||
-					result.chunk_type === "Consolidated",
-			)
-			.filter(
-				(result) =>
-					result.project === json.project ||
-					result.project === "playbook",
-			);
+		if (res.status === 404) return null;
+		return res.ok ? await res.json() : undefined;
 	} catch {
-		return [];
+		return undefined;
 	} finally {
 		clearTimeout(timer);
 	}
 }
 
-function formatBlock(results: MemResult[], reason: string): string | null {
-	const threshold = MIN_SCORE;
+/** Saved memories of the workspace the reply was scoped to, or of playbook. */
+function scoped(project: unknown, results: unknown): MemResult[] {
+	if (typeof project !== "string" || !Array.isArray(results)) return [];
+	return results
+		.filter(isMemResult)
+		.filter(
+			(result) =>
+				result.chunk_type === "Manual" || result.chunk_type === "Consolidated",
+		)
+		.filter(
+			(result) => result.project === project || result.project === "playbook",
+		);
+}
+
+// Cleared by the first /context reply that does not carry the gate's marker:
+// that core's /context does not filter by topic, so it is asked through /search.
+let coreHasGate = true;
+
+/** `gated` results passed the core's on-topic gate; the others still need the score threshold. */
+async function recall(
+	query: string,
+	cwd: string | undefined,
+): Promise<{ results: MemResult[]; gated: boolean }> {
+	if (!cwd) return { results: [], gated: false };
+	if (coreHasGate) {
+		const reply = await post("/context", {
+			query,
+			project: "",
+			cwd,
+			n_results: N_RESULTS,
+		});
+		if (reply === undefined) return { results: [], gated: true };
+		const pack = (reply ?? {}) as {
+			on_topic_only?: unknown;
+			project?: unknown;
+			memories?: unknown;
+		};
+		if (pack.on_topic_only === true)
+			return { results: scoped(pack.project, pack.memories), gated: true };
+		coreHasGate = false;
+	}
+	// exclude_reserved: server-side drop of root/default/global/_superseded
+	// (memnest >= 0.5.1); EXCLUDE_PROJECTS below still covers custom lists.
+	const reply = ((await post("/search", {
+		query,
+		project: "",
+		cwd,
+		adapter: "pi-autocontext",
+		n_results: N_RESULTS,
+		durable_only: true,
+	})) ?? {}) as { project?: unknown; results?: unknown };
+	return { results: scoped(reply.project, reply.results), gated: false };
+}
+
+function formatBlock(results: MemResult[], gated: boolean): string | null {
+	const reason = gated ? "on-topic-gate" : "semantic-score-gate";
 	const kept = results
 		.filter((r) => !EXCLUDE_PROJECTS.has(r.project))
-		.filter((r) => r.score >= threshold)
+		// The gate judged the topic; the score also carries age, type and importance.
+		.filter((r) => gated || r.score >= MIN_SCORE)
 		.slice(0, TOP_INJECT);
 	if (kept.length === 0) return null;
 
@@ -244,8 +274,8 @@ export function installAutocontext(pi: ExtensionAPI): boolean {
 
 		if (injections >= MAX_INJECTIONS) return;
 
-		const results = await searchMemnest(prompt, currentCwd);
-		const block = formatBlock(results, "semantic-score-gate");
+		const { results, gated } = await recall(prompt, currentCwd);
+		const block = formatBlock(results, gated);
 		if (!block) return;
 
 		injections++;
