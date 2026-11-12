@@ -5462,11 +5462,16 @@ function register(pi) {
     pi,
     "memory_update",
     "Memory: update",
-    "Update one memory in place and refresh its indexes. Approach document changes require memory_remember with supersedes. Use this to fix wording or metadata on a memory that is still correct. When the underlying fact actually changed, prefer memory_remember with supersedes so the earlier version stays auditable.",
+    "Update one memory in place and refresh its indexes. Approach document changes require memory_remember with supersedes. Use this to fix wording or metadata on a memory that is still correct. When the underlying fact actually changed, prefer memory_remember with supersedes so the earlier version stays auditable. Pass supersedes=<id> when this memory is already saved and replaces that older one: the older one leaves search and stays readable by id.",
     typebox_exports.Object({
       id: typebox_exports.String(),
       text: typebox_exports.Optional(typebox_exports.String()),
       project: typebox_exports.Optional(typebox_exports.String()),
+      supersedes: typebox_exports.Optional(
+        typebox_exports.String({
+          description: "Id of an older memory in the same project that this one replaces."
+        })
+      ),
       importance: typebox_exports.Optional(
         typebox_exports.Union([
           typebox_exports.Literal("log"),
@@ -5488,7 +5493,12 @@ function register(pi) {
       )
     }),
     async (_id, p) => {
-      const body = p.sensitive ? { ...p, metadata: { sensitive: true } } : p;
+      const { supersedes, ...rest } = p;
+      const metadata = {
+        ...p.sensitive ? { sensitive: true } : {},
+        ...supersedes ? { supersedes } : {}
+      };
+      const body = Object.keys(metadata).length ? { ...rest, metadata } : rest;
       const r = await call("/update", body);
       return result2(r.text, r.error);
     }

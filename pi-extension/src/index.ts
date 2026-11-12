@@ -393,11 +393,17 @@ export default function register(pi: ExtensionAPI): void {
 		pi,
 		"memory_update",
 		"Memory: update",
-		"Update one memory in place and refresh its indexes. Approach document changes require memory_remember with supersedes. Use this to fix wording or metadata on a memory that is still correct. When the underlying fact actually changed, prefer memory_remember with supersedes so the earlier version stays auditable.",
+		"Update one memory in place and refresh its indexes. Approach document changes require memory_remember with supersedes. Use this to fix wording or metadata on a memory that is still correct. When the underlying fact actually changed, prefer memory_remember with supersedes so the earlier version stays auditable. Pass supersedes=<id> when this memory is already saved and replaces that older one: the older one leaves search and stays readable by id.",
 		Type.Object({
 			id: Type.String(),
 			text: Type.Optional(Type.String()),
 			project: Type.Optional(Type.String()),
+			supersedes: Type.Optional(
+				Type.String({
+					description:
+						"Id of an older memory in the same project that this one replaces.",
+				}),
+			),
 			importance: Type.Optional(
 				Type.Union([
 					Type.Literal("log"),
@@ -419,7 +425,13 @@ export default function register(pi: ExtensionAPI): void {
 			),
 		}),
 		async (_id: string, p: any) => {
-			const body = p.sensitive ? { ...p, metadata: { sensitive: true } } : p;
+			// The core's update request carries both in its metadata patch.
+			const { supersedes, ...rest } = p;
+			const metadata = {
+				...(p.sensitive ? { sensitive: true } : {}),
+				...(supersedes ? { supersedes } : {}),
+			};
+			const body = Object.keys(metadata).length ? { ...rest, metadata } : rest;
 			const r = await call("/update", body);
 			return result(r.text, r.error);
 		},
