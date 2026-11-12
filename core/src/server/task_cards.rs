@@ -95,7 +95,7 @@ fn line(card: &Card) -> String {
     format!("- {} (updated {updated})", card.title)
 }
 
-fn one_line(value: &str) -> String {
+pub(super) fn one_line(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
@@ -116,14 +116,14 @@ fn title_of(value: &str) -> String {
 
 /// Hosts wrap injected context in a reminder tag. Card text shown to the model
 /// must not close or reopen that wrapper, so a stored tag loses its bracket.
-fn defuse(text: &str) -> String {
+pub(super) fn defuse(text: &str) -> String {
     static TAG: OnceLock<Regex> = OnceLock::new();
     TAG.get_or_init(|| Regex::new(r"(?i)<(/?\s*system[-_ ]?reminder)").expect("static regex"))
         .replace_all(text, "‹$1")
         .into_owned()
 }
 
-fn clip(value: &str, max: usize) -> String {
+pub(super) fn clip(value: &str, max: usize) -> String {
     value.chars().take(max).collect()
 }
 
