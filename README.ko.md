@@ -30,7 +30,7 @@ irm https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.p
 
 서버와 대화 수집기를 시작하고, 찾은 Claude Code, Codex, Cursor 설정에 Memnest를 연결합니다. 기존 설정은 먼저 백업하고 복구 명령을 출력합니다. Codex는 새 훅을 `/hooks`에서 한 번 신뢰해야 실행합니다.
 
-Apple Silicon macOS, systemd가 있는 Linux(x86_64는 glibc 2.35 이상, Arm64는 glibc 2.39 이상), 또는 64비트 x86 Windows 10/11과 Python 3이 필요합니다. Windows에서 Python은 클라이언트 연결에만 쓰이고, Windows 압축 파일은 v0.5.1 다음 릴리스부터 제공됩니다([자세히](docs/operations.ko.md#windows)). 처음 저장하거나 검색할 때 약 1.1GB 임베딩 모델을 내려받습니다.
+Apple Silicon macOS, systemd가 있는 Linux(x86_64는 glibc 2.35 이상, Arm64는 glibc 2.39 이상), 또는 64비트 x86 Windows 10/11과 Python 3이 필요합니다. Windows에서 Python은 클라이언트 연결에만 쓰입니다([자세히](docs/operations.ko.md#windows)). 처음 저장하거나 검색할 때 약 1.1GB 임베딩 모델을 내려받습니다.
 
 - pi: `pi install npm:pi-memnest@0.5.0`을 실행하고 `/memnest`로 확인합니다.
 - 그 밖의 MCP 도구: `http://127.0.0.1:3111/mcp`에 연결합니다([연결 예시](adapters/README.ko.md)).
@@ -109,7 +109,7 @@ pi에서 직접 쳐서 memnest를 들여다보는 명령입니다. 모델을 거
 | `/memnest-recent` | 일부러 저장한 기억 가운데 최근 20개(대화 기록 제외) |
 | `/memnest-review` | 저장된 규칙과 선호를 확인한 지 오래된 것부터 하나씩 보여 줍니다. 유지, 삭제(휴지통으로 가고 30일 안에 복구 가능), 건너뛰기, 중단 가운데 고릅니다 |
 
-`/memnest-review`가 있는 이유는 옛 규칙이 지금도 맞는지 memnest는 알 수 없고 사용자는 알기 때문입니다. `/memnest-...` 명령 네 개와 `hint` 줄, 주제에 맞는 것만 붙이는 자동 회상은 `develop` 브랜치에 있고, 코어 0.5.1과 pi-memnest 0.5.0 다음 릴리스에 들어갑니다.
+`/memnest-review`가 있는 이유는 옛 규칙이 지금도 맞는지 memnest는 알 수 없고 사용자는 알기 때문입니다.
 
 ## 그 밖의 기능
 

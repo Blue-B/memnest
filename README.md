@@ -30,7 +30,7 @@ irm https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.p
 
 This starts the server and the conversation watcher, and connects the Claude Code, Codex, and Cursor setups it finds. Existing configuration is backed up first, and the restore command is printed. Codex runs the new hooks after you trust them once with `/hooks`.
 
-Needs macOS on Apple Silicon, Linux with systemd (x86_64 with glibc 2.35+, Arm64 with glibc 2.39+), or 64-bit x86 Windows 10/11, and Python 3. On Windows, Python is only used to connect clients, and the Windows archive starts with the release after v0.5.1 ([details](docs/operations.md#windows)). The first write or search downloads an embedding model of about 1.1 GB.
+Needs macOS on Apple Silicon, Linux with systemd (x86_64 with glibc 2.35+, Arm64 with glibc 2.39+), or 64-bit x86 Windows 10/11, and Python 3. On Windows, Python is only used to connect clients ([details](docs/operations.md#windows)). The first write or search downloads an embedding model of about 1.1 GB.
 
 - pi: `pi install npm:pi-memnest@0.5.0`, then check with `/memnest`.
 - Other MCP clients: connect to `http://127.0.0.1:3111/mcp` ([examples](adapters/README.md)).
@@ -109,7 +109,7 @@ Type these in pi to look at memnest yourself. They run without the model and add
 | `/memnest-recent` | The 20 newest memories that were saved on purpose (not conversation turns) |
 | `/memnest-review` | Goes through saved rules and preferences, longest unconfirmed first. For each: keep, delete (to the trash, restorable for 30 days), skip, or stop |
 
-`/memnest-review` is there because memnest cannot tell whether an old rule still holds; you can. The four `/memnest-...` commands, the `hint` line and topic-filtered recall are on the `develop` branch and come with the release after core 0.5.1 and pi-memnest 0.5.0.
+`/memnest-review` is there because memnest cannot tell whether an old rule still holds; you can.
 
 ## Also included
 
