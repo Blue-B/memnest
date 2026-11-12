@@ -1368,8 +1368,7 @@ mod tests {
     const BACKUPS: &str =
         "Database backups run nightly at 03:00 and are kept for 14 days on the NAS.";
 
-    /// A save as the model makes it for a decision. Not the default metadata:
-    /// that one is deduplicated against a near-identical text instead of stored.
+    /// A save as the model makes it for a decision.
     async fn decide(
         system: &Arc<RwLock<MemorySystem>>,
         project: &str,
@@ -1438,6 +1437,29 @@ mod tests {
                 .same_subject
                 .is_empty()
         );
+    }
+
+    /// A corrected value arrives as a near-identical text. It is stored, not
+    /// folded into the old memory, and the reply names the old one.
+    #[tokio::test]
+    async fn a_corrected_value_saved_with_default_metadata_is_stored() {
+        let (_tmp, system) = api::test_support::build_system().await;
+        let old = save(&system, NOTES, "The staging deploy port is 8320.").await;
+        let new = remember(
+            system.clone(),
+            RememberInput {
+                text: "The staging deploy port is 8443.".to_string(),
+                project: NOTES.to_string(),
+                cwd: None,
+                metadata: None,
+                sensitive: false,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(new.status, "succeeded");
+        assert_ne!(new.id, old);
+        assert!(new.same_subject.iter().any(|m| m.id == old), "{new:?}");
     }
 
     #[tokio::test]

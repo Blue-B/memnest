@@ -1114,39 +1114,11 @@ pub(crate) async fn persist_chunk_async(
         .await
         .map_err(|e| anyhow::anyhow!("embed join: {e}"))??;
 
-    // Transcript chunks are event records: repeated words in distinct turns
-    // must remain distinct. Their deterministic id above provides retry-only
-    // deduplication, so content exact/semantic dedup does not apply.
-    if content_dedup_safe(&metadata) {
-        let index = sys.vector_index.read().await;
-        let neighbors = index.search(&embedding, 5)?;
-        drop(index);
-        for (existing_id, distance) in &neighbors {
-            if *distance >= 0.05 {
-                break; // neighbours are distance-ascending
-            }
-            // Verify same project before suppressing — embeddings are
-            // global but chunks are project-scoped, so a cross-project
-            // twin at rank 1 must not shadow a same-project dup at rank 2+.
-            let db = sys.db.read().await;
-            if let Ok(Some(existing)) = db.get_chunk(existing_id)
-                && existing.project == project
-                && content_dedup_safe(&existing.metadata)
-            {
-                drop(db);
-                let db = sys.db.write().await;
-                db.touch_chunk(existing_id)?;
-                db.insert_memory_alias(&id, existing_id)?;
-                tracing::debug!(
-                    "semantic dedup aliased {} to {} (distance={:.4})",
-                    id,
-                    existing_id,
-                    distance
-                );
-                return Ok(Some(existing_id.clone()));
-            }
-        }
-    }
+    // Only an exact repeat of the text is treated as a duplicate (above). A
+    // near-identical text is stored: it is how a corrected value arrives ("the
+    // port is 8443" after "the port is 8320"), and dropping it kept the old
+    // value as the only record. The save reply's same-subject list names the
+    // earlier memory so the caller can mark it as replaced.
 
     let transcript = is_transcript_chunk(&metadata);
     let chunk = MemoryChunk {

@@ -47,6 +47,7 @@ All notable changes to the `memnest` Rust engine are recorded here.
 
 ### Fixed
 
+- A corrected memory is no longer dropped as a duplicate. A save whose text was nearly the same as an existing plain memory in the project (for example the same sentence with a changed port number) was answered with `deduplicated` and the id of the old memory, and the new text was not stored. Only an exact repeat of the text is a duplicate now. A near-identical text is stored, and the reply's `same_subject` list names the earlier memory so it can be marked as replaced.
 - Search: a query with an apostrophe-s (`Caroline's`), a trailing period, a leading `-` or `+`, an open bracket or a trailing `AND`/`OR` was rejected by the keyword query parser, the error was dropped, and the search ran on vectors only and returned 3 results. Such a query is now searched again as plain words. In the retrieval benchmark this affected 330 of 1,986 LoCoMo questions; with the fix, LoCoMo recall in the first 10 results rose from 69.1% to 70.7%, while on the 17 affected LongMemEval sample questions the right session was ranked first for 11 instead of 16 (still within the first 3 for 16). Both are in [docs/benchmarks.md](../docs/benchmarks.md).
 - Windows: `memnest evidence` used a different workspace id than hooks and MCP for the same directory, because the canonical path starts with `\\?\`.
 - Windows: the default transcript folders of `memnest watch` are written with backslashes, so a later `--path` to the same folder identifies the same files.

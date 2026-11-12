@@ -867,6 +867,8 @@ impl Database {
         Ok(result)
     }
 
+    // Aliases written by the former near-duplicate folding still resolve; nothing writes new ones.
+    #[cfg(test)]
     pub fn insert_memory_alias(&self, alias_id: &str, canonical_id: &str) -> Result<()> {
         let conn = self.pool.get()?;
         conn.execute(
