@@ -237,7 +237,7 @@ assert.match(printed.join(""), /No results for "nothing" in this folder\.\nTry p
 	c.ui.editor = async (title, text) => (editors.push({ title, text }), undefined);
 	await run("memnest-cards", "", c);
 	assert.equal(editors.length, 1);
-	assert.match(editors[0].title, /^deploy \(read only: Esc closes, edits are discarded\)$/);
+	assert.match(editors[0].title, /^deploy \(read only: ↑↓ or Ctrl\+PgUp\/PgDn scroll, Esc closes, edits are discarded\)$/);
 	assert.match(editors[0].text, /Goal: ship[\s\S]*staging only$/);
 	assert.deepEqual(c.shown, [], "nothing is shown as a notification");
 }

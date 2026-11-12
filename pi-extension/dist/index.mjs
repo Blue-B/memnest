@@ -4906,7 +4906,7 @@ function installCommands(pi, { call: call2, url, cards }) {
     return oneLine(reply.text, 200);
   };
   const readText = async (ctx, title, text) => {
-    if (ctx.mode === "tui") await ctx.ui.editor(`${oneLine(title, 80)} (read only: Esc closes, edits are discarded)`, text);
+    if (ctx.mode === "tui") await ctx.ui.editor(`${oneLine(title, 80)} (read only: \u2191\u2193 or Ctrl+PgUp/PgDn scroll, Esc closes, edits are discarded)`, text);
     else say(ctx, text);
   };
   const fail = (ctx, reply) => say(ctx, typeof reply === "string" ? reply : problem(reply), "error");
