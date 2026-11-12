@@ -2207,6 +2207,11 @@ fn diversify_by_project(items: Vec<SearchResultItem>, limit: usize) -> Vec<Searc
 /// most-relevant candidate, so top-1 relevance is preserved; subsequent picks
 /// trade a little relevance for diversity. `lambda` is expected in (0, 1);
 /// callers gate on that range. Candidates must be pre-sorted by score desc.
+/// Cosine similarity from which two memories count as the same statement.
+/// Saving used to drop the second one at this distance (0.05), which also
+/// dropped corrected values; both are stored now and one is shown.
+const TWIN_SIMILARITY: f32 = 0.95;
+
 fn mmr_select(
     mut candidates: Vec<(SearchResultItem, Vec<f32>)>,
     lambda: f32,
@@ -2249,7 +2254,13 @@ fn mmr_select(
                     .map(|(_, sel_emb)| crate::similarity::cosine(emb, sel_emb))
                     .fold(0.0_f32, f32::max)
             };
-            let mmr = lambda * norm(cand.score) - (1.0 - lambda) * max_sim;
+            let mut mmr = lambda * norm(cand.score) - (1.0 - lambda) * max_sim;
+            // A twin of a result already chosen (the same statement saved again
+            // with other punctuation) waits until nothing else is left: mmr
+            // stays within -1..1, so 2 puts every twin behind every other.
+            if !emb.is_empty() && max_sim >= TWIN_SIMILARITY {
+                mmr -= 2.0;
+            }
             if mmr > best_mmr {
                 best_mmr = mmr;
                 best_idx = i;
@@ -3910,12 +3921,13 @@ pub(crate) mod test_support {
                 (item("d", 0.80), other.clone()),
             ]
         };
-        // Pure relevance (lambda ~1): the three near-duplicates win.
-        let rel: Vec<String> = mmr_select(make(), 0.99, 3)
+        // Twins of a chosen result wait even when relevance weighs almost
+        // everything (lambda ~1), and still fill the list when nothing else is left.
+        let rel: Vec<String> = mmr_select(make(), 0.99, 4)
             .into_iter()
             .map(|i| i.id)
             .collect();
-        assert_eq!(rel, vec!["a", "b", "c"]);
+        assert_eq!(rel, vec!["a", "d", "b", "c"]);
         // Balanced MMR breaks the dup run and surfaces the distinct doc.
         let mmr: Vec<String> = mmr_select(make(), 0.5, 3)
             .into_iter()
