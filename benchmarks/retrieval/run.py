@@ -70,9 +70,13 @@ def ingest_group(client, group):
                 "metadata": metadata_for(turn, turn["session"]),
             },
         )
-        if status != 201 or body.get("status") != "succeeded":
+        # "deduplicated": the turn is already stored, which happens when an
+        # interrupted ingest of this group into a kept data dir is resumed.
+        if status != 201 or body.get("status") not in ("succeeded", "deduplicated"):
             raise RuntimeError(f"/add failed for {turn['key']}: {status} {body}")
         id_to_key[body["id"]] = turn["key"]
+    if len(id_to_key) != len(group["turns"]):
+        raise RuntimeError(f"{group['project']}: two turns were stored as one memory")
     return id_to_key, time.perf_counter() - started
 
 
