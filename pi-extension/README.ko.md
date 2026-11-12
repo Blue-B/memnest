@@ -69,7 +69,7 @@ pi 터미널 화면에서 모델 없이 실행되고, 보여 주는 내용은 �
 
 ## 자동 회상
 
-기본으로 꺼져 있습니다. 요청마다 관련 기억을 넣으려면 pi를 시작하기 전에 `MEMNEST_AUTOCONTEXT_MODE=balanced`를 설정합니다. 넣는 내용에는 기억 ID가 붙어서 에이전트가 `memory_get`으로 원문을 확인할 수 있고, 가져온 글은 지시가 아니라 참고 자료로 다룹니다.
+기본으로 꺼져 있습니다. 요청마다 관련 기억을 넣으려면 pi를 시작하기 전에 `MEMNEST_AUTOCONTEXT_MODE=balanced`를 설정합니다. 어떤 저장 기억이 요청과 주제가 같은지는 코어가 판단하므로, "응, 계속해" 같은 요청에는 아무것도 넣지 않습니다. 넣는 내용에는 기억 ID가 붙어서 에이전트가 `memory_get`으로 원문을 확인할 수 있고, 가져온 글은 지시가 아니라 참고 자료로 다룹니다.
 
 | 변수 | 기본값 | 용도 |
 | --- | --- | --- |
@@ -77,9 +77,9 @@ pi 터미널 화면에서 모델 없이 실행되고, 보여 주는 내용은 �
 | `MEMNEST_AUTOCONTEXT_DISABLE` | 없음 | `1`이면 모드와 상관없이 끕니다. |
 | `MEMNEST_AUTOCONTEXT_TOP` | `2` | 한 번에 넣는 결과 수 |
 | `MEMNEST_AUTOCONTEXT_MAX_INJECTIONS` | `4` | 세션당 넣는 횟수 |
-| `MEMNEST_AUTOCONTEXT_MIN_SCORE` | `0.25` | 넣을 최소 점수 |
+| `MEMNEST_AUTOCONTEXT_MIN_SCORE` | `0.25` | 넣을 최소 점수. `/context`에 주제 필터가 없는 코어에서만 씁니다 |
 | `MEMNEST_AUTOCONTEXT_EXCLUDE` | `_superseded,default,root,global` | 회상에서 빼는 컬렉션 |
-| `MEMNEST_AUTOCONTEXT_N` | `20` | 순위를 매기기 전에 가져올 후보 수 |
+| `MEMNEST_AUTOCONTEXT_N` | `20` | 요청마다 받아 올 기억의 최대 개수(코어는 주제가 맞는 것만 최대 20개 돌려줍니다) |
 | `MEMNEST_AUTOCONTEXT_MIN_LEN` | `16` | 이보다 짧은 요청은 건너뜀 |
 | `MEMNEST_AUTOCONTEXT_DOC_CHARS` | `240` | 결과당 남길 글자 수 |
 | `MEMNEST_AUTOCONTEXT_TIMEOUT_MS` | `1500` | 이 시간이 지나면 기억 없이 진행 |
