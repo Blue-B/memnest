@@ -25,6 +25,10 @@ pub struct Config {
     /// is about the question" (the pi extension injects at 0.25, a fresh manual
     /// knowledge memory starts at 0.20), so rank alone has to stay below it.
     pub no_keyword_score_cap: f32,
+    /// Share of the best fused score of a conversation turn's previous or next
+    /// turn (same captured transcript session) that is added to the turn's own
+    /// fused score. Saved memories have no such neighbours and get nothing.
+    pub transcript_neighbour_share: f32,
     pub mmr_lambda: f32,
     pub enable_lifecycle: bool,
 }
@@ -60,6 +64,9 @@ impl Default for Config {
             rrf_text_weight: 0.5,
             fusion_max_score: 0.10,
             no_keyword_score_cap: 0.049,
+            // Adds at most 0.15 x fusion_max_score = 0.015 to a final score, and the
+            // no-keyword cap still applies afterwards (ANALYSIS.md section 9.4).
+            transcript_neighbour_share: 0.15,
             mmr_lambda: 0.5,
             enable_lifecycle: true,
         }

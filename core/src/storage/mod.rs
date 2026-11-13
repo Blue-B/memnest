@@ -867,6 +867,67 @@ impl Database {
         Ok(result)
     }
 
+    /// The transcript sessions the given memories were captured in (saved
+    /// memories have none). Reads metadata fields only, never documents or
+    /// embeddings.
+    pub fn transcript_sessions_of(&self, ids: &[String]) -> Result<Vec<TranscriptSession>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.pool.get()?;
+        let placeholders = std::iter::repeat_n("?", ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT project, json_extract(metadata, '$.session_id'),
+                json_extract(metadata, '$.source'), json_extract(metadata, '$.cwd')
+             FROM chunks WHERE id IN ({placeholders})"
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let mut rows = stmt.query(params_from_iter(ids.iter()))?;
+        let mut sessions = Vec::new();
+        while let Some(row) = rows.next()? {
+            let project: String = row.get(0)?;
+            let session_id: Option<String> = row.get(1)?;
+            let source: Option<String> = row.get(2)?;
+            let cwd: Option<String> = row.get(3)?;
+            if let Some(session) = TranscriptSession::new(
+                &project,
+                session_id.as_deref().unwrap_or(""),
+                source.as_deref(),
+                cwd.as_deref(),
+            ) {
+                sessions.push(session);
+            }
+        }
+        Ok(sessions)
+    }
+
+    /// Ids of one transcript session's turns, oldest first (the order
+    /// `transcript_neighbors` walks). Ids only.
+    pub fn transcript_session_turn_ids(&self, session: &TranscriptSession) -> Result<Vec<String>> {
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare(
+            "SELECT id FROM chunks WHERE project = ?1
+            AND json_extract(metadata, '$.session_id') = ?2
+            AND json_extract(metadata, '$.source') = ?3
+            AND json_extract(metadata, '$.cwd') IS ?4
+            ORDER BY created_at ASC, id ASC",
+        )?;
+        let ids = stmt
+            .query_map(
+                params![
+                    session.project,
+                    session.session_id,
+                    session.source,
+                    session.cwd
+                ],
+                |row| row.get::<_, String>(0),
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(ids)
+    }
+
     // Aliases written by the former near-duplicate folding still resolve; nothing writes new ones.
     #[cfg(test)]
     pub fn insert_memory_alias(&self, alias_id: &str, canonical_id: &str) -> Result<()> {

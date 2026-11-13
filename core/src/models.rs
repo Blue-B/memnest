@@ -35,6 +35,47 @@ pub struct MemoryChunk {
     pub updated_at: DateTime<Utc>,
 }
 
+/// One captured transcript session. Turns are neighbours only inside one
+/// (the same rule as `Database::transcript_neighbors`): same project, session
+/// id, `*.transcript` source and working directory.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TranscriptSession {
+    pub project: String,
+    pub session_id: String,
+    pub source: String,
+    pub cwd: Option<String>,
+}
+
+impl TranscriptSession {
+    /// None for a saved memory and for anything that is not a captured turn.
+    pub fn new(
+        project: &str,
+        session_id: &str,
+        source: Option<&str>,
+        cwd: Option<&str>,
+    ) -> Option<Self> {
+        let source = source.filter(|source| source.ends_with(".transcript"))?;
+        if session_id.trim().is_empty() || is_internal_project(project) {
+            return None;
+        }
+        Some(Self {
+            project: project.to_string(),
+            session_id: session_id.to_string(),
+            source: source.to_string(),
+            cwd: cwd.map(str::to_string),
+        })
+    }
+
+    pub fn of(chunk: &MemoryChunk) -> Option<Self> {
+        Self::new(
+            &chunk.project,
+            &chunk.metadata.session_id,
+            chunk.metadata.source.as_deref(),
+            chunk.metadata.cwd.as_deref(),
+        )
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Metadata {
     #[serde(default)]

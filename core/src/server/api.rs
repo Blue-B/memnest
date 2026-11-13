@@ -590,6 +590,14 @@ pub(crate) async fn hybrid_search_embedded(
         sys.config.rrf_text_weight,
     )
     .unwrap_or_default();
+    // Saved-memory-only searches drop every transcript turn below anyway.
+    let fused = if options.durable_only {
+        fused
+    } else {
+        let sessions =
+            candidate_transcript_sessions(&db, &fused, &scoped_by_id, !scoped_projects.is_empty());
+        add_transcript_neighbour_bonus(fused, &sessions, sys.config.transcript_neighbour_share)
+    };
 
     let keywords = crate::search::extract_keywords(query, 2);
     let topic_keywords = crate::search::topic_keywords(query);
@@ -2105,6 +2113,108 @@ fn is_korean(text: &str) -> bool {
     text.chars().any(|ch| ('가'..='힣').contains(&ch))
 }
 
+/// Turn ids, oldest first, of every captured transcript session that holds a
+/// candidate. A scoped search already holds every chunk of its projects; an
+/// unscoped one reads ids and order from the database, only for those sessions.
+fn candidate_transcript_sessions(
+    db: &crate::storage::Database,
+    fused: &[(String, f32)],
+    scoped_by_id: &HashMap<String, MemoryChunk>,
+    scoped: bool,
+) -> Vec<Vec<String>> {
+    if !scoped {
+        let ids: Vec<String> = fused.iter().map(|(id, _)| id.clone()).collect();
+        let sessions: std::collections::HashSet<TranscriptSession> = db
+            .transcript_sessions_of(&ids)
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+        return sessions
+            .iter()
+            .filter_map(|session| db.transcript_session_turn_ids(session).ok())
+            .collect();
+    }
+    let wanted: std::collections::HashSet<TranscriptSession> = fused
+        .iter()
+        .filter_map(|(id, _)| scoped_by_id.get(id))
+        .filter_map(TranscriptSession::of)
+        .collect();
+    if wanted.is_empty() {
+        return Vec::new();
+    }
+    let session_ids: std::collections::HashSet<&str> = wanted
+        .iter()
+        .map(|session| session.session_id.as_str())
+        .collect();
+    let mut turns: HashMap<TranscriptSession, Vec<(&chrono::DateTime<chrono::Utc>, &str)>> =
+        HashMap::new();
+    for chunk in scoped_by_id.values() {
+        if !session_ids.contains(chunk.metadata.session_id.as_str()) {
+            continue;
+        }
+        if let Some(session) = TranscriptSession::of(chunk).filter(|s| wanted.contains(s)) {
+            turns
+                .entry(session)
+                .or_default()
+                .push((&chunk.created_at, chunk.id.as_str()));
+        }
+    }
+    turns
+        .into_values()
+        .map(|mut order| {
+            order.sort();
+            order.into_iter().map(|(_, id)| id.to_string()).collect()
+        })
+        .collect()
+}
+
+/// The answer to a question is often the turn right before or after the one
+/// that shares its words. So a candidate turn gets `share` x the best fused
+/// score of its previous or next turn in the same session, counting only
+/// neighbours that are candidates themselves. A fused score is at most 1, so
+/// this adds at most `share` x `fusion_max_score` (0.015) to a final score, and
+/// the no-keyword cap is applied afterwards. Saved memories are in no session
+/// and keep their score.
+fn add_transcript_neighbour_bonus(
+    fused: Vec<(String, f32)>,
+    sessions: &[Vec<String>],
+    share: f32,
+) -> Vec<(String, f32)> {
+    if share <= 0.0 || sessions.is_empty() {
+        return fused;
+    }
+    let own: HashMap<&str, f32> = fused.iter().map(|(id, s)| (id.as_str(), *s)).collect();
+    let mut bonus: HashMap<String, f32> = HashMap::new();
+    for turns in sessions {
+        let score = |index: Option<usize>| {
+            index
+                .and_then(|index| turns.get(index))
+                .and_then(|id| own.get(id.as_str()))
+                .copied()
+                .unwrap_or(0.0)
+        };
+        for (index, id) in turns.iter().enumerate() {
+            if !own.contains_key(id.as_str()) {
+                continue;
+            }
+            let best = score(index.checked_sub(1)).max(score(Some(index + 1)));
+            if best > 0.0 {
+                bonus.insert(id.clone(), share * best);
+            }
+        }
+    }
+    drop(own);
+    let mut boosted: Vec<(String, f32)> = fused
+        .into_iter()
+        .map(|(id, score)| {
+            let extra = bonus.get(&id).copied().unwrap_or(0.0);
+            (id, score + extra)
+        })
+        .collect();
+    boosted.sort_by(|a, b| b.1.total_cmp(&a.1));
+    boosted
+}
+
 /// Cosine-distance limits for [`on_topic`], set from labelled real prompts with
 /// multilingual-e5-base (docs/search-relevance.md). Its distances are narrow:
 /// related memories sat at 0.11–0.16 and unrelated ones started at 0.12, so
@@ -2569,6 +2679,207 @@ mod ranking_sanity_tests {
         assert_eq!(results.len(), 3);
         assert!(results[0].starts_with("스테이징 서버"), "{results:?}");
         assert!(results.iter().any(|text| text == distinct), "{results:?}");
+    }
+
+    #[test]
+    fn a_turn_gets_a_share_of_its_best_candidate_neighbour_only() {
+        let fused = vec![
+            ("b".to_string(), 1.0),
+            ("saved".to_string(), 0.9),
+            ("a".to_string(), 0.5),
+            ("d".to_string(), 0.2),
+        ];
+        // "c" is a turn that is not a candidate: it gives and gets nothing.
+        let sessions = vec![vec![
+            "a".to_string(),
+            "b".to_string(),
+            "c".to_string(),
+            "d".to_string(),
+        ]];
+        let boosted = add_transcript_neighbour_bonus(fused, &sessions, 0.15);
+        let score = |id: &str| boosted.iter().find(|(found, _)| found == id).unwrap().1;
+        assert!((score("a") - (0.5 + 0.15)).abs() < 1e-6);
+        assert!((score("b") - (1.0 + 0.15 * 0.5)).abs() < 1e-6);
+        assert!((score("d") - 0.2).abs() < 1e-6);
+        assert!((score("saved") - 0.9).abs() < 1e-6);
+        assert!(boosted.iter().all(|(id, _)| id != "c"));
+        // Re-sorted: "a" now stands above the saved memory it was below.
+        let order: Vec<&str> = boosted.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(order, ["b", "saved", "a", "d"]);
+    }
+
+    /// One captured conversation and its look-alikes, saved through `/add` the
+    /// way the transcript watcher saves turns.
+    struct NeighbourCase {
+        question: &'static str,
+        /// Shares the question's words; the turn after it does not.
+        asked: &'static str,
+        /// The answer: shares fewer of the question's words than its neighbours.
+        answer: &'static str,
+        /// Shares the question's words; the turn before it is the answer.
+        follow_up: &'static str,
+        /// Shares the question's words, alone in its own session / working
+        /// directory / project, or saved by hand.
+        other_session: &'static str,
+        other_cwd: &'static str,
+        other_project: &'static str,
+        saved: &'static str,
+    }
+
+    async fn add_turn(
+        system: &Arc<RwLock<MemorySystem>>,
+        project: &str,
+        session: &str,
+        cwd: &str,
+        event: &str,
+        text: &str,
+    ) -> String {
+        let out = add_impl(
+            system.clone(),
+            AddRequest {
+                text: text.to_string(),
+                project: project.to_string(),
+                cwd: None,
+                metadata: Some(Metadata {
+                    chunk_type: ChunkType::AutoLog,
+                    importance: Importance::Log,
+                    session_id: session.to_string(),
+                    source: Some("pi.transcript".into()),
+                    adapter: Some("pi".into()),
+                    cwd: Some(cwd.to_string()),
+                    event_id: Some(event.to_string()),
+                    sequence: Some(1),
+                    total: Some(1),
+                    ..Metadata::default()
+                }),
+                sensitive: None,
+            },
+        )
+        .await;
+        assert_eq!(out["status"], "succeeded", "{out:?}");
+        out["id"].clone()
+    }
+
+    /// Searches once without and once with the neighbour share and returns the
+    /// scores by id for each.
+    async fn scores_without_and_with_share(
+        system: &Arc<RwLock<MemorySystem>>,
+        query: &str,
+        project: &str,
+    ) -> [HashMap<String, (f32, String)>; 2] {
+        let mut out = [HashMap::new(), HashMap::new()];
+        for (slot, share) in [
+            (0, 0.0),
+            (
+                1,
+                crate::config::Config::default().transcript_neighbour_share,
+            ),
+        ] {
+            system.write().await.config.transcript_neighbour_share = share;
+            let results = run_hybrid_search(
+                system.clone(),
+                query,
+                project,
+                20,
+                SearchOptions::default(),
+                None,
+            )
+            .await;
+            out[slot] = results
+                .into_iter()
+                .map(|item| (item.id, (item.score, item.document)))
+                .collect();
+        }
+        out
+    }
+
+    async fn check_neighbour_case(case: NeighbourCase) {
+        let (_tmp, system) = build_system().await;
+        let asked = add_turn(&system, "nb", "s1", "/work", "e1", case.asked).await;
+        // Same session id, other working directory, saved between two turns
+        // of s1: it must not break their adjacency.
+        let other_cwd = add_turn(&system, "nb", "s1", "/other", "e2", case.other_cwd).await;
+        let answer = add_turn(&system, "nb", "s1", "/work", "e3", case.answer).await;
+        let follow_up = add_turn(&system, "nb", "s1", "/work", "e4", case.follow_up).await;
+        let other_session = add_turn(&system, "nb", "s2", "/work", "e5", case.other_session).await;
+        let other_project =
+            add_turn(&system, "nb-2", "s1", "/work", "e6", case.other_project).await;
+        remember_all(&system, "nb", &[case.saved]).await;
+        let keywords = crate::search::extract_keywords(case.question, 2);
+        // Scoped: neighbours come from the chunks in memory. Unscoped: from
+        // the database.
+        for project in ["nb", ""] {
+            let [before, after] =
+                scores_without_and_with_share(&system, case.question, project).await;
+            let gain = |id: &str| after[id].0 - before[id].0;
+            for (id, (score, document)) in &after {
+                let gained = score - before[id].0;
+                assert!(
+                    gained > -1e-4 && gained <= 0.015 + 1e-4,
+                    "{project}: {gained} {document}"
+                );
+                if keyword_match_ratio(document, &keywords) == 0.0 {
+                    // Rank part only: no keyword bonus, importance log, fresh.
+                    let relevance = score - type_bonus(&ChunkType::AutoLog);
+                    assert!(relevance < 0.05, "{project}: {relevance} {document}");
+                }
+            }
+            assert!(
+                after.contains_key(&answer),
+                "{project}: the answer was not returned: {:?}",
+                after.values().collect::<Vec<_>>()
+            );
+            assert!(gain(&asked) > 1e-4, "{project}: {}", gain(&asked));
+            assert!(gain(&follow_up) > 1e-4, "{project}: {}", gain(&follow_up));
+            for id in [&other_cwd, &other_session] {
+                assert!(gain(id).abs() < 1e-4, "{project}: {}", after[id].1);
+            }
+            if project.is_empty() {
+                assert!(
+                    gain(&other_project).abs() < 1e-4,
+                    "{}",
+                    after[&other_project].1
+                );
+            }
+            for (id, (_, document)) in &after {
+                if document == case.saved {
+                    assert!(gain(id).abs() < 1e-4, "{project}: saved memory moved");
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn the_neighbour_share_reaches_only_turns_of_the_same_session_korean() {
+        check_neighbour_case(NeighbourCase {
+            question: "배포 포트 바꿨지",
+            asked: "스테이징 배포 포트 바꿨지?",
+            answer: "네, 8320으로 옮기고 방화벽도 열었습니다.",
+            follow_up: "배포 포트 바꿨으니 문서도 고쳐 줘.",
+            other_session: "배포 포트 바꿨지만 아직 재시작 안 했어.",
+            other_cwd: "배포 포트 바꿨는지 다시 확인해 봐.",
+            other_project: "배포 포트 바꿨다는 연락을 받았다.",
+            saved: "스테이징 배포 포트는 8320으로 바꿨다.",
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn the_neighbour_share_reaches_only_turns_of_the_same_session_mixed() {
+        check_neighbour_case(NeighbourCase {
+            question: "Redis TTL 얼마로 했지",
+            asked: "Redis TTL 얼마로 할지 정해 줘",
+            // A mixed question keeps only memories that name its Latin terms,
+            // so here the answer names one; the Korean case covers an answer
+            // without any of the question's keywords.
+            answer: "Redis 쪽은 10분으로 맞추고 세션 저장소는 따로 두었습니다.",
+            follow_up: "좋아, Redis TTL 은 그렇게 두자.",
+            other_session: "Redis TTL 을 바꾼 배포는 어제 나갔다.",
+            other_cwd: "Redis TTL 설정 파일을 열어 봐.",
+            other_project: "Redis TTL 기본값을 문서에서 찾았다.",
+            saved: "캐시는 Redis를 쓰고 TTL은 10분으로 정했다.",
+        })
+        .await;
     }
 }
 
