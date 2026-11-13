@@ -1,4 +1,4 @@
-# Retrieval benchmarks (memnest 0.5.1)
+# Retrieval benchmarks
 
 These are **retrieval-only** numbers: does the memory that holds the evidence come back in the first
 results of `/search`? No language model is used anywhere in the measurement, in saving or in searching.
@@ -6,9 +6,9 @@ Numbers were measured on one machine on 2026-11-10 with the released 0.5.1 binar
 reproduced with the commands at the end. Per-question hits are in
 [`benchmarks/retrieval/results/`](../benchmarks/retrieval/results/) so anyone can audit them.
 Why questions are missed, and which small changes would help: [`benchmarks/retrieval/ANALYSIS.md`](../benchmarks/retrieval/ANALYSIS.md).
-The first tables describe the released 0.5.1. Two later sections show unreleased builds measured with the same harness:
-the keyword-query fix, and the ranking change that followed from the analysis
-([After the ranking change](#after-the-ranking-change-unreleased-build-1f20127-same-harness), measured 2026-11-11).
+The first tables describe the released 0.5.1. Two later sections show later builds, each named by its commit, measured with the
+same harness: the keyword-query fix, and the ranking change that followed from the analysis
+([After the ranking change](#after-the-ranking-change-build-1f20127-same-harness), measured 2026-11-11).
 
 ## At a glance, and how to read this page
 
@@ -19,25 +19,32 @@ and it counts as found when the marked item is in the results. Only ids are comp
 - **LoCoMo**: 10 conversations between two people over several months and about 2,000 questions. The exact turn that
   holds the answer has to be found.
 - **LongMemEval-S**: about 50 conversations between a user and an assistant and 500 questions. The conversation (session)
-  that holds the answer has to be found. Only two samples of 100 questions (200 in total) were run here.
+  that holds the answer has to be found. All 500 were run; the 30 whose answer is not in the conversations at all are
+  counted separately, so the full-set figures are over 470 questions.
 - **R@1, R@5, R@10**: out of 100 questions, in how many the answer was the first result, among the first 5, among the
   first 10. 69 means 69 found and 31 missed.
 
-| Test | What is counted | Released 0.5.1 | Build with the ranking change |
-|---|---|---|---|
-| LongMemEval-S (200 questions) | right conversation is first | 83% | 91.5% |
-| | right conversation in the first 5 | 93.5% | 96% |
-| LoCoMo (the 5 conversations not used to tune the ranking, 776 questions) | the turn with the answer is first | 39.8% | 42.9% |
-| | in the first 5 | 60.2% | 68.7% |
-| | in the first 10 | 69.5% | 76.8% |
+| Test | What is counted | Released 0.5.1 | Build `1f20127` (ranking change) | Build `8767176` (also neighbouring turns) |
+|---|---|---|---|---|
+| **LongMemEval-S, full set (470 questions)** | right conversation is first | 83.2% | | **92.3%** |
+| | right conversation in the first 5 | 94.9% | | **98.3%** |
+| LongMemEval-S, the two samples (200 of the 470) | right conversation is first | 83% | 91.5% | 92% |
+| | right conversation in the first 5 | 93.5% | 96% | 96.5% |
+| LoCoMo (the 5 conversations not used to tune the ranking, 776 questions) | the turn with the answer is first | 39.8% | 42.9% | 42.8% |
+| | in the first 5 | 60.2% | 68.7% | 70.4% |
+| | in the first 10 | 69.5% | 76.8% | 78.7% |
+
+Build `8767176` adds one change to `1f20127`: a conversation turn gets a small boost when the turn right before or after it
+in the same conversation also matches the question. Saved memories are not affected. The full LongMemEval-S set was stored
+once with build `0547539` (the ranking of `1f20127`); each build, 0.5.1 included, then answered the questions on that same
+stored data. Per question type and method: [ANALYSIS.md section 9](../benchmarks/retrieval/ANALYSIS.md).
 
 For the same LongMemEval-S "first 5" figure, other tools report 93 to 95% when they store every turn, as memnest does, and
 95 to 98% when they store whole conversations. Those figures are self-reported under different conditions, so no ranking
 follows ([sources and conditions](#what-others-publish-for-these-datasets)).
 
 What these numbers do not say: the datasets are English everyday conversations, so they say nothing about Korean or about
-coding-work records. They count whether the memory was found, not whether a model then answered correctly. The build with
-the ranking change is not released yet.
+coding-work records. They count whether the memory was found, not whether a model then answered correctly.
 
 ## What is measured, and what is not
 
@@ -123,7 +130,7 @@ answer session (multi-session questions have up to 6). "turn R@10": turns marked
 Temporal-reasoning questions are sent exactly as written (for example "What kitchen appliance did I buy 10 days ago?") without the
 dataset's `question_date`, so relative expressions cannot be resolved by search; they are the weakest type.
 
-## After the keyword-query fix (unreleased build, same harness)
+## After the keyword-query fix (build `7937264`, same harness)
 
 The miss analysis found that 0.5.1 drops the keyword half of a search when the question contains an apostrophe-s, a trailing
 period and some other characters, and then returns 3 results instead of 10 (330 of 1,986 LoCoMo questions, 17 of the 100
@@ -156,7 +163,7 @@ results and lose exact-term matching depending on punctuation, but the first-ran
 problem that this measurement exposes. Result files:
 `2026-11-10-unreleased-7937264-locomo.json` and `2026-11-10-unreleased-7937264-longmemeval-affected17.json`.
 
-## After the ranking change (unreleased build `1f20127`, same harness)
+## After the ranking change (build `1f20127`, same harness)
 
 The miss analysis led to an ablation of the ranking itself ([ANALYSIS.md section 8](../benchmarks/retrieval/ANALYSIS.md)).
 Its main finding: the bonus for the share of question words found in a memory (up to 0.15) was several times larger than
@@ -187,20 +194,20 @@ Categories 1-4, any-evidence recall in percent:
 | Data | Build | R@1 | R@3 | R@5 | R@10 | all-evidence R@10 | R@50 (probe) | MRR@10 |
 |---|---|---|---|---|---|---|---|---|
 | all 10 conversations (n = 1,536) | 0.5.1 | 39.5 | 55.5 | 61.0 | 69.1 | 56.5 | 82.2 | 0.489 |
-| | develop `8c41b79` (keyword-query fix) | 39.6 | 54.8 | 61.1 | 70.6 | 58.1 | 86.9 | 0.490 |
+| | build `8c41b79` (keyword-query fix) | 39.6 | 54.8 | 61.1 | 70.6 | 58.1 | 86.9 | 0.490 |
 | | **`1f20127`** | **43.6** | **62.8** | **69.4** | **77.9** | 64.8 | 91.1 | 0.548 |
 | tuned: conversations 0-4 (n = 760) | 0.5.1 | 39.2 | 56.6 | 61.8 | 68.8 | 57.9 | 81.8 | 0.489 |
-| | develop `8c41b79` | 39.1 | 56.2 | 62.2 | 70.7 | 59.5 | 86.4 | 0.489 |
+| | build `8c41b79` | 39.1 | 56.2 | 62.2 | 70.7 | 59.5 | 86.4 | 0.489 |
 | | `1f20127` | 44.3 | 63.7 | 70.1 | 79.1 | 67.0 | 90.7 | 0.556 |
 | **held-out: conversations 5-9 (n = 776)** | 0.5.1 | 39.8 | 54.5 | 60.2 | 69.5 | 55.2 | 82.5 | 0.489 |
-| | develop `8c41b79` | 40.2 | 53.5 | 60.1 | 70.6 | 56.7 | 87.4 | 0.491 |
+| | build `8c41b79` | 40.2 | 53.5 | 60.1 | 70.6 | 56.7 | 87.4 | 0.491 |
 | | **`1f20127`** | **42.9** | **62.0** | **68.7** | **76.8** | 62.6 | 91.6 | 0.541 |
 
 | `1f20127` wins/losses | R@1 | R@3 | R@5 | R@10 |
 |---|---|---|---|---|
 | against 0.5.1, all 10 conversations | 111/48 | 168/56 | 178/49 | 166/31 |
 | against 0.5.1, held-out half | 55/31 | 86/28 | 93/27 | 76/19 |
-| against develop, held-out half | 52/31 | 86/20 | 88/21 | 66/18 |
+| against `8c41b79`, held-out half | 52/31 | 86/20 | 88/21 | 66/18 |
 
 The held-out gain is smaller than the tuned one: against 0.5.1, R@1 +3.1 (tuned half +5.1) and R@10 +7.3 (+10.3).
 
@@ -217,7 +224,10 @@ Per category with `1f20127`, all 10 conversations:
 | all 5 categories | 1982 | 39.9 | 59.1 | 66.2 | 75.4 | 64.9 | 0.513 |
 
 **One thing got worse:** the adversarial category (not part of the scored set) lost first-rank hits: R@1 30.9 (0.5.1) and
-32.5 (develop) to 26.9, while its R@10 rose from 58.1 and 63.0 to 66.6. The cause was not investigated.
+32.5 (`8c41b79`) to 26.9, while its R@10 rose from 58.1 and 63.0 to 66.6. These questions take something one person said
+and ask it about the other person, and the dataset marks the copied sentence as the answer. The new ranking prefers what the
+person named in the question said, so it puts that copied sentence lower, which is right for the question as asked
+(ANALYSIS.md section 9.1).
 
 ### LongMemEval-S (two samples of 100, not the full set)
 
@@ -226,10 +236,10 @@ Session recall in percent:
 | Sample | Build | R@1 | R@3 | R@5 | R@10 | turn R@10 (any) |
 |---|---|---|---|---|---|---|
 | tuned: seed 1110 (the sample above) | 0.5.1 | 83 | 89 | 91 | 94 | 79 |
-| | develop `8c41b79` | 78 | 89 | 91 | 94 | 79 |
+| | build `8c41b79` | 78 | 89 | 91 | 94 | 79 |
 | | `1f20127` | 89 | 93 | 94 | 95 | 92 |
 | **held-out: seed 1111** | 0.5.1 | 83 | 93 | 96 | 98 | 84 |
-| | develop `8c41b79` | 83 | 93 | 96 | 98 | 83 |
+| | build `8c41b79` | 83 | 93 | 96 | 98 | 83 |
 | | **`1f20127`** | **94** | **98** | **98** | **99** | 93 |
 
 | `1f20127` wins/losses against 0.5.1 | R@1 | R@3 | R@5 | R@10 |
@@ -270,7 +280,7 @@ they cannot show were checked separately (details and numbers in ANALYSIS.md sec
   LoCoMo R@5.
 * **A real store.** On a read-only copy of a store in daily use (55,251 memories, Korean and English), 40 saved memories
   were picked at random across ages and a question was written for each before any build was run. The memory came back
-  first / in the first 3 / in the first 10 for 13 / 24 / 30 of 40 questions with 0.5.1 and with develop, and for 16 / 26 / 31
+  first / in the first 3 / in the first 10 for 13 / 24 / 30 of 40 questions with 0.5.1 and with `8c41b79`, and for 16 / 26 / 31
   with `1f20127`; for memories older than 30 days, 6 / 12 / 15 of 20 before and 8 / 13 / 16 after. 40 questions and one
   store are a small check: it shows no sign that older memories are buried, not a measured gain.
 * Korean and mixed-language sanity set in `core/src/server/api.rs` (`ranking_sanity_tests`) and the Korean retrieval fixture
@@ -317,7 +327,7 @@ after the other on a quiet machine (1-minute load 1.4 on average in every run):
 | Build | client p50 | client p95 | server-reported p50 / p95 |
 |---|---|---|---|
 | 0.5.1 | 37.8 ms | 44.2 ms | 37 / 43 ms |
-| develop `8c41b79` | 38.3 ms | 44.0 ms | 37 / 43 ms |
+| build `8c41b79` | 38.3 ms | 44.0 ms | 37 / 43 ms |
 | `1f20127` | 37.3 ms | 43.0 ms | 36 / 42 ms |
 
 Differences of one millisecond are within run-to-run noise. Ingest is not affected by the change and was not timed again.
@@ -325,7 +335,7 @@ Differences of one millisecond are within run-to-run noise. Ingest is not affect
 
 Result files, all asked against the kept data: `2026-11-11-unreleased-1f20127-kept-locomo.json`,
 `...-kept-longmemeval-sample100.json` (seed 1110) and `...-kept-longmemeval-heldout100.json` (seed 1111); the same three
-for develop (`2026-11-11-unreleased-8c41b79-kept-*`) and for 0.5.1 (`2026-11-11-v0.5.1-kept-*`).
+for `8c41b79` (`2026-11-11-unreleased-8c41b79-kept-*`) and for 0.5.1 (`2026-11-11-v0.5.1-kept-*`).
 
 ## Speed (single-machine measurement)
 
@@ -360,7 +370,7 @@ Datasets are downloaded to `~/.cache/memnest-bench` and are never committed; the
   (all metrics within 0.1 point), so tiny differences between builds are not meaningful.
 * 330 of the 1,986 LoCoMo questions (17%; they contain an apostrophe, such as "Caroline's", or a colon) lose the keyword (BM25) half of the search in 0.5.1 and return only 3 results;
   see ANALYSIS.md section 4.1. The 0.5.1 tables include that effect: they are what the released 0.5.1 does. The section "After the keyword-query fix" shows the build that fixes it.
-* The ranking constants of the unreleased build were chosen on half of LoCoMo and on the first LongMemEval sample. Its figures on that data
+* The ranking constants of build `1f20127` were chosen on half of LoCoMo and on the first LongMemEval sample. Its figures on that data
   are tuned figures; the held-out rows are the ones to quote. Its two LongMemEval samples differ by 4 points at R@5 (94 and 98), which is the
   size of the sampling error.
 

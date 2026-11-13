@@ -434,9 +434,9 @@ session R@1 91.5, R@5 96.0, R@10 97.0; 0.5.1 has 83.0, 93.5, 96.0.
 
 **Category 5 (adversarial) got worse at the first rank.** These questions are not in the scored set (they ask about things
 the named speaker never said), but their labelled evidence turn is measured the same way. All 10 conversations, n = 446:
-R@1 30.9 (0.5.1) and 32.5 (develop) to 26.9; R@3 46.6 and 48.9 to 46.4; R@5 52.7 and 56.3 to 55.4; R@10 58.1 and 63.0 to
-66.6. Against develop that is 9 questions gained and 34 lost at rank 1, 30 gained and 14 lost in the first 10. The cause was
-not investigated.
+R@1 30.9 (0.5.1) and 32.5 (`8c41b79`) to 26.9; R@3 46.6 and 48.9 to 46.4; R@5 52.7 and 56.3 to 55.4; R@10 58.1 and 63.0 to
+66.6. Against `8c41b79` that is 9 questions gained and 34 lost at rank 1, 30 gained and 14 lost in the first 10. Section 9.1
+explains why.
 
 ### 8.8 What ranking alone does not reach
 
@@ -450,3 +450,185 @@ not investigated.
 * **LoCoMo.** With the final build the evidence is in the first 10 for 77.9% of category 1-4 questions and in the first 50 for
   91.1%. Multi-hop questions need several turns at once (all-evidence R@10 20.9%), and section 2's causes B, C, E and I
   (neighbouring turn, date arithmetic, multi-turn answers, world knowledge) are untouched by ranking.
+
+
+## 9. Follow-up measurements (2026-11-13)
+
+Sections 9.1 to 9.4 use the same harness, kept data and offline replica as section 8. Every headline number comes from a real
+binary answering `/search`.
+
+### 9.1 Why the adversarial category lost first-rank hits
+
+**What the category is.** A LoCoMo adversarial question (category 5, 446 questions with a labelled turn) is built from
+something one speaker really said, and asks it about the other speaker or with one detail changed. The right answer is
+"that was not said". The dataset gives such a question no `answer`, only the wrong answer a careless reader would give
+(`adversarial_answer`) and, as "evidence", the turn that wrong answer comes from. So for this category the label does not
+mark the turn that answers the question. It marks the turn the trap was built from.
+
+| Kind (by who spoke the labelled turn) | n | R@1 before / after | R@5 | R@10 |
+|---|---:|---|---|---|
+| the person named in the question did **not** say it (speaker swapped) | 332 | 31.9 / 24.7 | 54.2 / 49.7 | 59.9 / 60.8 |
+| the person named in the question said it (a detail was changed) | 107 | 33.6 / 33.6 | 62.6 / 72.9 | 72.0 / 83.2 |
+| both or neither speaker named | 7 | | | |
+
+"Before" is build `8c41b79`, "after" is `1f20127`, both from the committed per-question files.
+
+**Which questions flipped.** Against `8c41b79`, 34 questions lost the first rank and 9 gained it. 26 of the 34 are
+speaker-swapped questions. The labelled turn is still returned: it is second for 21 of them, third for 6, fourth or fifth
+for 6 and ninth for 1.
+
+**What is first now.** For 30 of the 34 it is a turn spoken by the person the question names (19 from another session,
+11 from the session of the labelled turn). Example: "What did Joanna make and share with her vegan diet group?" The
+labelled turn is Nate's ("I made vegan ice cream last Friday and shared it with some people in my vegan diet group").
+First now is a turn by Joanna about the desserts she makes for people on different diets; Nate's turn is third.
+
+**Why.** Checked with the offline replica on freshly ingested data (it returns the server's list for 1,977 of 1,982
+questions and gives the published figures exactly). In all 34 questions the turn that is first now stands higher in the
+vector list (median: first; the labelled turn: 26th). The labelled turn stands higher in the keyword list in 30 and contains
+more of the question's words in 32 (0.60 of them against 0.42), because the question was written from that turn. Each
+memory starts with "<speaker> said:", so the embedding places a question about Joanna nearer to Joanna's turns. Before the
+change the share of question words decided the order almost alone, so the turn the question was copied from came first no
+matter who said it. Now the two retrievers decide, and the vector retriever prefers the speaker who was asked about.
+
+The same preference is what the scored categories gain from. There the person named in the question spoke the evidence
+in 1,329 of 1,536 questions, and the evidence is among the first 10 of the vector list for 80.1% of those against 28.2%
+of the 39 questions where someone else spoke it.
+
+**Can it be fixed without cost?** No. Raising the weight of the word share again (replica, all 10 conversations):
+
+| Weight of the word share (0.08 is the build) | categories 1-4 R@1 / R@5 / R@10 | adversarial R@1 / R@5 / R@10 |
+|---|---|---|
+| 0.08 | 43.6 / 69.4 / 77.9 | 26.9 / 55.4 / 66.6 |
+| 0.12 | 43.7 / 69.5 / 77.5 | 28.3 / 56.7 / 67.0 |
+| 0.16 | 43.3 / 68.6 / 76.8 | 30.5 / 56.7 / 67.5 |
+| 0.24 | 42.6 / 66.6 / 75.1 | 31.2 / 57.4 / 66.4 |
+| 0.40 | 41.2 / 64.8 / 73.4 | 31.4 / 57.8 / 64.3 |
+
+Every setting that brings the adversarial first rank back lowers categories 1-4. Nothing was changed. The drop is
+a property of the label: for three quarters of these questions a first-rank "hit" means returning what the other person
+said, which is the wrong answer to the question as asked.
+
+### 9.2 Near-identical memories: what saving and searching do with them
+
+**Saving.** Until `97bc459` a save whose text was within cosine distance 0.05 of a memory already in the project was not stored;
+the reply named the old memory instead. Both datasets were checked for losses from that rule: LoCoMo ingested with a build that
+still had it holds all 5,882 turns and no folded save, and so does an ingest with the build after `97bc459`. So the published
+LoCoMo figures were not affected by it. Since `97bc459` only an exact repeat of a text is answered `deduplicated`.
+
+**Searching.** `e56caeb` replaced the old rule at search time: a candidate at cosine similarity 0.95 or more to a result
+already chosen was held back until nothing else was left. Measured with real binaries on the same kept LoCoMo data, the
+build with it against the same build without it (categories 1-4, n = 1,536):
+
+| | R@1 | R@3 | R@5 | R@10 | wins/losses @3 | @5 | @10 |
+|---|---:|---:|---:|---:|---|---|---|
+| without skipping (equals the published `1f20127` figures) | 43.6 | 62.8 | 69.4 | 77.9 | | | |
+| skipping near-identical results (cosine >= 0.95) | 43.6 | 62.1 | 68.8 | 77.1 | 3/14 | 13/22 | 17/29 |
+
+Held-out half R@5 68.7 to 67.8 and R@10 76.8 to 76.0; tuned half R@10 79.1 to 78.3. The reason is in the data: about 46% of all
+LoCoMo turns have another turn of the same conversation at cosine 0.95 or more (35 to 65% per conversation), so the rule
+held back distinct turns, not repeats. In the replica a threshold of 0.97 changes almost nothing (R@10: 2 questions gained,
+1 lost) and 0.93 is clearly worse (tuned half R@10 79.1 to 73.8). Skipping could also hide the newer of
+two versions of a fact and show the older one. It was removed again in `d678a0c`; search orders near-identical memories like
+any others, and MMR (lambda 0.5) still spreads the list.
+
+### 9.3 Relative dates in the questions
+
+Counted with the same patterns ("two weeks ago", "last Saturday", "the past month", "yesterday", "this year" and the like;
+words such as "recently" or "currently" are not counted).
+
+* **LoCoMo**, categories 1-4: 19 of 1,536 questions (1.2%) contain a relative date; 189 name an absolute date. LoCoMo gives
+  no date on which a question is asked, so none of the 19 can be turned into a date range. Among the questions build
+  `0547539` misses, 9 of 866 at rank 1, 5 of 470 in the first 5 and 2 of 339 in the first 10 contain one (absolute dates:
+  120, 75, 52). Relative dates are not why LoCoMo questions are missed.
+* **LongMemEval-S**: 53 of the 470 questions (11.3%) contain one, and 52 can be resolved with the dataset's `question_date`:
+  temporal-reasoning 24 of 127, multi-session 21 of 121, single-session-user 4 of 64, preference 2 of 30, knowledge-update 2
+  of 72, single-session-assistant 0 of 56; 1 of the 30 abstention questions. Among the misses of build `0547539` they are 12
+  of 38 at rank 1, 4 of 8 in the first 5 and 3 of 5 in the first 10, so they explain half of the few questions still missed.
+  Using them needs the date the question was asked: the search request carries only the text, and the server's "now" is not
+  the question's date in a replayed dataset (variants c1-c3 in 9.4 used `question_date`; the core cannot).
+
+### 9.4 Turn neighbours, session and date variants: what was measured and what was adopted
+
+All variants were computed with the offline replica, which returns the server's list for every checked question (LoCoMo
+1,977 of 1,982; LongMemEval 101 of 101), on the data stored with build `0547539`. R@1 / R@5 / R@10, categories 1-4 for LoCoMo,
+session recall for LongMemEval:
+
+| Variant | LoCoMo 0-4 (760) | LoCoMo 5-9 (776) | LME seed 1110 (100) | LME seed 1111 (100) |
+|---|---|---|---|---|
+| build `0547539` | 44.3 / 70.1 / 79.1 | 42.9 / 68.7 / 76.8 | 89 / 94 / 95 | 94 / 98 / 100 |
+| **neighbour share 0.15 (adopted)** | 44.7 / 72.8 / 80.8 | 42.8 / 70.4 / 78.7 | 90 / 94 / 95 | 94 / 99 / 99 |
+| neighbour share 0.25 | 44.7 / 73.7 / 80.8 | 42.7 / 71.3 / 79.3 | 90 / 94 / 95 | 95 / 99 / 99 |
+| neighbour share 0.5 | 44.2 / 74.9 / 82.2 | 42.7 / 72.3 / 79.6 | 91 / 94 / 95 | 95 / 99 / 99 |
+| neighbour share 0.25, rescaled by 1/1.25 | 45.1 / 72.6 / 80.8 | 42.4 / 71.1 / 79.3 | 89 / 95 / 95 | 94 / 99 / 100 |
+| vector similarity smoothed with the neighbours, 0.25 | 44.7 / 71.4 / 79.9 | 42.4 / 71.3 / 79.8 | 89 / 94 / 95 | 94 / 99 / 100 |
+| third list: 3-turn window embedding, weight 0.5 | 44.2 / 73.3 / 80.5 | 42.7 / 71.5 / 79.8 | 89 / 96 / 96 | 95 / 100 / 100 |
+| session bonus +0.02 from its best turn, capped | 44.3 / 71.7 / 80.1 | 42.9 / 70.0 / 79.8 | 89 / 94 / 94 | 94 / 98 / 99 |
+| at most 3 turns per session | 44.3 / 68.9 / 75.7 | 42.9 / 67.9 / 74.7 | 89 / 94 / 95 | 94 / 98 / 100 |
+| sessions first, 2 turns each | 36.2 / 64.9 / 69.7 | 38.0 / 64.2 / 68.4 | 91 / 96 / 96 | 94 / 98 / 98 |
+| date bonus +0.04 (needs `question_date` for relative dates) | 44.5 / 71.4 / 80.4 | 42.9 / 69.5 / 78.2 | 90 / 96 / 96 | 95 / 98 / 100 |
+| date bonus +0.04, absolute dates only | 44.5 / 71.4 / 80.4 | 42.9 / 69.5 / 78.2 | 89 / 94 / 95 | 94 / 98 / 100 |
+| user-turn bonus +0.01 (LongMemEval only) | | | 90 / 95 / 95 | 94 / 98 / 100 |
+| neighbour share 0.25 + date bonus +0.04 | 45.0 / 74.2 / 81.7 | 42.5 / 71.9 / 80.0 | 91 / 96 / 96 | 95 / 99 / 99 |
+
+**Rule.** A variant had to raise LongMemEval session R@1 or R@5 on the held-out sample (seed 1111) and LoCoMo held-out R@5,
+lower no other of these headline numbers by more than one question, store nothing differently and rebuild no index. The
+neighbour share 0.15 is the only one that passes: 0.25 and the rescaled form lose 2 questions at LoCoMo held-out R@1 (wins/
+losses 5/7 and 8/12; 0.15 has 4/5), the window list loses 2 there too and needs a third ranked list, session bonuses do not
+raise the held-out sample, and the date variants need the question date (9.3). The held-out LongMemEval sample can show at
+most a question or two either way, so the decision was checked on data nobody had looked at (below).
+
+**What it does.** After the two lists are fused, a candidate turn gains 0.15 x the higher fused score of the turn right before
+and right after it in the same captured transcript (same project, session id, `*.transcript` source and working
+directory; the order of `Database::transcript_neighbors`), counting only neighbours that are candidates themselves. A
+fused score is at most 1, so the final score moves by at most 0.10 x 0.15 = 0.015, and the cap for a memory without any of
+the question's keywords (0.049) is applied afterwards. Saved memories are in no transcript and keep their score. A
+scoped search takes the neighbours from the chunks it already holds; a search over all projects reads ids and order of the
+candidates' sessions from the database. Searches restricted to saved memories skip it.
+
+**Real binary.** Build `8767176` gives the replica's figures exactly on LoCoMo (table row above; adversarial category R@5
+55.4 to 60.1). LongMemEval-S, all 500 questions asked against the same stored data, session R@1 / R@3 / R@5 / R@10 (wins/losses):
+
+| Questions | `0547539` | `8767176` |
+|---|---|---|
+| all 470 | 91.9 / 97.2 / 98.3 / 98.9 | 92.3 / 97.4 / 98.3 / 98.7 (3/1, 1/0, 1/1, 0/1) |
+| seed 1110 sample (100) | 89 / 93 / 94 / 95 | 90 / 93 / 94 / 95 |
+| seed 1111 sample (100) | 94 / 98 / 98 / 100 | 94 / 99 / 99 / 99 |
+| the other 270, never looked at before this run | 92.2 / 98.5 / 100 / 100 | 92.6 / 98.5 / 99.6 / 100 |
+
+Nothing falls by more than 0.5 point on the 270 or on the 470.
+
+**A real store.** On a restored read-only snapshot (55,837 memories: 4,609 saved by hand, 50,642 transcript turns, Korean and
+English), 40 saved memories were drawn at random, 10 per age group (under 7 days, 7-30, 30-90, over 90), at most 3 per
+project, and a question was written for each before any build ran. Asked over all projects and within the memory's own
+project, `n_results=10`: rank 1 / first 3 / first 10 and MRR were 20 / 28 / 32, 0.611 (all projects) and 25 / 35 / 39,
+0.753 (own project) for both builds; none of the 80 top-3 lists changed, so no saved memory lost a place to a transcript turn.
+Server time, repeated passes: over all projects median 9 to 14 ms and p95 12-13 to 17-18 ms (the per-session id queries);
+within one project median 2 ms and p95 about 310-320 ms for both builds. LoCoMo, serial, quiet machine: client median 29.7
+to 30.1 ms, p95 34.1 to 36.9 ms (one run each).
+
+### 9.5 LongMemEval-S, the full set
+
+All 500 questions were stored once with build `0547539` (the ranking of `1f20127`), in kept data directories of 49, 22, 23 and
+41 x 10 questions; each question searches only its own haystack, so the directory size changes only the keyword-search
+statistics. Asked against the same kept data, the seed 1110 sample gives the published `1f20127` figures exactly (57 of 100
+top-10 lists identical) and the seed 1111 sample too except one question gained at R@10 (62 identical). 0.5.1 opens data
+stored by the new build; on the two samples it gives its published figures. Session recall, the 470 questions with an
+answer; the 30 abstention questions (their "answer session" is where the false premise comes from) separately:
+
+| Questions | n | 0.5.1 R@1 / R@3 / R@5 / R@10 | `8767176` R@1 / R@3 / R@5 / R@10 | `8767176` all-sessions R@5 / R@10, turn R@10, NDCG@10 |
+|---|---:|---|---|---|
+| **all with an answer** | 470 | 83.2 / 93.2 / 94.9 / 96.8 | **92.3 / 97.4 / 98.3 / 98.7** | 87.9 / 88.3, 93.2, 0.930 |
+| knowledge-update | 72 | 95.8 / 98.6 / 98.6 / 100 | 97.2 / 100 / 100 / 100 | 97.2 / 97.2, 98.6, 0.975 |
+| multi-session | 121 | 81.8 / 95.9 / 99.2 / 99.2 | 93.4 / 97.5 / 99.2 / 99.2 | 78.5 / 79.3, 92.6, 0.911 |
+| single-session-assistant | 56 | 96.4 / 100 / 100 / 100 | 100 / 100 / 100 / 100 | 100 / 100, 98.2, 1.000 |
+| single-session-preference | 30 | 50.0 / 66.7 / 66.7 / 80.0 | 70.0 / 90.0 / 93.3 / 93.3 | 93.3 / 93.3, 76.7, 0.832 |
+| single-session-user | 64 | 90.6 / 96.9 / 98.4 / 98.4 | 98.4 / 100 / 100 / 100 | 100 / 100, 96.9, 0.994 |
+| temporal-reasoning | 127 | 75.6 / 89.0 / 91.3 / 94.5 | 87.4 / 95.3 / 96.1 / 97.6 | 78.7 / 79.5, 90.6, 0.881 |
+| seed 1110 sample | 100 | 83 / 89 / 91 / 94 | 90 / 93 / 94 / 95 | 80 / 80, 92, 0.887 |
+| seed 1111 sample | 100 | 83 / 93 / 96 / 98 | 94 / 99 / 99 / 99 | 90 / 90, 92, 0.937 |
+| abstention (separate) | 30 | 83.3 / 90.0 / 93.3 / 96.7 | 93.3 / 100 / 100 / 100 | 76.7 / 76.7, 100, 0.879 |
+
+Build `0547539` on the 470: 91.9 / 97.2 / 98.3 / 98.9, all-sessions R@5 87.7. The questions were asked while other
+instances were storing data, so no LongMemEval latency is reported from these runs. Result files:
+`results/2026-11-13-8767176-kept-longmemeval.json`, `results/2026-11-13-0547539-kept-longmemeval.json`,
+`results/2026-11-13-v0.5.1-kept-longmemeval.json` and `results/2026-11-13-8767176-kept-locomo.json`.
