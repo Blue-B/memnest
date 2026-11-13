@@ -2207,11 +2207,6 @@ fn diversify_by_project(items: Vec<SearchResultItem>, limit: usize) -> Vec<Searc
 /// most-relevant candidate, so top-1 relevance is preserved; subsequent picks
 /// trade a little relevance for diversity. `lambda` is expected in (0, 1);
 /// callers gate on that range. Candidates must be pre-sorted by score desc.
-/// Cosine similarity from which two memories count as the same statement.
-/// Saving used to drop the second one at this distance (0.05), which also
-/// dropped corrected values; both are stored now and one is shown.
-const TWIN_SIMILARITY: f32 = 0.95;
-
 fn mmr_select(
     mut candidates: Vec<(SearchResultItem, Vec<f32>)>,
     lambda: f32,
@@ -2254,13 +2249,7 @@ fn mmr_select(
                     .map(|(_, sel_emb)| crate::similarity::cosine(emb, sel_emb))
                     .fold(0.0_f32, f32::max)
             };
-            let mut mmr = lambda * norm(cand.score) - (1.0 - lambda) * max_sim;
-            // A twin of a result already chosen (the same statement saved again
-            // with other punctuation) waits until nothing else is left: mmr
-            // stays within -1..1, so 2 puts every twin behind every other.
-            if !emb.is_empty() && max_sim >= TWIN_SIMILARITY {
-                mmr -= 2.0;
-            }
+            let mmr = lambda * norm(cand.score) - (1.0 - lambda) * max_sim;
             if mmr > best_mmr {
                 best_mmr = mmr;
                 best_idx = i;
@@ -2556,6 +2545,11 @@ mod ranking_sanity_tests {
         }
     }
 
+    /// Two wordings of one statement, both stored (a save no longer folds a
+    /// near-identical text into the old memory). More repeats than free places
+    /// can still fill a short list: hiding a look-alike at search time cost
+    /// recall on conversation turns (LoCoMo R@10 77.9 -> 77.1), and it can hide
+    /// the corrected value behind the old one.
     #[tokio::test]
     async fn near_duplicate_saved_memories_leave_room_for_a_distinct_one() {
         let (_tmp, system) = build_system().await;
@@ -2566,8 +2560,6 @@ mod ranking_sanity_tests {
             &[
                 "스테이징 서버의 배포 포트는 8320이다.",
                 "스테이징 서버 배포 포트는 8320이다",
-                "스테이징 서버의 배포 포트는 8320 이다.",
-                "스테이징 서버의 배포 포트: 8320이다.",
                 distinct,
                 "회의는 매주 화요일 오전에 한다.",
             ],
@@ -3921,13 +3913,12 @@ pub(crate) mod test_support {
                 (item("d", 0.80), other.clone()),
             ]
         };
-        // Twins of a chosen result wait even when relevance weighs almost
-        // everything (lambda ~1), and still fill the list when nothing else is left.
-        let rel: Vec<String> = mmr_select(make(), 0.99, 4)
+        // Pure relevance (lambda ~1): the three near-duplicates win.
+        let rel: Vec<String> = mmr_select(make(), 0.99, 3)
             .into_iter()
             .map(|i| i.id)
             .collect();
-        assert_eq!(rel, vec!["a", "d", "b", "c"]);
+        assert_eq!(rel, vec!["a", "b", "c"]);
         // Balanced MMR breaks the dup run and surfaces the distinct doc.
         let mmr: Vec<String> = mmr_select(make(), 0.5, 3)
             .into_iter()
