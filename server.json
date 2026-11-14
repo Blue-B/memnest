@@ -7,20 +7,20 @@
     "url": "https://github.com/Blue-B/memnest",
     "source": "github"
   },
-  "version": "0.5.1",
+  "version": "0.6.0",
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/Blue-B/memnest/releases/download/v0.5.1/memnest-v0.5.1-linux-x64.mcpb",
-      "fileSha256": "0465773a788841530075ca6c5db0bed37c5908a2ddf093c8ba65343ca029db60",
+      "identifier": "https://github.com/Blue-B/memnest/releases/download/v0.6.0/memnest-v0.6.0-linux-x64.mcpb",
+      "fileSha256": "88c8da94b5860cf91a426193850d25487052df5c2bd42c69832596b25a5afa95",
       "transport": {
         "type": "stdio"
       }
     },
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/Blue-B/memnest/releases/download/v0.5.1/memnest-v0.5.1-darwin-arm64.mcpb",
-      "fileSha256": "a0379f1cbdbdea7d3090713bc623f9f665bc9d55f768e25d5222191e321c2218",
+      "identifier": "https://github.com/Blue-B/memnest/releases/download/v0.6.0/memnest-v0.6.0-darwin-arm64.mcpb",
+      "fileSha256": "1761cf6c063ba4c0aefeecd0658a3c338bd0c2d88e6234c5dcf8ec6709b6081e",
       "transport": {
         "type": "stdio"
       }
