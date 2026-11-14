@@ -130,12 +130,12 @@ answer session (multi-session questions have up to 6). "turn R@10": turns marked
 Temporal-reasoning questions are sent exactly as written (for example "What kitchen appliance did I buy 10 days ago?") without the
 dataset's `question_date`, so relative expressions cannot be resolved by search; they are the weakest type.
 
-## After the keyword-query fix (build `7937264`, same harness)
+## After the keyword-query fix (build `aa7e14f`, same harness)
 
 The miss analysis found that 0.5.1 drops the keyword half of a search when the question contains an apostrophe-s, a trailing
 period and some other characters, and then returns 3 results instead of 10 (330 of 1,986 LoCoMo questions, 17 of the 100
 sampled LongMemEval questions). The fix searches such a question again as plain words. The same harness was run against a
-build of commit `7937264` (0.5.1 plus that one change). It is not a pure gain, and both directions are shown.
+build of commit `aa7e14f` (0.5.1 plus that one change). It is not a pure gain, and both directions are shown.
 
 LoCoMo, full run, categories 1-4 (n = 1,536), recall in percent:
 
@@ -161,7 +161,7 @@ would be 78 instead of 83; R@3, R@5 and R@10 stay at 89, 91 and 94. So on long c
 ranked the first result better than the hybrid ranking does. The fix is kept because a search should not silently return 3
 results and lose exact-term matching depending on punctuation, but the first-rank ordering of the hybrid ranking is an open
 problem that this measurement exposes. Result files:
-`2026-11-10-unreleased-7937264-locomo.json` and `2026-11-10-unreleased-7937264-longmemeval-affected17.json`.
+`2026-11-10-unreleased-aa7e14f-locomo.json` and `2026-11-10-unreleased-aa7e14f-longmemeval-affected17.json`.
 
 ## After the ranking change (build `1f20127`, same harness)
 

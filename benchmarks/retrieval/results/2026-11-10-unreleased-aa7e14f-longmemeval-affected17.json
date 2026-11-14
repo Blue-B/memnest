@@ -2,11 +2,11 @@
  "benchmark": "memnest retrieval-only (no LLM): longmemeval",
  "run_date": "2026-11-10",
  "binary": {
-  "path": "core/target/release/memnest (commit 7937264)",
+  "path": "core/target/release/memnest (commit aa7e14f)",
   "sha256": "4b098bff79db3ae36b08fea02afbc91666269d28d5cb9f8a156a27e3d4384f1d",
   "version_from_health": "0.5.1",
   "embed_model": "intfloat/multilingual-e5-base",
-  "note": "unreleased build of commit 7937264: 0.5.1 plus the keyword-query fallback; /health still reports 0.5.1"
+  "note": "build of commit aa7e14f (the measured tree differed only in test fixture strings in core/src/redaction.rs): 0.5.1 plus the keyword-query fallback; /health still reports 0.5.1"
  },
  "dataset": {
   "name": "longmemeval",
