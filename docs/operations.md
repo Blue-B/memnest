@@ -10,7 +10,7 @@ For what memnest is and how to connect an agent, start at the [README](../README
 
 ## Requirements
 
-Core v0.5.1 provides Linux x86_64 and Arm64 binaries and an Apple Silicon macOS binary, which need neither Git nor Rust. Its integrated setup requires Python 3; on Python 3.10 it leaves an existing Codex `config.toml` unchanged because validating it needs Python 3.11. Building from source also needs Git and a Rust toolchain with Rust 1.89 or newer. The first embedding operation needs internet access to download the configured model. Intel Macs have no prebuilt onnxruntime and need a source build.
+Core v0.6.0 provides Linux x86_64 and Arm64 binaries, an Apple Silicon macOS binary and a 64-bit x86 Windows binary, which need neither Git nor Rust. Its integrated setup requires Python 3; on Python 3.10 it leaves an existing Codex `config.toml` unchanged because validating it needs Python 3.11. Building from source also needs Git and a Rust toolchain with Rust 1.89 or newer. The first embedding operation needs internet access to download the configured model. Intel Macs have no prebuilt onnxruntime and need a source build.
 
 Linux setup requires `systemctl` and `systemd-analyze` from systemd. The latter is used read-only to inspect user or system unit search paths before an upgrade. The optional package under `pi-extension/` lists its own runtime requirements in its package README.
 
@@ -25,13 +25,13 @@ cargo build --release
 
 ### One-command setup
 
-For the v0.5.1 Linux release, download and review the installer before running it:
+For the v0.6.0 Linux release, download and review the installer before running it:
 
 ```bash
 installer="$(mktemp)"
-curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.5.1/core/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.6.0/core/scripts/install.sh \
   -o "$installer"
-VERSION=v0.5.1 bash "$installer" --user
+VERSION=v0.6.0 bash "$installer" --user
 ```
 
 From a source checkout, run this from `core/` after building:
@@ -101,7 +101,7 @@ Inside WSL, `memnest watch` reads transcripts under the WSL home directory. For 
 
 ### Windows
 
-Native Windows needs 64-bit x86 Windows 10 or 11 and the Microsoft Visual C++ Redistributable (x64), which most machines already have; the installer stops with the download link when it is missing. There is no ARM64 archive. The first release with a Windows archive is the one after v0.5.1.
+Native Windows needs 64-bit x86 Windows 10 or 11 and the Microsoft Visual C++ Redistributable (x64), which most machines already have; the installer stops with the download link when it is missing. There is no ARM64 archive. The first release with a Windows archive is v0.6.0.
 
 ```powershell
 irm https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.ps1 | iex

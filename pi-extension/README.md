@@ -11,7 +11,7 @@ Connects [pi](https://github.com/badlogic/pi-mono) to a running [memnest](https:
 Needs Node.js 20+, pi, and a memnest service (normally `http://127.0.0.1:3111`).
 
 ```bash
-pi install npm:pi-memnest@0.5.0
+pi install npm:pi-memnest@0.6.0
 ```
 
 If Memnest is already registered from a local path or another version, remove that entry first to avoid duplicate tools. A pinned version is not changed by `pi update --extensions`.
@@ -63,7 +63,7 @@ These run in the pi terminal UI without the model, and nothing they show is sent
 - `/memnest-recent [project:<name>|project:all]`: the 20 newest memories saved by hand or by the model (not transcript turns), with project, date and an excerpt; pick one to read it in full.
 - `/memnest-review [project:<name>|project:all]`: goes through saved rules and preferences, longest unconfirmed first. For each one you see the full text, its project, when it was saved and last reviewed, and choose Keep (records today as the review date, so it comes back last next time), Delete (moves it to the trash; restorable for 30 days), Skip, or Stop. Nothing is deleted unless you choose Delete for that memory; a summary is printed at the end.
 
-The last two need a core with `POST /recent` and `POST /reviewed` (newer than 0.5.1); an older core answers with a one-line "too old" message.
+The last two need a core with `POST /recent` and `POST /reviewed` (0.6.0 or newer); an older core answers with a one-line "too old" message.
 
 Without a UI (`pi -p`) the commands print text and do not ask anything. If the core is not running they say so in one line.
 

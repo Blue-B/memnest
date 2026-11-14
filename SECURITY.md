@@ -30,7 +30,7 @@ subcommands), and the smallest reproduction you have.
 
 | Version | Supported |
 | --- | --- |
-| 0.5.x | Yes |
+| 0.6.x | Yes |
 | Older | No |
 
 There is one active line. Fixes land on the current version rather than being

@@ -32,7 +32,7 @@ irm https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.p
 
 Apple Silicon macOS, systemd가 있는 Linux(x86_64는 glibc 2.35 이상, Arm64는 glibc 2.39 이상), 또는 64비트 x86 Windows 10/11과 Python 3이 필요합니다. Windows에서 Python은 클라이언트 연결에만 쓰입니다([자세히](docs/operations.ko.md#windows)). 처음 저장하거나 검색할 때 약 1.1GB 임베딩 모델을 내려받습니다.
 
-- pi: `pi install npm:pi-memnest@0.5.0`을 실행하고 `/memnest`로 확인합니다.
+- pi: `pi install npm:pi-memnest@0.6.0`을 실행하고 `/memnest`로 확인합니다.
 - 그 밖의 MCP 도구: `http://127.0.0.1:3111/mcp`에 연결합니다([연결 예시](adapters/README.ko.md)).
 
 ## 사용법

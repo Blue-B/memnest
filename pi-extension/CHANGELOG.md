@@ -4,7 +4,7 @@
 
 All notable changes to `pi-memnest` are recorded here.
 
-## [Unreleased]
+## [0.6.0] - 2026-11-14
 
 ### Security
 

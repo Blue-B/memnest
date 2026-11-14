@@ -32,7 +32,7 @@ This starts the server and the conversation watcher, and connects the Claude Cod
 
 Needs macOS on Apple Silicon, Linux with systemd (x86_64 with glibc 2.35+, Arm64 with glibc 2.39+), or 64-bit x86 Windows 10/11, and Python 3. On Windows, Python is only used to connect clients ([details](docs/operations.md#windows)). The first write or search downloads an embedding model of about 1.1 GB.
 
-- pi: `pi install npm:pi-memnest@0.5.0`, then check with `/memnest`.
+- pi: `pi install npm:pi-memnest@0.6.0`, then check with `/memnest`.
 - Other MCP clients: connect to `http://127.0.0.1:3111/mcp` ([examples](adapters/README.md)).
 
 ## Use it

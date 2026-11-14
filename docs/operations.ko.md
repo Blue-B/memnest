@@ -10,7 +10,7 @@ memnest가 무엇이고 에이전트를 어떻게 연결하는지는 [README](..
 
 ## 필요 환경
 
-코어 v0.5.1은 Linux x86_64와 Arm64, Apple Silicon macOS용 실행 파일을 제공하며 Git과 Rust가 필요 없습니다. 통합 설치에는 Python 3이 필요합니다. Python 3.10에서는 기존 Codex `config.toml`을 바꾸지 않는데, 그 파일을 검사하려면 Python 3.11이 필요하기 때문입니다. 소스로 빌드하려면 Git과 Rust 1.89 이상이 더 필요합니다. 첫 임베딩 작업 때 설정한 모델을 내려받으려면 인터넷이 필요합니다. Intel Mac은 미리 빌드된 onnxruntime이 없어서 소스로 빌드해야 합니다.
+코어 v0.6.0은 Linux x86_64와 Arm64, Apple Silicon macOS, 64비트 x86 Windows용 실행 파일을 제공하며 Git과 Rust가 필요 없습니다. 통합 설치에는 Python 3이 필요합니다. Python 3.10에서는 기존 Codex `config.toml`을 바꾸지 않는데, 그 파일을 검사하려면 Python 3.11이 필요하기 때문입니다. 소스로 빌드하려면 Git과 Rust 1.89 이상이 더 필요합니다. 첫 임베딩 작업 때 설정한 모델을 내려받으려면 인터넷이 필요합니다. Intel Mac은 미리 빌드된 onnxruntime이 없어서 소스로 빌드해야 합니다.
 
 Linux 설치에는 systemd의 `systemctl`과 `systemd-analyze`가 필요합니다. `systemd-analyze`는 업그레이드 전에 사용자 또는 시스템 유닛 검색 경로를 읽기 전용으로 확인하는 데 씁니다. 선택 패키지인 `pi-extension/`의 실행 요구 사항은 그 패키지 README에 있습니다.
 
@@ -25,13 +25,13 @@ cargo build --release
 
 ### 한 번에 설치
 
-v0.5.1 Linux 릴리스라면, 실행하기 전에 설치 스크립트를 내려받아 검토하세요.
+v0.6.0 Linux 릴리스라면, 실행하기 전에 설치 스크립트를 내려받아 검토하세요.
 
 ```bash
 installer="$(mktemp)"
-curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.5.1/core/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/Blue-B/memnest/v0.6.0/core/scripts/install.sh \
   -o "$installer"
-VERSION=v0.5.1 bash "$installer" --user
+VERSION=v0.6.0 bash "$installer" --user
 ```
 
 소스 체크아웃에서는 빌드한 뒤 `core/`에서 실행합니다.
@@ -101,7 +101,7 @@ WSL 안의 `memnest watch`는 WSL 홈 폴더의 대화 기록을 읽습니다. W
 
 ### Windows
 
-네이티브 Windows 설치에는 64비트 x86 Windows 10 또는 11과 Microsoft Visual C++ 재배포 가능 패키지(x64)가 필요합니다. 대부분의 PC에는 이미 설치되어 있고, 없으면 설치기가 내려받을 주소를 알려 주고 멈춥니다. ARM64용 압축 파일은 없습니다. Windows 압축 파일은 v0.5.1 다음 릴리스부터 제공됩니다.
+네이티브 Windows 설치에는 64비트 x86 Windows 10 또는 11과 Microsoft Visual C++ 재배포 가능 패키지(x64)가 필요합니다. 대부분의 PC에는 이미 설치되어 있고, 없으면 설치기가 내려받을 주소를 알려 주고 멈춥니다. ARM64용 압축 파일은 없습니다. Windows 압축 파일은 v0.6.0부터 제공됩니다.
 
 ```powershell
 irm https://raw.githubusercontent.com/Blue-B/memnest/main/core/scripts/install.ps1 | iex

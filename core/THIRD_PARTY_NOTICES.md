@@ -281,7 +281,7 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [proc-macro2](https://github.com/dtolnay/proc-macro2) | 1.0.106 | MIT OR Apache-2.0 |  |
 | [quinn](https://github.com/quinn-rs/quinn) | 0.11.9 | MIT OR Apache-2.0 | Copyright (c) 2018 The quinn Developers |
 | [quinn-proto](https://github.com/quinn-rs/quinn) | 0.11.19 | MIT OR Apache-2.0 | Copyright (c) 2018 The quinn Developers |
-| [quinn-udp](https://github.com/quinn-rs/quinn) | 0.5.14 | MIT OR Apache-2.0 | Copyright (c) 2018 The quinn Developers |
+| [quinn-udp](https://github.com/quinn-rs/quinn) | 0.5.16 | MIT OR Apache-2.0 | Copyright (c) 2018 The quinn Developers |
 | [quote](https://github.com/dtolnay/quote) | 1.0.45 | MIT OR Apache-2.0 |  |
 | [r2d2](https://github.com/sfackler/r2d2) | 0.8.10 | MIT/Apache-2.0 | Copyright (c) 2014-2016 Steven Fackler |
 | [r2d2_sqlite](https://github.com/ivanceras/r2d2-sqlite) | 0.36.0 | MIT | Copyright (c) 2015 Jovansonlee Cesar |
@@ -306,7 +306,7 @@ Any new dependency outside the allowed list must be reviewed before release.
 | [rusqlite](https://github.com/rusqlite/rusqlite) | 0.41.1 | MIT | Copyright (c) 2014 The rusqlite developers |
 | [rust-stemmers](https://github.com/CurrySoftware/rust-stemmers) | 1.2.0 | MIT/BSD-3-Clause | Copyright (c) 2017 Jakob Demler |
 | [rustc-hash](https://github.com/rust-lang/rustc-hash) | 2.1.2 | Apache-2.0 OR MIT |  |
-| [rustix](https://github.com/bytecodealliance/rustix) | 1.1.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |  |
+| [rustix](https://github.com/bytecodealliance/rustix) | 1.1.6 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |  |
 | [rustls](https://github.com/rustls/rustls) | 0.23.46 | Apache-2.0 OR ISC OR MIT | Copyright (c) 2016, Joseph Birr-Pixton <jpixton@gmail.com> |
 | [rustls-pki-types](https://github.com/rustls/pki-types) | 1.14.1 | MIT OR Apache-2.0 | Copyright 2023 Dirkjan Ochtman |
 | [rustls-webpki](https://github.com/rustls/webpki) | 0.103.16 | ISC | Copyright 2015 Brian Smith. |
@@ -697,7 +697,7 @@ limitations under the License.
 - proc-macro2 1.0.106
 - quote 1.0.45
 - rustc-hash 2.1.2
-- rustix 1.1.4
+- rustix 1.1.6
 - rustversion 1.0.22
 - serde 1.0.228
 - serde_core 1.0.228
@@ -1138,7 +1138,7 @@ DEALINGS IN THE SOFTWARE.
 - regex 1.12.3
 - regex-automata 0.4.14
 - regex-syntax 0.8.10
-- rustix 1.1.4
+- rustix 1.1.6
 - rustls 0.23.46
 - scopeguard 1.2.0
 - signal-hook-registry 1.4.8
@@ -5111,7 +5111,7 @@ DEALINGS IN THE SOFTWARE.
 - ort-sys 2.0.0-rc.12
 - quinn 0.11.9
 - quinn-proto 0.11.19
-- quinn-udp 0.5.14
+- quinn-udp 0.5.16
 - safetensors 0.7.0
 - spm_precompiled 0.1.4
 - static_assertions 1.1.0
@@ -8081,7 +8081,7 @@ THE SOFTWARE.
 <details><summary>Used by</summary>
 
 - linux-raw-sys 0.12.1
-- rustix 1.1.4
+- rustix 1.1.6
 
 </details>
 
@@ -10670,7 +10670,7 @@ DEALINGS IN THE SOFTWARE.
 
 - quinn 0.11.9
 - quinn-proto 0.11.19
-- quinn-udp 0.5.14
+- quinn-udp 0.5.16
 
 </details>
 
